@@ -1,1 +1,1 @@
-# lct-hack
+# LCT
