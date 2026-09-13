@@ -4,6 +4,7 @@
 
 Полный разбор кейса: [cases/city/09-112-dispatcher-simulator.md](cases/city/09-112-dispatcher-simulator.md)
 Правила и сроки: [OFFICIAL-RULES.md](OFFICIAL-RULES.md)
+План разработки: [PLAN.md](PLAN.md)
 
 ## Состав команды
 
