@@ -1,0 +1,7 @@
+# Переводы строк — всегда LF. Иначе на машине с core.autocrlf=true
+# Makefile и shell-скрипты приезжают с CRLF и перестают запускаться.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.wav binary
+*.mp3 binary
