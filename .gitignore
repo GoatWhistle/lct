@@ -1,0 +1,19 @@
+# IDE
+.idea/
+.vscode/
+
+# Веса моделей (тянутся make models)
+backend/models/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Env
+.env
+*.local
