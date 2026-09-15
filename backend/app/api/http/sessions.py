@@ -1,0 +1,93 @@
+"""Сессии: создание, состояние, история.
+
+`group_id` и `mode` принимаются с первого дня — размечать накопленные сессии
+задним числом не надо (docs/arch/CONTRACT.md#http-api).
+"""
+
+from datetime import datetime
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import repo
+from app.db.base import get_session
+from app.domain.events import SessionMode
+
+router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+
+
+class SessionCreate(BaseModel):
+    scenario_id: str
+    mode: SessionMode
+    trainee: str | None = None
+    group: str | None = None
+
+
+class SessionOut(BaseModel):
+    session_id: UUID
+    scenario_id: str
+    mode: SessionMode
+    attempt: int
+    trainee_id: UUID | None = None
+    group_id: UUID | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    end_reason: str | None = None
+
+
+def _out(session) -> SessionOut:
+    return SessionOut(
+        session_id=session.id,
+        scenario_id=session.scenario_id,
+        mode=session.mode,
+        attempt=session.attempt,
+        trainee_id=session.trainee_id,
+        group_id=session.group_id,
+        started_at=session.started_at,
+        ended_at=session.ended_at,
+        end_reason=session.end_reason,
+    )
+
+
+@router.post("", response_model=SessionOut, status_code=201)
+async def create(body: SessionCreate, db: AsyncSession = Depends(get_session)) -> SessionOut:
+    group = await repo.ensure_group(db, body.group) if body.group else None
+    trainee = await repo.ensure_trainee(db, body.trainee, group) if body.trainee else None
+    session = await repo.create_session(
+        db,
+        scenario_id=body.scenario_id,
+        mode=body.mode.value,
+        trainee_id=trainee.id if trainee else None,
+        group_id=group.id if group else None,
+    )
+    return _out(session)
+
+
+@router.get("/{session_id}", response_model=SessionOut)
+async def read(session_id: UUID, db: AsyncSession = Depends(get_session)) -> SessionOut:
+    session = await repo.get_session(db, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    return _out(session)
+
+
+@router.get("", response_model=list[SessionOut])
+async def listing(
+    trainee: UUID | None = None,
+    group: UUID | None = None,
+    mode: SessionMode | None = None,
+    since: datetime | None = Query(default=None, alias="from"),
+    limit: int = 100,
+    db: AsyncSession = Depends(get_session),
+) -> list[SessionOut]:
+    rows = await repo.history(
+        db,
+        trainee_id=trainee,
+        group_id=group,
+        mode=mode.value if mode else None,
+        since=since,
+        limit=limit,
+    )
+    return [_out(row) for row in rows]

@@ -39,7 +39,6 @@ facts:
   - id: f_gas
     value: "плита газовая, вентиль в кухне, перекрыть не успел"
     reveal_on: { question: q_gas }
-    hidden: true
 
 checklist:
   - { id: q_address,    fact: f_address }
@@ -57,10 +56,9 @@ required_fields:
   - description
 
 ground_truth:
-  # Выводится из фактов кодом при загрузке, здесь — для наглядности примера.
-  incident_type: fire
-  dds: "01"
-  required_facts: [f_address, f_what_burns, f_people]
+  # incident_type, dds и required_facts выводит загрузчик — писать их здесь запрещено.
+  # Руками задаются только нормализованные ожидания, которые из текста факта
+  # кодом не достать.
   address: "улица Ленина, 14"
   victims: 2
 

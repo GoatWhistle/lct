@@ -4,17 +4,36 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from pathlib import Path
+
+from app.api.http import scenarios as scenarios_api
+from app.api.http import sessions
 from app.config import get_settings
+from app.scenarios import store
+from app.scenarios.loader import ScenarioError
+
+
+LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Прогрев моделей и валидация сценариев — карточки lct-04 и lct-06.
+    # Библиотека проверяется на старте целиком: сломанный сценарий, найденный
+    # посреди занятия, — сценарий, которого не должно случиться.
+    try:
+        loaded = store.load_from_disk(LIBRARY)
+    except ScenarioError as exc:
+        raise RuntimeError(f"библиотека сценариев не прошла проверку: {exc}") from exc
+    app.state.scenarios_loaded = len(loaded)
+
+    # Прогрев моделей — карточка lct-06.
     app.state.models_ready = False
     yield
 
 
 app = FastAPI(title="Учебный симулятор занятия для системы 112", lifespan=lifespan)
+app.include_router(sessions.router)
+app.include_router(scenarios_api.router)
 
 
 @app.get("/api/health")
@@ -24,5 +43,6 @@ async def health() -> dict:
     return {
         "status": "ok",
         "models_ready": getattr(app.state, "models_ready", False),
+        "scenarios_loaded": getattr(app.state, "scenarios_loaded", 0),
         "offline": settings.offline,
     }

@@ -34,7 +34,13 @@ models: ## Скачать веса GigaAM (STT) и Silero (TTS) в backend/model
 	@echo "не реализовано — карточка tasks/lct-02-latency-baseline.md"; exit 1
 
 seed: ## Залить сценарии из /scenarios в БД
-	@echo "не реализовано — карточка tasks/lct-04-scenario-loader.md"; exit 1
+	cd backend && $(UV) run python scripts/seed.py
+
+migrate: ## Накатить миграции
+	cd backend && $(UV) run alembic upgrade head
+
+revision: ## Создать миграцию: make revision m="что изменилось"
+	cd backend && $(UV) run alembic revision --autogenerate -m "$(m)"
 
 repl: ## Текстовый диалог со звонящим без голоса
 	@echo "не реализовано — карточка tasks/lct-07-caller-slots.md"; exit 1
@@ -45,4 +51,4 @@ pregen: ## Дерево диалога и WAV первых реплик для �
 demo: ## Поднять всё в демо-режиме: офлайн, прогретые модели
 	@echo "не реализовано — карточка tasks/lct-21-demo-readiness.md"; exit 1
 
-.PHONY: help dev down back front types test typecheck models seed repl pregen demo
+.PHONY: help dev down back front types test typecheck migrate revision models seed repl pregen demo
