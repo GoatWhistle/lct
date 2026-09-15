@@ -29,6 +29,7 @@ async def create_session(
     mode: str,
     trainee_id: UUID | None = None,
     group_id: UUID | None = None,
+    session_id: UUID | None = None,
 ) -> Session:
     session = Session(
         scenario_id=scenario_id,
@@ -37,9 +38,41 @@ async def create_session(
         group_id=group_id,
         attempt=await next_attempt(db, trainee_id, scenario_id),
     )
+    if session_id is not None:
+        session.id = session_id
     db.add(session)
     await db.commit()
     return session
+
+
+async def ensure_session(
+    db: AsyncSession,
+    *,
+    session_id: UUID,
+    scenario_id: str,
+    mode: str,
+    trainee_name: str | None = None,
+    group_name: str | None = None,
+) -> Session:
+    """Занятие, запущенное с пульта, должно иметь строку в журнале.
+
+    Иначе реплики, подсказки и пометки не к чему привязать: они уходят
+    в нарушение внешнего ключа, а профиль курсанта остаётся пустым.
+    """
+    existing = await db.get(Session, session_id)
+    if existing is not None:
+        return existing
+
+    group = await ensure_group(db, group_name) if group_name else None
+    trainee = await ensure_trainee(db, trainee_name, group) if trainee_name else None
+    return await create_session(
+        db,
+        scenario_id=scenario_id,
+        mode=mode,
+        trainee_id=trainee.id if trainee else None,
+        group_id=group.id if group else None,
+        session_id=session_id,
+    )
 
 
 async def get_session(db: AsyncSession, session_id: UUID) -> Session | None:

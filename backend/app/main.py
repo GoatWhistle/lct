@@ -8,8 +8,14 @@ from pathlib import Path
 
 from app.api.http import scenarios as scenarios_api
 from app.api.http import sessions
+from app.api.ws import call as call_ws
+from app.api.ws import control as control_ws
+from app.api.ws import observe as observe_ws
 from app.config import get_settings
+from app.db.base import get_sessionmaker
 from app.scenarios import store
+from app.session.hub import hub
+from app.session.journal import DbJournal
 from app.scenarios.loader import ScenarioError
 
 
@@ -26,14 +32,22 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(f"библиотека сценариев не прошла проверку: {exc}") from exc
     app.state.scenarios_loaded = len(loaded)
 
+    # Журнал: всё, что не записано, для оценки не существует.
+    hub.journal = DbJournal(get_sessionmaker())
+
     # Прогрев моделей — карточка lct-06.
     app.state.models_ready = False
     yield
+
+    await hub.shutdown()
 
 
 app = FastAPI(title="Учебный симулятор занятия для системы 112", lifespan=lifespan)
 app.include_router(sessions.router)
 app.include_router(scenarios_api.router)
+app.include_router(call_ws.router)
+app.include_router(observe_ws.router)
+app.include_router(control_ws.router)
 
 
 @app.get("/api/health")
