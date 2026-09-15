@@ -7,7 +7,7 @@
 ```yaml
 id: fire-apartment-l2
 title: "Пожар в квартире, паникующий заявитель"
-type: fire                      # fire | medical | police | other | mkh | era_glonass
+type: fire                      # fire | medical | police | other | gkh | era_glonass
 level: L2                       # L1 | L2 | L3
 topics: [fires]                 # темы для программ занятий
 modes: [training, exam, self]   # в каких режимах доступен

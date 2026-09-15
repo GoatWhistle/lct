@@ -18,7 +18,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.domain.classifiers import DDSCode, IncidentType, Level
-from app.domain.kio import KIO
+from app.domain.kio import KIO, Coords
 from app.domain.taxonomy import Finding
 from app.domain.timers import TimerSnapshot
 
@@ -67,6 +67,20 @@ class DirectiveMode(StrEnum):
     IMMEDIATE = "immediate"
 
 
+class ErrorKind(StrEnum):
+    """Коды канала `error`. Фронт разбирает код, а не текст сообщения:
+    текст — для человека, код — для поведения интерфейса."""
+
+    SESSION_NOT_FOUND = "session_not_found"
+    CALL_NOT_STARTED = "call_not_started"
+    HINT_DENIED_IN_EXAM = "hint_denied_in_exam"
+    MODELS_WARMING_UP = "models_warming_up"
+    DIRECTIVE_NEEDS_NETWORK = "directive_needs_network"
+    SCENARIO_INVALID = "scenario_invalid"
+    UNSUPPORTED_EVENT = "unsupported_event"
+    INTERNAL = "internal"
+
+
 class TranscriptEntry(BaseModel):
     """Реплика в ленте. `ref` — якорь для пометок преподавателя и отметок разбора."""
 
@@ -77,20 +91,20 @@ class TranscriptEntry(BaseModel):
     mood: Mood | None = None
 
 
-class Coords(BaseModel):
-    lat: float
-    lon: float
-
-
 # ─────────────────────────── сервер → курсант ───────────────────────────
 
 
 class CallIncoming(BaseModel):
+    """Обязательность полей приходит сценарием, а не моделью: без `required_fields`
+    АРМ не может подсветить незаполненное обязательное поле, и курсант узнаёт
+    о неполноте карточки только из разбора."""
+
     type: Literal["call.incoming"] = "call.incoming"
     scenario_id: str
     caller_number: str
     level: Level
     mode: SessionMode
+    required_fields: list[str] = []
 
 
 class CallStarted(BaseModel):
@@ -190,7 +204,7 @@ class ScoreReady(BaseModel):
 
 class ErrorEvent(BaseModel):
     type: Literal["error"] = "error"
-    code: str
+    code: ErrorKind
     message: str
 
 
@@ -290,6 +304,7 @@ class SessionSnapshot(BaseModel):
     trainee_name: str | None = None
     started_at: datetime | None = None
     kio: KIO
+    required_fields: list[str] = []
     transcript: list[TranscriptEntry]
     timers: list[TimerSnapshot]
     hints_used: int = 0

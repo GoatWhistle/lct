@@ -6,14 +6,18 @@ from uuid import uuid4
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
+from app.config import Settings
 from app.domain.events import (
+    CallIncoming,
+    ErrorKind,
     EventCatalog,
     KioPatchIn,
     ServerToTrainee,
     SessionMode,
+    SessionSnapshot,
     TraineeToServer,
 )
-from app.domain.kio import KIO, apply_patch, missing_fields
+from app.domain.kio import KIO, Coords, apply_patch, missing_fields
 from app.domain.timers import NORMATIVES, TimerCode, TimerState, state_for
 from scripts.export_types import OUT, render
 
@@ -81,6 +85,49 @@ def test_event_catalog_covers_every_channel():
         "station_to_server",
         "session_report",
     }
+
+
+def test_coords_are_named_everywhere():
+    """Одно представление координат на весь контракт: в кортеже не видно,
+    где широта, и ошибка всплывает на карте, а не в типах."""
+    card = apply_patch(KIO(), {"coords.lat": 55.751244, "coords.lon": 37.618423})
+    assert card.coords == Coords(lat=55.751244, lon=37.618423)
+
+
+def test_required_fields_reach_the_screen():
+    """Без этого АРМ не подсветит незаполненное обязательное поле."""
+    incoming = CallIncoming(
+        scenario_id="fire-apartment-l2",
+        caller_number="+7 999 000-00-00",
+        level="L2",
+        mode=SessionMode.TRAINING,
+        required_fields=["address", "floor"],
+    )
+    assert incoming.required_fields == ["address", "floor"]
+    # Наблюдателю они нужны так же: монитор рисует ту же карточку
+    assert "required_fields" in SessionSnapshot.model_fields
+
+
+def test_error_channel_has_codes_not_prose():
+    """Фронт разбирает код, а не текст: текст — для человека."""
+    adapter = TypeAdapter(ServerToTrainee)
+    event = adapter.validate_python(
+        {"type": "error", "code": "hint_denied_in_exam", "message": "В контрольном режиме подсказок нет"}
+    )
+    assert event.code is ErrorKind.HINT_DENIED_IN_EXAM
+
+    with pytest.raises(ValidationError):
+        adapter.validate_python({"type": "error", "code": "что-то пошло не так", "message": ""})
+
+
+def test_normative_comes_from_config_not_code():
+    """Правка норматива не должна требовать правки кода."""
+    default = Settings()
+    assert default.limit_ms(TimerCode.INTERVIEW) == 75_000
+
+    overridden = Settings(timer_limits_ms={TimerCode.INTERVIEW: 90_000})
+    assert overridden.limit_ms(TimerCode.INTERVIEW) == 90_000
+    assert overridden.limit_ms(TimerCode.ANSWER) == 8_000
 
 
 def test_generated_types_match_models():

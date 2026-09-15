@@ -25,6 +25,11 @@ HEADER = """// Сгенерировано `make types` из backend/app/domain/e
 """
 
 
+def oneline(text: str) -> str:
+    """Docstring в несколько строк — комментарий в TS в одну."""
+    return " ".join(text.split())
+
+
 def pascal(name: str) -> str:
     return "".join(part.capitalize() for part in name.split("_"))
 
@@ -90,7 +95,7 @@ def fields(node: dict[str, Any], indent: str = "  ") -> list[str]:
         optional = "" if name in required or "const" in prop else "?"
         description = prop.get("description")
         if description:
-            lines.append(f"{indent}/** {description} */")
+            lines.append(f"{indent}/** {oneline(description)} */")
         lines.append(f"{indent}{name}{optional}: {ts_type(prop)};")
     return lines
 
@@ -100,7 +105,7 @@ def inline_object(node: dict[str, Any]) -> str:
 
 
 def render_def(name: str, node: dict[str, Any]) -> str:
-    doc = node.get("description", "").strip()
+    doc = oneline(node.get("description", ""))
     comment = f"/** {doc} */\n" if doc else ""
     if "enum" in node and "properties" not in node:
         values = " | ".join(literal(value) for value in node["enum"])

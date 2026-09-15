@@ -15,6 +15,17 @@ from pydantic import BaseModel, Field
 from app.domain.classifiers import DDSCode, IncidentType
 
 
+class Coords(BaseModel):
+    """Координаты одним представлением на весь контракт.
+
+    Именованные поля, а не кортеж: в `[55.75, 37.61]` невозможно увидеть,
+    где широта, а где долгота, и ошибка всплывёт на карте, а не в типах.
+    """
+
+    lat: float
+    lon: float
+
+
 class ResponseStatus(StrEnum):
     REGISTERED = "registered"
     TRANSFERRED = "transferred"
@@ -30,6 +41,7 @@ class FireDetails(BaseModel):
     floors: int | None = None
     gasified: bool | None = None
     people_inside: bool | None = None
+    smoke_spread: str | None = None  # куда идёт дым — пункт чек-листа 01
 
 
 class PoliceDetails(BaseModel):
@@ -37,6 +49,7 @@ class PoliceDetails(BaseModel):
 
     offence_kind: str | None = None
     suspects: str | None = None
+    suspect_fled: bool | None = None  # уехал ли нарушитель — пункт чек-листа 02
     vehicle: str | None = None
 
 
@@ -80,7 +93,8 @@ class KIO(BaseModel):
     building: str | None = None
     entrance: str | None = None
     floor: str | None = None
-    coords: tuple[float, float] | None = None
+    intercom_code: str | None = None  # спрашивается чек-листом 03, без него скорая стоит у двери
+    coords: Coords | None = None
 
     # Происшествие
     incident_type: IncidentType | None = None

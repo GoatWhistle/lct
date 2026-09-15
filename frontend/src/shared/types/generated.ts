@@ -30,12 +30,14 @@ export interface CallHangup {
   type: "call.hangup";
 }
 
+/** Обязательность полей приходит сценарием, а не моделью: без `required_fields` АРМ не может подсветить незаполненное обязательное поле, и курсант узнаёт о неполноте карточки только из разбора. */
 export interface CallIncoming {
   type: "call.incoming";
   scenario_id: string;
   caller_number: string;
   level: Level;
   mode: SessionMode;
+  required_fields?: Array<string>;
 }
 
 export interface CallStarted {
@@ -84,6 +86,7 @@ export interface CompetencyScore {
   value: number;
 }
 
+/** Координаты одним представлением на весь контракт. Именованные поля, а не кортеж: в `[55.75, 37.61]` невозможно увидеть, где широта, а где долгота, и ошибка всплывёт на карте, а не в типах. */
 export interface Coords {
   lat: number;
   lon: number;
@@ -131,9 +134,12 @@ export type ErrorCode = "E1" | "E2" | "E3" | "E4" | "E5" | "E6";
 
 export interface ErrorEvent {
   type: "error";
-  code: string;
+  code: ErrorKind;
   message: string;
 }
+
+/** Коды канала `error`. Фронт разбирает код, а не текст сообщения: текст — для человека, код — для поведения интерфейса. */
+export type ErrorKind = "session_not_found" | "call_not_started" | "hint_denied_in_exam" | "models_warming_up" | "directive_needs_network" | "scenario_invalid" | "unsupported_event" | "internal";
 
 /** Отметка в разборе. `fact` и `norm` — то самое обоснование. */
 export interface Finding {
@@ -158,6 +164,7 @@ export interface FireDetails {
   floors?: number | null;
   gasified?: boolean | null;
   people_inside?: boolean | null;
+  smoke_spread?: string | null;
 }
 
 /** В режиме `exam` сервер отвечает событием `error`. */
@@ -194,8 +201,7 @@ export interface InstructorNoteShown {
   author: string;
 }
 
-/** Полная карточка. Наблюдателям уходит целиком (`kio.state`),
-курсанту — дельтой (`kio.patch`). */
+/** Полная карточка. Наблюдателям уходит целиком (`kio.state`), курсанту — дельтой (`kio.patch`). */
 export interface KIO {
   card_id?: string;
   registered_at?: string | null;
@@ -210,7 +216,8 @@ export interface KIO {
   building?: string | null;
   entrance?: string | null;
   floor?: string | null;
-  coords?: [number, number] | null;
+  intercom_code?: string | null;
+  coords?: Coords | null;
   incident_type?: IncidentType | null;
   description?: string | null;
   victims_count?: number | null;
@@ -283,6 +290,7 @@ export type PatchSource = "auto" | "operator";
 export interface PoliceDetails {
   offence_kind?: string | null;
   suspects?: string | null;
+  suspect_fled?: boolean | null;
   vehicle?: string | null;
 }
 
@@ -342,8 +350,7 @@ export interface SessionEnded {
   reason: CallEndReason;
 }
 
-/** Режим сессии. Меняет доступность подсказок и протоколирование,
-но не поведение звонящего (docs/product/MODES.md). */
+/** Режим сессии. Меняет доступность подсказок и протоколирование, но не поведение звонящего (docs/product/MODES.md). */
 export type SessionMode = "training" | "exam" | "self";
 
 /** Единица истории: из отчётов складываются профиль, дельта попыток, аналитика. */
@@ -377,6 +384,7 @@ export interface SessionSnapshot {
   trainee_name?: string | null;
   started_at?: string | null;
   kio: KIO;
+  required_fields?: Array<string>;
   transcript: Array<TranscriptEntry>;
   timers: Array<TimerSnapshot>;
   hints_used?: number;

@@ -29,10 +29,13 @@ estimate: "1 день"
 
 ## Готово когда
 
-- [ ] `make types` генерирует `frontend/src/shared/types/generated.ts`, файл компилируется `tsc --strict`
-- [ ] `make test` зелёный, включая тест «generated.ts не отстал от моделей»
-- [ ] Каждое событие из `CONTRACT.md` имеет модель, каждая модель — событие из `CONTRACT.md`
+- [x] `make types` генерирует `frontend/src/shared/types/generated.ts`, файл компилируется `tsc --strict`
+- [x] `make test` зелёный, включая тест «generated.ts не отстал от моделей»
+- [x] Каждое событие из `CONTRACT.md` имеет модель, каждая модель — событие из `CONTRACT.md`
 - [ ] Фронт и бэк подтвердили список событий и модель КИО (два имени в PR)
+
+Выполнено в `TASK-lct-01-domain-contract.md`; открытым остаётся только подтверждение
+двумя людьми — агент его поставить не может.
 
 ## Не входит
 
