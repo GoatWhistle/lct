@@ -1,0 +1,68 @@
+# Первый сценарий — тот самый, на котором замыкается вертикальный срез
+# (docs/hackathon/CASE-DECISION.md: в первый день один сценарий целиком).
+# Формат: docs/spec/SCENARIO-FORMAT.md
+id: fire-apartment-l2
+title: "Пожар в квартире, паникующий заявитель"
+type: fire
+level: L2
+topics: [fires]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview,    mood: panic }
+    - { stage: dispatch,     mood: worried }
+
+background:
+  loop: fire_crackle.mp3
+  gain_db: -18
+
+first_line: "Алло! Алло! Помогите! Горим! А-а-а!"
+
+facts:
+  - id: f_address
+    value: "улица Ленина, 14, квартира 47, 5-й этаж"
+    reveal_on: { question: q_address }
+  - id: f_what_burns
+    value: "горит балкон, дым пошёл в квартиру"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "в квартире жена и ребёнок, не выходят"
+    reveal_on: { question: q_people }
+  - id: f_smoke
+    value: "дым идёт в подъезд, на площадке ничего не видно"
+    reveal_on: { question: q_smoke }
+  - id: f_gas
+    value: "плита газовая, вентиль в кухне, перекрыть не успел"
+    reveal_on: { question: q_gas }
+    hidden: true
+
+checklist:
+  - { id: q_address,    fact: f_address }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people,     fact: f_people }
+  - { id: q_smoke,      fact: f_smoke }
+  - { id: q_gas,        fact: f_gas }
+
+required_fields:
+  - address
+  - floor
+  - incident_type
+  - dds
+  - victims_count
+  - description
+
+ground_truth:
+  # Выводится из фактов кодом при загрузке, здесь — для наглядности примера.
+  incident_type: fire
+  dds: "01"
+  required_facts: [f_address, f_what_burns, f_people]
+  address: "улица Ленина, 14"
+  victims: 2
+
+tree:
+  pregenerated: false

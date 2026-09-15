@@ -17,3 +17,6 @@ frontend/dist/
 # Env
 .env
 *.local
+
+# Python
+.pytest_cache/

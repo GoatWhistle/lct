@@ -31,6 +31,24 @@ docs/
 
 ```
 make dev        # docker-compose: postgres + backend + frontend
-make models     # веса GigaAM (STT) и Silero (TTS) в backend/models/
-make seed       # залить сценарии из /scenarios в БД
+make types      # domain/events.py → frontend/src/shared/types/generated.ts
+make test       # тесты контракта
 ```
+
+Если `npm install` под WSL2 висит без загрузки процессора — дело в параллельных сокетах,
+ограничение лежит в [frontend/.npmrc](frontend/.npmrc).
+
+Работает сейчас: каркас бэкенда (`/api/health`), домен и контракт в `backend/app/domain/`,
+генерация типов фронта, заглушки четырёх экранов. `make models`, `make seed`, `make repl`,
+`make pregen`, `make demo` пока падают и называют карточку, которая их закрывает.
+
+## Работа над задачами
+
+```
+tasks/<id>.md        карточка: зачем, что сделать, готово когда
+PROMPT-<id>.md       задание агенту на исполнительный гайд
+TASK-<id>.md         сам гайд: файл → что сделать → готовый код → как проверить
+```
+
+Порядок и зависимости — [tasks/README.md](tasks/README.md). Сначала `lct-01` и `lct-02`:
+первая разблокирует фронт типами, вторая решает, RNNT или CTC.

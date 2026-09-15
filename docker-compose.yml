@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lct
+      POSTGRES_PASSWORD: lct
+      POSTGRES_DB: lct
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lct"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    # Один воркер принципиально: состояние живой сессии и реестр наблюдателей
+    # живут в памяти процесса (docs/arch/STACK.md).
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --workers 1
+    environment:
+      DATABASE_URL: postgresql+asyncpg://lct:lct@postgres:5432/lct
+    volumes:
+      - ./backend:/app
+      - ./scenarios:/scenarios:ro
+    ports: ["8000:8000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    command: npm run dev -- --host 0.0.0.0
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports: ["5173:5173"]
+    depends_on: [backend]
+
+volumes:
+  pgdata:
