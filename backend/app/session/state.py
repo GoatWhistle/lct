@@ -21,6 +21,7 @@ from app.domain.events import (
 from app.dialog.caller import TemplateCaller
 from app.dialog.persona import PersonaState
 from app.dialog.slots import SlotMachine
+from app.scenarios.schema import Scenario
 from app.domain.kio import KIO, apply_patch
 from app.session.timers import SessionTimers
 
@@ -52,6 +53,9 @@ class SessionState:
 
     # Звонящий. Автомата нет, если не скачана модель эмбеддингов:
     # занятие идёт, подсказки откатываются на порядок чек-листа.
+    # Своя копия сценария на занятие: директивы преподавателя правят факты
+    # и эталон, и правка в одной группе не должна протекать в остальные.
+    scenario: Scenario | None = None
     slots: SlotMachine | None = None
     persona: PersonaState | None = None
     caller: TemplateCaller | None = None

@@ -26,6 +26,7 @@ STARTS: dict[str, tuple[TimerCode, ...]] = {
     "call.answer": (TimerCode.INTERVIEW,),
     "dds.dispatch": (TimerCode.DDS_ACK, TimerCode.CLOSE),
     "card.received": (TimerCode.ZONE_CHECK,),
+    "call.dropped": (TimerCode.CALLBACK,),
     "callback.dial": (TimerCode.CALLBACK,),
 }
 

@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Debrief } from "@/features/debrief/Debrief";
+import { Director } from "@/features/instructor/Director";
 import { useControl } from "@/features/instructor/useControl";
 import { KioCard } from "@/features/kio-card/KioCard";
 import { ModeBanner } from "@/features/mode-banner/ModeBanner";
@@ -121,6 +122,9 @@ export function Instructor() {
                 <button type="button" onClick={control.stop}>Завершить занятие</button>
               )}
             </p>
+          )}
+          {sessionId && !session.ended && (
+            <Director onInject={control.inject} disabled={control.status !== "open"} error={session.error} />
           )}
           {links && (
             <table className="grid">

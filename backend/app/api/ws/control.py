@@ -16,6 +16,9 @@ from pydantic import TypeAdapter, ValidationError
 
 from app.domain.events import (
     CallEndReason,
+    CallEnded,
+    ErrorEvent,
+    ErrorKind,
     ScoreReady,
     CallIncoming,
     ErrorEvent,
@@ -29,6 +32,8 @@ from app.domain.events import (
 import asyncio
 
 from app.dialog.caller import TemplateCaller
+from app.dialog.director import apply as apply_directive
+from app.dialog.director import mood_of
 from app.dialog.persona import PersonaState
 from app.dialog.runtime import get_embedder
 from app.dialog.slots import SlotMachine
@@ -59,23 +64,26 @@ async def _start(session_id: UUID, event) -> None:
             session_id, scenario.id, event.mode.value, event.trainee
         )
 
-    state = hub.register(
-        SessionState(
-            session_id=session_id,
-            scenario_id=scenario.id,
-            scenario_title=scenario.title,
-            level=scenario.level.value,
-            mode=event.mode,
-            required_fields=scenario.required_fields,
-            trainee_name=event.trainee,
-            attempt=attempt,
-        )
+    # Занятие собирается целиком и только потом регистрируется: иначе
+    # наблюдатель, подключившийся в эту щель, увидит полусобранное состояние
+    # без слот-автомата и звонящего.
+    state = SessionState(
+        session_id=session_id,
+        scenario_id=scenario.id,
+        scenario_title=scenario.title,
+        level=scenario.level.value,
+        mode=event.mode,
+        scenario=scenario.model_copy(deep=True),
+        required_fields=scenario.required_fields,
+        trainee_name=event.trainee,
+        attempt=attempt,
     )
     embedder = get_embedder()
     if embedder is not None:
-        state.slots = SlotMachine(scenario, embedder)
-    state.persona = PersonaState(scenario.persona)
+        state.slots = SlotMachine(state.scenario, embedder)
+    state.persona = PersonaState(state.scenario.persona)
     state.caller = TemplateCaller()
+    hub.register(state)
 
     # Первая реплика и филлеры синтезируются, пока курсант не снял трубку:
     # «Алло! Помогите!» должно прозвучать мгновенно (docs/arch/BACKEND.md).
@@ -92,6 +100,7 @@ async def _start(session_id: UUID, event) -> None:
             caller_number="+7 (495) 000-00-00",
             level=scenario.level,
             mode=event.mode,
+            scenario=scenario.model_copy(deep=True),
             required_fields=scenario.required_fields,
         ),
     )
@@ -168,11 +177,28 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                         }
                         hub.to_observers(session_id, ScoreReady(session_id=session_id))
                 case "director.inject":
-                    # Поведение звонящего — карточка lct-07, пульт — lct-22.
-                    # До них директива копится в состоянии и видна в разборе.
                     state = hub.get(session_id)
-                    if state is not None:
-                        state.directives.append(event.directive)
+                    if state is None:
+                        continue
+                    result = apply_directive(state, event.directive)
+                    if result.needs_network:
+                        hub.to_observers(session_id, ErrorEvent(
+                            code=ErrorKind.DIRECTIVE_NEEDS_NETWORK,
+                            message="Свободный текст требует LLM: офлайн доступны только кнопки",
+                        ))
+                        continue
+                    state.directives.append(event.directive)
+                    voice = state.voice
+                    if result.drop_line and voice is not None:
+                        # Обрыв рвёт звук на полуслове тем же механизмом, что
+                        # перебивание, и запускает норматив обратного дозвона.
+                        voice.barge_in()
+                    if result.drop_line:
+                        state.on_event("call.dropped")
+                        hub.to_trainee(session_id, CallEnded(reason=CallEndReason.DROPPED))
+                        hub.to_observers(session_id, SessionEnded(reason=CallEndReason.DROPPED))
+                    elif result.say and voice is not None:
+                        voice.speak(result.say, mood_of(state))
                 case _:
                     hub.to_observers(
                         session_id,

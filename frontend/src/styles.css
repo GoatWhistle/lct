@@ -88,3 +88,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 .mode-choice { display: block; }
 .clickable { cursor: pointer; }
 .clickable:hover th { background: #e8ecf1; }
+
+/* Пульт директив: кнопки крупные, обрыв связи отделён цветом. */
+.director-buttons { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.director-buttons button { padding: 10px 12px; text-align: left; font-size: 15px; }
+.director-buttons .danger { border-color: var(--violated); color: var(--violated); font-weight: 600; }
+.director input[type="text"] { width: 60%; }

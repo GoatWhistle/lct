@@ -94,7 +94,7 @@ async def checklist(session_id: UUID) -> list[ChecklistItemOut]:
         raise HTTPException(status_code=404, detail="session_not_found")
     if not state.ended:
         raise HTTPException(status_code=409, detail="call_not_ended")
-    scenario = store.get(state.scenario_id)
+    scenario = state.scenario or store.get(state.scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail="scenario_not_found")
     return [
@@ -116,7 +116,7 @@ def _live(session_id: UUID):
     state = hub.get(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="session_not_found")
-    scenario = store.get(state.scenario_id)
+    scenario = state.scenario or store.get(state.scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail="scenario_not_found")
     return state, scenario

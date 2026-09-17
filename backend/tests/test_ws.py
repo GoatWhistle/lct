@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.scenarios import store
 from app.session.hub import hub
 
 
@@ -307,3 +308,68 @@ def test_instructor_correction_keeps_the_automatic_score(client):
     assert corrected["score_final"] == 80.0
     assert corrected["score_auto"] == auto, "автооценка должна сохраниться рядом"
     assert corrected["overridden_by"] == "преподаватель"
+
+
+def test_soft_directive_changes_how_the_caller_sounds(client):
+    from app.domain.events import Mood
+
+    with lesson(client) as (session_id, control):
+        state = hub.get(session_id)
+        control.send_json({"type": "director.inject", "directive": "turns_aggressive", "mode": "next_turn"})
+        wait_for(lambda: state.persona.directive == "turns_aggressive")
+
+    assert state.persona.mood is Mood.AGGRESSIVE, "директива должна перекрывать дугу сценария"
+
+
+def test_wrong_address_makes_the_operator_ask_again(client):
+    """Жёсткая директива правит факты: раскрытый адрес снимается,
+    и в оценке полнота опроса снова считает его недобытым."""
+    with lesson(client) as (session_id, control):
+        state = hub.get(session_id)
+        if state.slots is None:
+            pytest.skip("нет модели эмбеддингов — make models")
+        state.slots.hear("Назовите адрес")
+        assert "f_address" in state.slots.revealed
+
+        control.send_json({"type": "director.inject", "directive": "address_wrong", "mode": "next_turn"})
+        wait_for(lambda: "f_address" not in state.slots.revealed)
+
+    assert "f_address" in state.slots.missing_required()
+
+
+def test_second_victim_corrects_the_reference(client):
+    with lesson(client) as (session_id, control):
+        state = hub.get(session_id)
+        before = state.scenario.ground_truth.victims
+        control.send_json({"type": "director.inject", "directive": "second_victim", "mode": "next_turn"})
+        wait_for(lambda: state.scenario.ground_truth.victims != before)
+
+    assert state.scenario.ground_truth.victims == before + 1
+    library = store.get(state.scenario_id)
+    assert library.ground_truth.victims == before, "правка занятия не должна менять библиотеку"
+
+
+def test_dropped_line_ends_the_call_and_starts_callback(client):
+    from app.domain.timers import TimerCode
+
+    with lesson(client) as (session_id, control):
+        state = hub.get(session_id)
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            trainee.send_json({"type": "call.answer"})
+            wait_for(lambda: state.started_at)
+            control.send_json({"type": "director.inject", "directive": "line_dropped", "mode": "immediate"})
+            message = read_until(trainee, "call.ended")
+
+    assert message["reason"] == "dropped"
+    assert TimerCode.CALLBACK in state.timers.timers, "норматив обратного дозвона должен пойти"
+
+
+def test_free_text_directive_says_it_needs_network(client):
+    """Офлайн-дерево предгенерировано: произвольную фразу взять неоткуда."""
+    with lesson(client) as (session_id, control):
+        with client.websocket_connect(f"/ws/observe/{session_id}") as observer:
+            observer.receive_json()
+            control.send_json({"type": "director.inject", "directive": "скажи, что у тебя кот на балконе", "mode": "next_turn"})
+            message = read_until(observer, "error")
+
+    assert message["code"] == "directive_needs_network"

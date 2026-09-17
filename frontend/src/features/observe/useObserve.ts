@@ -28,6 +28,7 @@ export interface ObservedSession {
   notes: Map<string, string>;
   ended: boolean;
   report: SessionReport | null;
+  error: string | null;
 }
 
 export function useObserve(sessionId: string | null): ObservedSession {
@@ -43,6 +44,7 @@ export function useObserve(sessionId: string | null): ObservedSession {
   const [notes, setNotes] = useState<Map<string, string>>(new Map());
   const [ended, setEnded] = useState(false);
   const [report, setReport] = useState<SessionReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -82,6 +84,9 @@ export function useObserve(sessionId: string | null): ObservedSession {
           case "session.ended":
             setEnded(true);
             break;
+          case "error":
+            setError(event.message);
+            break;
           case "score.ready":
             void fetch(`/api/sessions/${sessionId}/report`)
               .then((response) => (response.ok ? response.json() : null))
@@ -94,5 +99,5 @@ export function useObserve(sessionId: string | null): ObservedSession {
     return () => channel.close();
   }, [sessionId]);
 
-  return { status, title, mode, trainee, card, requiredFields, transcript, timers, hintsUsed, notes, ended, report };
+  return { status, title, mode, trainee, card, requiredFields, transcript, timers, hintsUsed, notes, ended, report, error };
 }

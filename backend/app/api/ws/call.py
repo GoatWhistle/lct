@@ -70,7 +70,7 @@ def _next_hint(state) -> tuple[str, str] | None:
     if state.slots is not None:
         candidates = state.slots.unasked()
     else:
-        scenario = store.get(state.scenario_id)
+        scenario = state.scenario or store.get(state.scenario_id)
         candidates = scenario.checklist if scenario else []
     for item in candidates:
         if item.id not in state.hints_shown and item.question:

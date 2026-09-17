@@ -42,8 +42,20 @@ export function useControl(sessionId: string | null) {
     [],
   );
 
+  const inject = useCallback(
+    (directive: string, immediate: boolean) =>
+      channel.current?.send({
+        type: "director.inject",
+        directive,
+        // `immediate` рвёт звук на полуслове и годится только для обрыва связи:
+        // разговор не должен дёргаться от того, что преподаватель что-то нажал.
+        mode: immediate ? "immediate" : "next_turn",
+      }),
+    [],
+  );
+
   const stop = useCallback(() => channel.current?.send({ type: "session.stop" }), []);
   const playReference = useCallback(() => channel.current?.send({ type: "reference.play" }), []);
 
-  return { status, start, note, stop, playReference };
+  return { status, start, note, inject, stop, playReference };
 }

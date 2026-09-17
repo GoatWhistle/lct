@@ -20,7 +20,8 @@ log = logging.getLogger(__name__)
 
 
 async def finish(session_id: UUID, state) -> None:
-    scenario = store.get(state.scenario_id)
+    # Сценарий занятия, а не библиотечный: директивы могли поправить эталон.
+    scenario = state.scenario or store.get(state.scenario_id)
     if scenario is None:
         return
 
