@@ -3,6 +3,7 @@
 
 import { KioCard } from "@/features/kio-card/KioCard";
 import { ModeBanner, hintsAllowed } from "@/features/mode-banner/ModeBanner";
+import { SelfAssessment } from "@/features/self-assessment/SelfAssessment";
 import { InterviewTimer, Timers } from "@/features/timers/Timers";
 import { display } from "@/features/kio-card/merge";
 import { useCall } from "@/features/call/useCall";
@@ -53,6 +54,13 @@ export function Call() {
       </p>
 
       {call.error && <p className="violated">{call.error}</p>}
+
+      {call.phase === "ended" && !call.selfAssessed && call.checklist.length > 0 && (
+        <SelfAssessment checklist={call.checklist} onSubmit={call.submitSelfAssessment} />
+      )}
+      {call.selfAssessed && (
+        <p>{call.scoreReady ? "Оценка готова — разбор открывает преподаватель." : "Самооценка принята, оценка считается…"}</p>
+      )}
 
       <div className="columns">
         <section>

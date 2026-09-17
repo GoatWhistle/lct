@@ -12,7 +12,7 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db import repo
-from app.db.models import SelfAssessment, Session
+from app.db.models import Score, SelfAssessment, Session
 
 log = logging.getLogger(__name__)
 
@@ -80,6 +80,13 @@ class DbJournal:
                     session_id=session_id, missed=missed, comment=comment, submitted_at=at
                 )
             )
+            await db.commit()
+
+        await self._write(lambda db: action(db))
+
+    async def score(self, session_id: UUID, score_auto: float, report: dict) -> None:
+        async def action(db):
+            db.add(Score(session_id=session_id, score_auto=score_auto, score_final=score_auto, report=report))
             await db.commit()
 
         await self._write(lambda db: action(db))

@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import repo
 from app.db.base import get_session
 from app.domain.events import SessionMode
+from app.scenarios import store
+from app.session.hub import hub
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -71,6 +73,34 @@ async def read(session_id: UUID, db: AsyncSession = Depends(get_session)) -> Ses
     if session is None:
         raise HTTPException(status_code=404, detail="session_not_found")
     return _out(session)
+
+
+class ChecklistItemOut(BaseModel):
+    id: str
+    question: str
+
+
+@router.get("/{session_id}/checklist", response_model=list[ChecklistItemOut])
+async def checklist(session_id: UUID) -> list[ChecklistItemOut]:
+    """Чек-лист для самооценки — **только после конца звонка**.
+
+    Во время звонка это содержимое подсказок: отдать его значит выдать
+    в контрольном режиме то, чего там быть не должно. После звонка курсант
+    по нему отмечает, что, по его мнению, пропустил.
+    """
+    state = hub.get(session_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    if not state.ended:
+        raise HTTPException(status_code=409, detail="call_not_ended")
+    scenario = store.get(state.scenario_id)
+    if scenario is None:
+        raise HTTPException(status_code=404, detail="scenario_not_found")
+    return [
+        ChecklistItemOut(id=item.id, question=item.question)
+        for item in scenario.checklist
+        if item.question
+    ]
 
 
 @router.get("", response_model=list[SessionOut])

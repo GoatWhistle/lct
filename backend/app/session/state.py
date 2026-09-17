@@ -61,6 +61,11 @@ class SessionState:
     audio_frames: int = 0
     bad_frames: int = 0
 
+    # Самооценка сдана — до неё курсант не видит автооценку.
+    self_assessed: bool = False
+    self_assessment: dict | None = None
+    score: dict | None = None
+
     started_at: datetime | None = None
     ended_at: datetime | None = None
     end_reason: CallEndReason | None = None

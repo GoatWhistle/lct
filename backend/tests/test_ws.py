@@ -194,3 +194,67 @@ def test_events_still_work_between_audio_frames(client):
             trainee.send_bytes(b"\x00\x00" * 320)
             wait_for(lambda: state.kio.floor == "5")
         assert state.audio_frames == 2
+
+
+def test_score_waits_for_self_assessment(client):
+    """Курсант сначала сверяет своё ощущение с объективной картиной:
+    расхождение самооценки с автооценкой — отдельный материал для преподавателя."""
+    with lesson(client) as (session_id, _):
+        state = hub.get(session_id)
+        with client.websocket_connect(f"/ws/observe/{session_id}") as observer:
+            observer.receive_json()
+            with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+                trainee.send_json({"type": "call.answer"})
+                trainee.send_json({"type": "kio.patch", "fields": {"address": "улица Ленина, 14"}})
+                trainee.send_json({"type": "call.hangup"})
+
+                # Преподавателю и монитору — сразу: им ждать нечего.
+                assert read_until(observer, "score.ready")["session_id"] == str(session_id)
+                wait_for(lambda: state.score is not None)
+
+                trainee.send_json({"type": "self_assessment.submit",
+                                   "missed": ["q_people"], "comment": "растерялся на адресе"})
+                message = read_until(trainee, "score.ready")
+
+    assert message["session_id"] == str(session_id)
+    assert state.self_assessment == {"missed": ["q_people"], "comment": "растерялся на адресе"}
+    assert state.score["score_auto"] >= 0
+
+
+def test_trainee_gets_no_score_without_self_assessment(client):
+    """Отсутствие события проверяется подпиской на очередь курсанта:
+    ждать его из сокета нечем — чтение заблокируется навсегда."""
+    from app.domain.events import ScoreReady
+
+    with lesson(client) as (session_id, _):
+        state = hub.get(session_id)
+        with hub.trainee(session_id) as queue:
+            with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+                trainee.send_json({"type": "call.answer"})
+                trainee.send_json({"type": "call.hangup"})
+                wait_for(lambda: state.score is not None)
+                time.sleep(0.3)
+
+            delivered = []
+            while not queue.empty():
+                delivered.append(queue.get_nowait())
+
+    assert not any(isinstance(event, ScoreReady) for event in delivered), (
+        "оценка ушла курсанту до самооценки"
+    )
+
+
+def test_checklist_is_closed_until_the_call_is_over(client):
+    """Во время звонка чек-лист — это содержимое подсказок."""
+    with lesson(client) as (session_id, _):
+        during = client.get(f"/api/sessions/{session_id}/checklist")
+        assert during.status_code == 409, during.text
+
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            trainee.send_json({"type": "call.answer"})
+            trainee.send_json({"type": "call.hangup"})
+            wait_for(lambda: hub.get(session_id).ended)
+
+        after = client.get(f"/api/sessions/{session_id}/checklist")
+        assert after.status_code == 200
+        assert all(item["question"] for item in after.json())

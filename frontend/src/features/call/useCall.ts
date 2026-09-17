@@ -11,6 +11,7 @@ import { type Capture, startCapture } from "@/shared/audio/capture";
 import { EnergyGate } from "@/shared/audio/levels";
 import { CALLER_RATE, Playback } from "@/shared/audio/playback";
 import { type CardState, applyPatch, edit, empty as emptyCard } from "@/features/kio-card/merge";
+import type { ChecklistItem } from "@/features/self-assessment/SelfAssessment";
 import type { CallIncoming, DDSCode, ServerToTrainee, TimerSnapshot } from "@/shared/types/generated";
 
 /** Правки копятся и уходят одной дельтой: 300 мс тишины — и отправка. */
@@ -33,6 +34,9 @@ export function useCall(sessionId: string | null) {
   const [callerSpeaking, setCallerSpeaking] = useState(false);
   const [micOn, setMicOn] = useState(false);
   const [card, setCard] = useState<CardState>(emptyCard);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [selfAssessed, setSelfAssessed] = useState(false);
+  const [scoreReady, setScoreReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const channel = useRef<ReturnType<typeof callChannel> | null>(null);
@@ -98,6 +102,15 @@ export function useCall(sessionId: string | null) {
           case "call.ended":
             setPhase("ended");
             audio.current?.ambience.stop();
+            // Чек-лист открывается только после звонка: во время него это
+            // содержимое подсказок.
+            void fetch(`/api/sessions/${sessionId}/checklist`)
+              .then((response) => (response.ok ? response.json() : []))
+              .then(setChecklist)
+              .catch(() => setChecklist([]));
+            break;
+          case "score.ready":
+            setScoreReady(true);
             break;
           case "error":
             setError(event.message);
@@ -162,8 +175,14 @@ export function useCall(sessionId: string | null) {
     channel.current?.send({ type: "dds.dispatch", service });
   }, []);
 
+  const submitSelfAssessment = useCallback((missed: string[], comment: string) => {
+    channel.current?.send({ type: "self_assessment.submit", missed, comment });
+    setSelfAssessed(true);
+  }, []);
+
   return {
     status, phase, incoming, lines, timers, callerSpeaking, micOn, error, card,
-    answer, hangup, hint, patchKio, dispatch,
+    checklist, selfAssessed, scoreReady,
+    answer, hangup, hint, patchKio, dispatch, submitSelfAssessment,
   };
 }

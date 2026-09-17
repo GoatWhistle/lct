@@ -27,6 +27,7 @@ from app.domain.events import (
 )
 from app.domain.events import BgStart
 from app.scenarios import store
+from app.session.finish import finish, release_score
 from app.session.hub import hub
 from app.session.state import now_utc
 from app.voice.models import get_voice_models
@@ -125,10 +126,14 @@ async def _handle(session_id: UUID, state, event) -> None:
             state.on_event("callback.dial")
 
         case "self_assessment.submit":
+            state.self_assessed = True
+            state.self_assessment = {"missed": event.missed, "comment": event.comment}
             if hub.journal:
                 await hub.journal.self_assessment(
                     session_id, event.missed, event.comment, now_utc()
                 )
+            # Оценка могла быть готова раньше самооценки — теперь её можно отдать.
+            await release_score(session_id, state)
 
         case "call.hangup":
             if state.voice is not None:
@@ -142,6 +147,7 @@ async def _handle(session_id: UUID, state, event) -> None:
                 await hub.journal.session_ended(
                     session_id, state.ended_at, CallEndReason.HANGUP.value
                 )
+            await finish(session_id, state)
 
 
 def _start_voice(session_id: UUID, state) -> None:
