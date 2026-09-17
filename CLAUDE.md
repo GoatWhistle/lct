@@ -37,7 +37,8 @@ make dev        docker compose: postgres + backend + frontend
 make types      domain/events.py → frontend/src/shared/types/generated.ts
 make test       тесты контракта
 make typecheck  tsc --noEmit на фронте
-make models     модель эмбеддингов (GigaAM и Silero — lct-02)
+make models     эмбеддинги, GigaAM, Silero VAD; Silero TTS — вручную, скрипт подскажет
+make latency    замер задержки голосового контура по этапам
 make seed       сценарии в БД
 make repl       текстовый диалог со звонящим, без голоса и LLM
 make migrate    накатить миграции

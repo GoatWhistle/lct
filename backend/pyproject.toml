@@ -26,11 +26,23 @@ dependencies = [
 voice = [
     "onnx-asr>=0.6",
     "torch>=2.2",
+    # Нужен пакету Silero TTS: импорт зашит внутри v5_ru.pt.
+    "scipy>=1.11",
 ]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.23",
 ]
+
+# torch — только CPU-сборка. Из обычного PyPI он тянет CUDA-библиотеки
+# на несколько гигабайт, а GPU на стенде нет (docs/arch/STACK.md).
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]

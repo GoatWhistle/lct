@@ -30,7 +30,7 @@ test: ## Тесты бэкенда
 typecheck: ## Проверить фронтенд компилятором
 	npm --prefix frontend run typecheck
 
-models: ## Скачать модели в backend/models/ (сейчас — эмбеддинги; GigaAM и Silero — lct-02)
+models: ## Скачать модели в backend/models/: эмбеддинги, GigaAM, Silero VAD; Silero TTS — вручную
 	cd backend && $(UV) run python scripts/models.py
 
 seed: ## Залить сценарии из /scenarios в БД
@@ -38,6 +38,9 @@ seed: ## Залить сценарии из /scenarios в БД
 
 lesson: ## Запустить занятие и напечатать ссылки: make lesson s=<сценарий> m=<режим>
 	cd backend && $(UV) run --no-project --with websockets python scripts/start_lesson.py "$(s)" "$(m)"
+
+latency: ## Замер задержки голосового контура по этапам — запускать на демо-машине
+	cd backend && $(UV) run --extra voice python scripts/latency.py
 
 migrate: ## Накатить миграции
 	cd backend && $(UV) run alembic upgrade head
@@ -54,4 +57,4 @@ pregen: ## Дерево диалога и WAV первых реплик для �
 demo: ## Поднять всё в демо-режиме: офлайн, прогретые модели
 	@echo "не реализовано — карточка tasks/lct-21-demo-readiness.md"; exit 1
 
-.PHONY: help dev down back front types test typecheck lesson migrate revision models seed repl pregen demo
+.PHONY: help dev down back front types test typecheck lesson latency migrate revision models seed repl pregen demo
