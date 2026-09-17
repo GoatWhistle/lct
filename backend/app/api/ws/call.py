@@ -35,16 +35,18 @@ _adapter = TypeAdapter(TraineeToServer)
 
 
 def _next_hint(state) -> tuple[str, str] | None:
-    """Следующий пункт чек-листа, который ещё не подсказывали.
+    """Следующий неотработанный пункт чек-листа, который ещё не подсказывали.
 
-    Порядок временный: пока нет слот-автомата (lct-07), подсказка идёт
-    по порядку чек-листа, а не по реально неотработанным пунктам.
-    Перевод на слот-автомат — карточка lct-14.
+    «Неотработанный» знает слот-автомат: пункт, о котором оператор уже спросил
+    своими словами, подсказывать бессмысленно. Без модели эмбеддингов автомата
+    нет — тогда подсказка идёт по порядку чек-листа.
     """
-    scenario = store.get(state.scenario_id)
-    if scenario is None:
-        return None
-    for item in scenario.checklist:
+    if state.slots is not None:
+        candidates = state.slots.unasked()
+    else:
+        scenario = store.get(state.scenario_id)
+        candidates = scenario.checklist if scenario else []
+    for item in candidates:
         if item.id not in state.hints_shown and item.question:
             return item.id, item.question
     return None

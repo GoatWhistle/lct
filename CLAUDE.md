@@ -37,9 +37,13 @@ make dev        docker compose: postgres + backend + frontend
 make types      domain/events.py → frontend/src/shared/types/generated.ts
 make test       тесты контракта
 make typecheck  tsc --noEmit на фронте
+make models     модель эмбеддингов (GigaAM и Silero — lct-02)
+make seed       сценарии в БД
+make repl       текстовый диалог со звонящим, без голоса и LLM
+make migrate    накатить миграции
 ```
 
-`models`, `seed`, `repl`, `pregen`, `demo` пока падают и называют карточку, которая их закроет.
+`pregen` и `demo` пока падают и называют карточку, которая их закроет.
 **Makefile не должен врать:** цель либо работает, либо честно падает с именем карточки.
 
 ## Решения, которые не переоткрываются

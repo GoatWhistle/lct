@@ -13,6 +13,7 @@ from app.api.ws import control as control_ws
 from app.api.ws import observe as observe_ws
 from app.config import get_settings
 from app.db.base import get_sessionmaker
+from app.dialog.runtime import get_embedder
 from app.scenarios import store
 from app.session.hub import hub
 from app.session.journal import DbJournal
@@ -35,7 +36,10 @@ async def lifespan(app: FastAPI):
     # Журнал: всё, что не записано, для оценки не существует.
     hub.journal = DbJournal(get_sessionmaker())
 
-    # Прогрев моделей — карточка lct-06.
+    # Эмбеддинги для слот-автомата — грузятся один раз, до первого занятия.
+    app.state.embeddings_ready = get_embedder() is not None
+
+    # Прогрев моделей речи — карточка lct-06.
     app.state.models_ready = False
     yield
 
@@ -58,5 +62,6 @@ async def health() -> dict:
         "status": "ok",
         "models_ready": getattr(app.state, "models_ready", False),
         "scenarios_loaded": getattr(app.state, "scenarios_loaded", 0),
+        "embeddings_ready": getattr(app.state, "embeddings_ready", False),
         "offline": settings.offline,
     }

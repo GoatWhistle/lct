@@ -18,6 +18,8 @@ from app.domain.events import (
     Speaker,
     TranscriptEntry,
 )
+from app.dialog.persona import PersonaState
+from app.dialog.slots import SlotMachine
 from app.domain.kio import KIO, apply_patch
 from app.session.timers import SessionTimers
 
@@ -43,6 +45,11 @@ class SessionState:
     timers: SessionTimers = field(default_factory=SessionTimers)
     hints_shown: list[str] = field(default_factory=list)
     directives: list[str] = field(default_factory=list)
+
+    # Звонящий. Автомата нет, если не скачана модель эмбеддингов:
+    # занятие идёт, подсказки откатываются на порядок чек-листа.
+    slots: SlotMachine | None = None
+    persona: PersonaState | None = None
 
     started_at: datetime | None = None
     ended_at: datetime | None = None

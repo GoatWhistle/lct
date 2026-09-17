@@ -7,7 +7,8 @@ ENV UV_PROJECT_ENVIRONMENT=/usr/local PYTHONUNBUFFERED=1
 
 COPY pyproject.toml ./
 RUN uv pip install --system fastapi "uvicorn[standard]" "pydantic>=2.7" pydantic-settings \
-    "sqlalchemy[asyncio]" alembic asyncpg httpx pyyaml structlog
+    "sqlalchemy[asyncio]" alembic asyncpg httpx pyyaml structlog \
+    onnxruntime tokenizers numpy
 
 COPY . .
 EXPOSE 8000

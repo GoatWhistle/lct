@@ -25,6 +25,9 @@ from app.domain.events import (
     ReferenceStarted,
     SessionEnded,
 )
+from app.dialog.persona import PersonaState
+from app.dialog.runtime import get_embedder
+from app.dialog.slots import SlotMachine
 from app.scenarios import store
 from app.session.hub import hub
 from app.session.state import SessionState, now_utc
@@ -62,6 +65,10 @@ async def _start(session_id: UUID, event) -> None:
             attempt=attempt,
         )
     )
+    embedder = get_embedder()
+    if embedder is not None:
+        state.slots = SlotMachine(scenario, embedder)
+    state.persona = PersonaState(scenario.persona)
     state.on_event("call.incoming")
     hub.start_ticker(session_id)
 

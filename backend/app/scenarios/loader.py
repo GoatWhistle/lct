@@ -56,8 +56,19 @@ def _derive_ground_truth(scenario: Scenario) -> Scenario:
     return scenario
 
 
+COMMON = "checklists/common.yaml"
+
+
+def _common_not_questions(root: Path) -> list[str]:
+    common = root / COMMON
+    if not common.exists():
+        return []
+    return list(_read_yaml(common).get("not_questions", []))
+
+
 def load_file(path: Path, root: Path) -> Scenario:
     raw = _read_yaml(path)
+    raw["not_questions"] = _common_not_questions(root) + list(raw.get("not_questions", []))
 
     declared = raw.get("ground_truth") or {}
     forbidden = {"incident_type", "dds", "required_facts"} & set(declared)

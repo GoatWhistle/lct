@@ -60,9 +60,17 @@ class Fact(Strict):
 
 
 class ChecklistItem(Strict):
+    """Пункт эталонного опроса.
+
+    `examples` — другие формулировки того же вопроса. Без них матчинг
+    по эмбеддингам не отличает вопрос от не-вопроса: на e5 «Оставайтесь
+    на линии» ближе к пункту чек-листа, чем половина настоящих вопросов.
+    """
+
     id: str
     question: str | None = None
     fact: str | None = None
+    examples: list[str] = []
 
 
 class EraGlonass(Strict):
@@ -109,6 +117,10 @@ class Scenario(Strict):
     facts: list[Fact] = []
     checklist: list[ChecklistItem] = []
     required_fields: list[str] = Field(default_factory=list)
+    # Реплики оператора, которые вопросом не являются: «успокойтесь»,
+    # «оставайтесь на линии». Общий список — checklists/common.yaml,
+    # сценарий может дополнить своими.
+    not_questions: list[str] = Field(default_factory=list)
     ground_truth: GroundTruth = GroundTruth()
     era_glonass: EraGlonass | None = None
     tree: Tree = Tree()

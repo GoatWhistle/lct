@@ -30,8 +30,8 @@ test: ## Тесты бэкенда
 typecheck: ## Проверить фронтенд компилятором
 	npm --prefix frontend run typecheck
 
-models: ## Скачать веса GigaAM (STT) и Silero (TTS) в backend/models/
-	@echo "не реализовано — карточка tasks/lct-02-latency-baseline.md"; exit 1
+models: ## Скачать модели в backend/models/ (сейчас — эмбеддинги; GigaAM и Silero — lct-02)
+	cd backend && $(UV) run python scripts/models.py
 
 seed: ## Залить сценарии из /scenarios в БД
 	cd backend && $(UV) run python scripts/seed.py
@@ -42,8 +42,8 @@ migrate: ## Накатить миграции
 revision: ## Создать миграцию: make revision m="что изменилось"
 	cd backend && $(UV) run alembic revision --autogenerate -m "$(m)"
 
-repl: ## Текстовый диалог со звонящим без голоса
-	@echo "не реализовано — карточка tasks/lct-07-caller-slots.md"; exit 1
+repl: ## Текстовый диалог со звонящим без голоса: make repl s=<сценарий>
+	cd backend && $(UV) run python scripts/repl.py "$(s)"
 
 pregen: ## Дерево диалога и WAV первых реплик для офлайна
 	@echo "не реализовано — карточка tasks/lct-19-reference-dialog.md"; exit 1
