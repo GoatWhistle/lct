@@ -261,7 +261,7 @@ class SelfAssessmentSubmit(BaseModel):
 
 
 class DdsDispatch(BaseModel):
-    """Передача в ДДС. Замораживает карточку снимком и останавливает `dds_notify`."""
+    """Передача в ДДС. Замораживает карточку снимком и останавливает опрос (`interview`)."""
 
     type: Literal["dds.dispatch"] = "dds.dispatch"
     service: DDSCode

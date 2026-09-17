@@ -10,7 +10,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.classifiers import DDSCode, IncidentType
 
@@ -73,7 +73,13 @@ class UtilityDetails(BaseModel):
 
 class KIO(BaseModel):
     """Полная карточка. Наблюдателям уходит целиком (`kio.state`),
-    курсанту — дельтой (`kio.patch`)."""
+    курсанту — дельтой (`kio.patch`).
+
+    Присваивание проверяется: без этого `card.dds = "03"` кладёт в карточку
+    сырую строку вместо кода ДДС, и падает уже оценка, далеко от места ошибки.
+    """
+
+    model_config = ConfigDict(validate_assignment=True)
 
     # Служебное — заполняется системой
     card_id: UUID = Field(default_factory=uuid4)

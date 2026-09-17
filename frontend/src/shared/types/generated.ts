@@ -105,7 +105,7 @@ export interface CrewDispatched {
 /** Дежурно-диспетчерская служба, в которую уходит карточка. */
 export type DDSCode = "01" | "02" | "03" | "04" | "gkh";
 
-/** Передача в ДДС. Замораживает карточку снимком и останавливает `dds_notify`. */
+/** Передача в ДДС. Замораживает карточку снимком и останавливает опрос (`interview`). */
 export interface DdsDispatch {
   type: "dds.dispatch";
   service: DDSCode;
@@ -201,7 +201,7 @@ export interface InstructorNoteShown {
   author: string;
 }
 
-/** Полная карточка. Наблюдателям уходит целиком (`kio.state`), курсанту — дельтой (`kio.patch`). */
+/** Полная карточка. Наблюдателям уходит целиком (`kio.state`), курсанту — дельтой (`kio.patch`). Присваивание проверяется: без этого `card.dds = "03"` кладёт в карточку сырую строку вместо кода ДДС, и падает уже оценка, далеко от места ошибки. */
 export interface KIO {
   card_id?: string;
   registered_at?: string | null;

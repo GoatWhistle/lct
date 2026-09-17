@@ -14,9 +14,16 @@ from dataclasses import dataclass, field
 from app.domain.timers import NORMATIVES, TimerCode, TimerSnapshot, state_for
 
 #: Какое событие какой таймер запускает.
+#:
+#: `dds_notify` (≤ 60 с) не запускается ничем, и это сознательно. Стартуй он
+#: на ответе, как опрос, оба таймера мерили бы один отрезок с разными лимитами:
+#: курсант, опросивший за законные 70 секунд, получал бы E3 «ДДС не оповещена
+#: за 60 с», а на экране краснел бы таймер посреди нормального разговора.
+#: Норматив, судя по порядку операций, отсчитывается от конца опроса — а события
+#: «опрос закончен» в контракте нет. Вопрос к людям: docs/arch/CONTRACT.md.
 STARTS: dict[str, tuple[TimerCode, ...]] = {
     "call.incoming": (TimerCode.ANSWER,),
-    "call.answer": (TimerCode.INTERVIEW, TimerCode.DDS_NOTIFY),
+    "call.answer": (TimerCode.INTERVIEW,),
     "dds.dispatch": (TimerCode.DDS_ACK, TimerCode.CLOSE),
     "card.received": (TimerCode.ZONE_CHECK,),
     "callback.dial": (TimerCode.CALLBACK,),
@@ -25,7 +32,7 @@ STARTS: dict[str, tuple[TimerCode, ...]] = {
 #: Какое событие какой таймер останавливает.
 STOPS: dict[str, tuple[TimerCode, ...]] = {
     "call.answer": (TimerCode.ANSWER,),
-    "dds.dispatch": (TimerCode.INTERVIEW, TimerCode.DDS_NOTIFY),
+    "dds.dispatch": (TimerCode.INTERVIEW,),
     "card.ack": (TimerCode.DDS_ACK,),
     "zone.decision": (TimerCode.ZONE_CHECK,),
     "crew.arrived": (TimerCode.CLOSE,),
