@@ -62,6 +62,7 @@ export function Instructor() {
     ? {
         trainee: `${location.origin}/trainee?session=${sessionId}`,
         wall: `${location.origin}/wall?session=${sessionId}`,
+        dds: `${location.origin}/dds?session=${sessionId}&role=dds_01`,
       }
     : null;
 
@@ -131,6 +132,7 @@ export function Instructor() {
               <tbody>
                 <tr><th>АРМ курсанта</th><td><a href={links.trainee}>открыть</a></td></tr>
                 <tr><th>Внешний монитор</th><td><a href={links.wall}>открыть</a></td></tr>
+                <tr><th>АРМ ДДС</th><td><a href={links.dds}>открыть</a></td></tr>
               </tbody>
             </table>
           )}

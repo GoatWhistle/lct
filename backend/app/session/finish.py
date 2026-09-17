@@ -32,6 +32,7 @@ async def finish(session_id: UUID, state) -> None:
         timers=state.timers,
         revealed_facts=[fact.id for fact in state.slots.revealed_facts()] if state.slots else None,
         end_reason=state.end_reason,
+        bounced_fields=state.bounced_fields,
     )
     # Сводка числами: по ней считается дельта между попытками в профиле.
     # Вытаскивать её разбором текста метрик («94 с») — путь к тихим ошибкам.

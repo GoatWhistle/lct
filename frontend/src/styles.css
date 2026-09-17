@@ -94,3 +94,6 @@ button:disabled { opacity: 0.5; cursor: default; }
 .director-buttons button { padding: 10px 12px; text-align: left; font-size: 15px; }
 .director-buttons .danger { border-color: var(--violated); color: var(--violated); font-weight: 600; }
 .director input[type="text"] { width: 60%; }
+
+/* Возврат карточки: список полей в две колонки, чтобы диспетчер не скроллил. */
+.bounce-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; margin: 8px 0; }

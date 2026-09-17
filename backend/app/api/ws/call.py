@@ -120,6 +120,9 @@ async def _handle(session_id: UUID, state, event) -> None:
         case "dds.dispatch":
             state.on_event("dds.dispatch")
             state.dispatch(event.service.value)
+            # Карточка замораживается снимком и уходит диспетчеру: оператор
+            # не должен иметь возможности дописать поле задним числом.
+            hub.to_station(session_id, state.card_received_event())
             hub.to_observers(session_id, KioState(kio=state.kio))
             hub.to_observers(session_id, TimerTick(timers=state.timers.snapshot()))
 

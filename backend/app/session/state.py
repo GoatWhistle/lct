@@ -77,6 +77,10 @@ class SessionState:
     ended_at: datetime | None = None
     end_reason: CallEndReason | None = None
     dispatched_card: KIO | None = None
+    dispatched_at: datetime | None = None
+    #: Поля, из-за которых диспетчер вернул карточку, — основание E6.
+    bounced_fields: list[str] = field(default_factory=list)
+    dds_log: list[tuple[str, datetime, str | None]] = field(default_factory=list)
 
     def on_event(self, event_type: str) -> None:
         """Единственная точка, где событие двигает таймеры."""
@@ -102,7 +106,18 @@ class SessionState:
         возможности дописать задним числом поле, которое забыл."""
         self.kio = apply_patch(self.kio, {"dds": service, "response_status": "transferred"})
         self.dispatched_card = self.kio.model_copy(deep=True)
+        self.dispatched_at = now_utc()
         return self.dispatched_card
+
+    def card_received_event(self):
+        """Снимок карточки для станции ДДС."""
+        from app.domain.events import CardReceived
+
+        return CardReceived(
+            card=self.dispatched_card,
+            from_operator=self.trainee_name or "оператор 112",
+            at=self.dispatched_at or now_utc(),
+        )
 
     @property
     def ended(self) -> bool:

@@ -45,6 +45,7 @@ class SessionHub:
         self._sessions: dict[UUID, SessionState] = {}
         self._observers: dict[UUID, set[asyncio.Queue]] = {}
         self._trainees: dict[UUID, set[asyncio.Queue]] = {}
+        self._stations: dict[UUID, set[asyncio.Queue]] = {}
         self._tickers: dict[UUID, asyncio.Task] = {}
 
     # ── реестр ──
@@ -77,6 +78,9 @@ class SessionHub:
     def trainee(self, session_id: UUID):
         return self._subscribe(self._trainees, session_id)
 
+    def station(self, session_id: UUID):
+        return self._subscribe(self._stations, session_id)
+
     # ── вещание ──
 
     @staticmethod
@@ -92,6 +96,9 @@ class SessionHub:
 
     def to_trainee(self, session_id: UUID, event: BaseModel | bytes) -> None:
         self._put(self._trainees.get(session_id, set()), event)
+
+    def to_station(self, session_id: UUID, event: BaseModel) -> None:
+        self._put(self._stations.get(session_id, set()), event)
 
     def broadcast(self, session_id: UUID, event: BaseModel) -> None:
         self.to_trainee(session_id, event)

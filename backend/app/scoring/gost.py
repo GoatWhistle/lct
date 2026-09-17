@@ -18,6 +18,7 @@ from app.scoring.taxonomy import METRIC_MAP, METRIC_WEIGHTS
 from app.session.timers import SessionTimers
 
 SOURCE_BY_CODE = {
+    "E6": FindingSource.CHAIN,
     "E1": FindingSource.SLOTS,
     "E2": FindingSource.GROUND_TRUTH,
     "E3": FindingSource.TIMERS,
@@ -110,6 +111,7 @@ def evaluate(
     timers: SessionTimers,
     revealed_facts: list[str] | None,
     end_reason: CallEndReason | None = None,
+    bounced_fields: list[str] | None = None,
 ) -> GostResult:
     """Посчитать детерминированный слой по завершённому занятию.
 
@@ -228,6 +230,17 @@ def evaluate(
             passed=not empty,
             ref="ГОСТ Р 22.7.03-2021, структура КИО",
             finding=f"Не заполнены обязательные поля: {', '.join(empty)}" if empty else None,
+        )
+
+    # ── цепочка 112 → ДДС, E6 ──
+    if bounced_fields:
+        build.add(
+            "dds_chain", "Карточка принята ДДС",
+            f"возвращена на уточнение: {', '.join(bounced_fields)}",
+            "карточка пригодна для выезда",
+            passed=False,
+            ref="цепочка 112 → ДДС",
+            finding=f"Диспетчер вернул карточку: не заполнено {', '.join(bounced_fields)} — выезд сорван",
         )
 
     return build.result

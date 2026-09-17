@@ -9,6 +9,7 @@ from app.domain.taxonomy import Competency, ErrorCode
 #: Метрика → (код ошибки при провале, компетенция радара).
 METRIC_MAP: dict[str, tuple[ErrorCode, Competency]] = {
     "answer_time": (ErrorCode.E3, Competency.INTAKE),
+    "dds_chain": (ErrorCode.E6, Competency.CARD),
     "callback": (ErrorCode.E3, Competency.INTAKE),
     "checklist_completeness": (ErrorCode.E1, Competency.INTERVIEW),
     "interview_time": (ErrorCode.E3, Competency.NORMS),
@@ -36,6 +37,7 @@ METRIC_WEIGHTS: dict[str, float] = {
     "victims_count": 1.0,
     "answer_time": 1.0,
     "callback": 1.0,
+    "dds_chain": 2.0,
 }
 
 #: Вес детерминированного слоя в итоговой оценке. Остальное — LLM-судья

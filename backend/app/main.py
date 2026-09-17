@@ -13,6 +13,7 @@ from app.api.http import trainees
 from app.api.ws import call as call_ws
 from app.api.ws import control as control_ws
 from app.api.ws import observe as observe_ws
+from app.api.ws import station as station_ws
 from app.config import get_settings
 from app.db.base import get_sessionmaker
 from app.dialog.runtime import get_embedder
@@ -65,6 +66,7 @@ app.include_router(trainees.router)
 app.include_router(call_ws.router)
 app.include_router(observe_ws.router)
 app.include_router(control_ws.router)
+app.include_router(station_ws.router)
 
 
 @app.get("/api/health")

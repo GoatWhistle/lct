@@ -7,7 +7,9 @@
 import type {
   InstructorToServer,
   ServerToObserver,
+  ServerToStation,
   ServerToTrainee,
+  StationToServer,
   TraineeToServer,
 } from "@/shared/types/generated";
 
@@ -103,6 +105,13 @@ export const callChannel = (sessionId: string, options?: ChannelOptions<ServerTo
 /** Наблюдатель: отправлять нечего и нельзя — `Out` равен `never`. */
 export const observeChannel = (sessionId: string, options?: ChannelOptions<ServerToObserver>) =>
   new Channel<ServerToObserver, never>(`/ws/observe/${sessionId}`, options);
+
+/** Станция ДДС: только JSON, аудио здесь нет вообще. */
+export const stationChannel = (
+  sessionId: string,
+  role: string,
+  options?: ChannelOptions<ServerToStation>,
+) => new Channel<ServerToStation, StationToServer>(`/ws/station/${sessionId}?role=${role}`, options);
 
 /** Преподаватель: только передача, входящих в этом канале нет. */
 export const controlChannel = (sessionId: string, options?: { onStatus?: (status: ChannelStatus) => void }) =>
