@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.domain.timers import NORMATIVES, TimerCode
@@ -22,10 +23,21 @@ class Settings(BaseSettings):
     offline: bool = False
 
     # LLM. Провайдер меняется значением, не кодом (docs/arch/STACK.md).
-    llm_provider: str = "gigachat"
-    llm_api_key: str = ""
-    llm_model_caller: str = ""
-    llm_model_judge: str = ""
+    # Имена COMPAT_MODEL_* принимаются тоже — так их выставляет командный сниппет.
+    llm_provider: str = "openai_compatible"
+    llm_base_url: str = Field(
+        default="", validation_alias=AliasChoices("llm_base_url", "compat_model_url")
+    )
+    llm_api_key: str = Field(
+        default="", validation_alias=AliasChoices("llm_api_key", "compat_model_api_key"),
+        repr=False,
+    )
+    llm_model_caller: str = Field(
+        default="", validation_alias=AliasChoices("llm_model_caller", "compat_model_name")
+    )
+    llm_model_judge: str = Field(
+        default="", validation_alias=AliasChoices("llm_model_judge", "compat_model_name")
+    )
     judge_temperature: float = 0.0
 
     # Нормативы: переопределяют значения по умолчанию из domain/timers.py
