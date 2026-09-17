@@ -9,6 +9,7 @@
 Команды: /подсказка, /факты, /итог, /выход
 """
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -16,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.config import get_settings  # noqa: E402
-from app.dialog.caller import TemplateCaller  # noqa: E402
+from app.dialog.factory import build_caller  # noqa: E402
 from app.dialog.embeddings import E5Embedder  # noqa: E402
 from app.dialog.persona import PersonaState  # noqa: E402
 from app.dialog.slots import SlotMachine  # noqa: E402
@@ -35,7 +36,7 @@ def summary(slots: SlotMachine) -> None:
         print(f"  E1 не добыт {fact_id}{hint}")
 
 
-def main() -> None:
+async def main() -> None:
     scenario_id = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else None
     try:
         library = {scenario.id: scenario for scenario in load_library(LIBRARY)}
@@ -53,7 +54,7 @@ def main() -> None:
 
     slots = SlotMachine(scenario, embedder)
     persona = PersonaState(scenario.persona)
-    caller = TemplateCaller()
+    caller = build_caller(scenario.id)
 
     print(f"── {scenario.title} ({scenario.level.value}) ──")
     print("Вы — оператор 112. Команды: /подсказка /факты /итог /выход\n")
@@ -82,7 +83,7 @@ def main() -> None:
             continue
 
         turn = slots.hear(line)
-        reply = caller.reply(turn, persona, slots)
+        reply = await caller.reply(turn, persona, slots)
         if turn.matched:
             print(f"  [понято: {', '.join(turn.matched)}]")
         print(f"ЗВОНЯЩИЙ [{reply.mood.value}]: {reply.text}")
@@ -91,4 +92,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

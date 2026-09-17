@@ -129,7 +129,7 @@ def test_invalidated_fact_must_be_asked_again(slots):
     assert slots.hear("Уточните адрес").revealed == ["f_address"]
 
 
-def test_caller_never_speaks_an_unrevealed_fact(slots):
+async def test_caller_never_speaks_an_unrevealed_fact(slots):
     """Ключевое свойство продукта: звонящий не выдаёт данные сам.
     Проверяется по всем фактам на длинной серии реплик, включая мимо чек-листа."""
     caller = TemplateCaller()
@@ -146,22 +146,22 @@ def test_caller_never_speaks_an_unrevealed_fact(slots):
     ]
     for line in lines:
         turn = slots.hear(line)
-        reply = caller.reply(turn, persona, slots).text
+        reply = (await caller.reply(turn, persona, slots)).text
         revealed = {fact.id for fact in slots.revealed_facts()}
         for fact in SCENARIO.facts:
             if fact.id not in revealed:
                 assert fact.value not in reply, f"звонящий выдал «{fact.value}» без вопроса на «{line}»"
 
 
-def test_repeats_push_the_caller_into_aggression(slots):
+async def test_repeats_push_the_caller_into_aggression(slots):
     caller = TemplateCaller()
     persona = PersonaState(SCENARIO.persona)
 
-    first = caller.reply(slots.hear("Какой адрес?"), persona, slots)
+    first = await caller.reply(slots.hear("Какой адрес?"), persona, slots)
     assert first.mood is Mood.PANIC
 
-    caller.reply(slots.hear("Адрес какой?"), persona, slots)
-    third = caller.reply(slots.hear("Ещё раз адрес"), persona, slots)
+    await caller.reply(slots.hear("Адрес какой?"), persona, slots)
+    third = await caller.reply(slots.hear("Ещё раз адрес"), persona, slots)
     assert third.mood is Mood.AGGRESSIVE, "настойчивый повтор должен сдвигать к агрессии"
     assert "Ленина" in third.text, "в раздражении звонящий всё равно повторяет факт"
 
@@ -172,11 +172,14 @@ def test_directive_overrides_the_arc():
     assert persona.mood is Mood.AGGRESSIVE
 
 
-def test_same_lines_give_same_replies():
+async def test_same_lines_give_same_replies():
     """Сценарий занятия должен звучать одинаково у каждой группы."""
-    def run():
+    async def run():
         machine = SlotMachine(SCENARIO, StemEmbedder(), floor=0.5)
         caller, persona = TemplateCaller(), PersonaState(SCENARIO.persona)
-        return [caller.reply(machine.hear(line), persona, machine).text for line in ("Алло", "Какой адрес?", "Что?")]
+        return [
+            (await caller.reply(machine.hear(line), persona, machine)).text
+            for line in ("Алло", "Какой адрес?", "Что?")
+        ]
 
-    assert run() == run()
+    assert await run() == await run()

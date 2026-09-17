@@ -14,8 +14,10 @@ __pycache__/
 node_modules/
 frontend/dist/
 
-# Env
+# Env: и .env, и .env.test, и всё, что рядом — там ключи
 .env
+.env.*
+!.env.example
 *.local
 
 # Python

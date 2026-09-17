@@ -31,7 +31,7 @@ from app.domain.events import (
 )
 import asyncio
 
-from app.dialog.caller import TemplateCaller
+from app.dialog.factory import build_caller
 from app.dialog.director import apply as apply_directive
 from app.dialog.director import mood_of
 from app.dialog.persona import PersonaState
@@ -82,7 +82,7 @@ async def _start(session_id: UUID, event) -> None:
     if embedder is not None:
         state.slots = SlotMachine(state.scenario, embedder)
     state.persona = PersonaState(state.scenario.persona)
-    state.caller = TemplateCaller()
+    state.caller = build_caller(scenario.id)
     hub.register(state)
 
     # Первая реплика и филлеры синтезируются, пока курсант не снял трубку:

@@ -8,3 +8,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 import os
 
 os.environ.setdefault("VOICE_ENABLED", "false")
+
+# И в сеть они не ходят: звонящий отвечает заготовками, иначе каждый тест
+# ждал бы ответа провайдера и зависел от его настроения.
+# Живые проверки LLM — в test_llm.py, он читает backend/.env.test.
+os.environ.setdefault("LLM_API_KEY", "")

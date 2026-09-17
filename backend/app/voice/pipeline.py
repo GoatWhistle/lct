@@ -153,18 +153,18 @@ class VoiceSession:
             await self.journal.utterance(self.session_id, entry)
 
         started = time.monotonic()
-        line = self._caller_line(text)
+        line = await self._caller_line(text)
         timing.caller_ms = (time.monotonic() - started) * 1000
         await self.say(line.text, line.mood, ended_at=ended_at, timing=timing)
 
-    def _caller_line(self, text: str):
+    async def _caller_line(self, text: str):
         state = self.state
         if state.slots is None or state.caller is None or state.persona is None:
             from app.dialog.caller import CallerLine
 
             return CallerLine(text=FILLERS[Mood.PANIC], mood=Mood.PANIC)
         turn = state.slots.hear(text)
-        return state.caller.reply(turn, state.persona, state.slots)
+        return await state.caller.reply(turn, state.persona, state.slots)
 
     async def say(
         self, text: str, mood: Mood, *, ended_at: float | None = None, timing: TurnTiming | None = None

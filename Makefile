@@ -47,6 +47,12 @@ seed: ## Залить сценарии из /scenarios в БД
 lesson: ## Запустить занятие и напечатать ссылки: make lesson s=<сценарий> m=<режим>
 	cd backend && $(UV) run --no-project --with websockets python scripts/start_lesson.py "$(s)" "$(m)"
 
+test-llm: ## Живые проверки LLM по backend/.env.test (медленно: рассуждающая модель)
+	cd backend && $(UV) run --extra dev pytest tests/test_llm.py -m llm -q -s
+
+llm-check: ## Один запрос к LLM: проверить ключ и адрес из backend/.env
+	cd backend && $(UV) run python scripts/llm_check.py
+
 latency: ## Замер задержки голосового контура по этапам — запускать на демо-машине
 	cd backend && $(UV) run --extra voice python scripts/latency.py
 
@@ -59,10 +65,10 @@ revision: ## Создать миграцию: make revision m="что измен
 repl: ## Текстовый диалог со звонящим без голоса: make repl s=<сценарий>
 	cd backend && $(UV) run python scripts/repl.py "$(s)"
 
-pregen: ## Дерево диалога и WAV первых реплик для офлайна
-	@echo "не реализовано — карточка tasks/lct-19-reference-dialog.md"; exit 1
+pregen: ## Построить таблицу реплик звонящего для офлайна: make pregen s=<сценарий> force=1
+	cd backend && $(UV) run python scripts/pregenerate.py "$(s)"
 
 demo: ## Поднять стенд для занятия: база, сценарии, бэкенд с голосом, фронт
 	./scripts/demo.sh
 
-.PHONY: help dev down back front types test test-voice typecheck lesson latency migrate revision models seed repl pregen demo
+.PHONY: help dev down back front types test test-voice typecheck test-llm lesson llm-check latency migrate revision models seed repl pregen demo

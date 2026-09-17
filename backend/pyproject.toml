@@ -56,3 +56,7 @@ packages = ["app"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Живые запросы к LLM идут отдельно (`make test-llm`): они требуют сети,
+# а рассуждающая модель отвечает десятками секунд.
+markers = ["llm: живой запрос к провайдеру LLM"]
+addopts = "-m 'not llm'"
