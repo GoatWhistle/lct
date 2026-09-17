@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { Call } from "@/pages/trainee/Call";
+import { Instructor } from "@/pages/instructor/Instructor";
 import { Wall } from "@/pages/wall/Wall";
 import { Stub } from "@/shared/ui/Stub";
 
@@ -9,7 +10,7 @@ import { Stub } from "@/shared/ui/Stub";
 export const router = createBrowserRouter([
   { path: "/", element: <Navigate to="/trainee" replace /> },
   { path: "/trainee", element: <Call /> },
-  { path: "/instructor", element: <Stub title="Пульт преподавателя" card="lct-17" /> },
+  { path: "/instructor", element: <Instructor /> },
   { path: "/wall", element: <Wall /> },
   { path: "/dds", element: <Stub title="АРМ диспетчера ДДС" card="lct-20" /> },
 ]);

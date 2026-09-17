@@ -59,6 +59,17 @@ export const useHealth = () =>
 export const useScenarios = () =>
   useQuery({ queryKey: ["scenarios"], queryFn: () => request<ScenarioSummary[]>("/api/scenarios") });
 
+export const useSessions = (params: { trainee?: string; group?: string; mode?: SessionMode } = {}) => {
+  const query = new URLSearchParams(
+    Object.entries(params).filter(([, value]) => value) as [string, string][],
+  ).toString();
+  return useQuery({
+    queryKey: ["sessions", query],
+    queryFn: () => request<SessionInfo[]>(`/api/sessions${query ? `?${query}` : ""}`),
+    refetchInterval: 15_000,
+  });
+};
+
 export const useCreateSession = () =>
   useMutation({
     mutationFn: (body: { scenario_id: string; mode: SessionMode; trainee?: string; group?: string }) =>
