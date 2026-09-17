@@ -51,3 +51,21 @@ button:disabled { opacity: 0.5; cursor: default; }
 .required { color: var(--warn); font-weight: 700; }
 /* Правка, которую сервер ещё не подтвердил. */
 .pending { background: #fffbe6; }
+
+/* Три состояния норматива — единственное место, где цвет несёт смысл.
+   На внешнем мониторе они должны различаться с последнего ряда. */
+.state-ok { color: var(--ok); }
+.state-warn { color: var(--warn); font-weight: 600; }
+.state-violated { color: var(--violated); font-weight: 700; }
+
+.interview { display: flex; align-items: baseline; gap: 12px; margin: 8px 0 16px; }
+.interview-label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; }
+.interview-value { font-size: 40px; font-variant-numeric: tabular-nums; font-weight: 700; line-height: 1; }
+.interview-limit { font-size: 12px; color: #5a6068; }
+.interview-big .interview-value { font-size: 96px; }
+.interview-big .interview-label, .interview-big .interview-limit { font-size: 20px; }
+
+.mode-banner { padding: 4px 24px; margin: -16px -24px 12px; border-bottom: 1px solid var(--line); font-weight: 600; }
+.mode-training { background: #e8f0fb; }
+.mode-exam { background: #fde8e8; }
+.mode-self { background: #eef3ea; }

@@ -2,6 +2,8 @@
 // Карточка КИО — lct-10, таймеры — lct-11.
 
 import { KioCard } from "@/features/kio-card/KioCard";
+import { ModeBanner, hintsAllowed } from "@/features/mode-banner/ModeBanner";
+import { InterviewTimer, Timers } from "@/features/timers/Timers";
 import { display } from "@/features/kio-card/merge";
 import { useCall } from "@/features/call/useCall";
 import { sessionIdFromUrl } from "@/shared/api/session";
@@ -28,7 +30,9 @@ export function Call() {
 
   return (
     <main className="page">
+      <ModeBanner mode={call.incoming?.mode} />
       <h1>АРМ оператора 112</h1>
+      <InterviewTimer timers={call.timers} />
       <table className="grid">
         <tbody>
           <tr><th>Канал</th><td className={call.status === "open" ? "" : "warn"}>{STATUS_LABEL[call.status]}</td></tr>
@@ -43,7 +47,7 @@ export function Call() {
           <button type="button" onClick={() => void call.answer()}>Ответить</button>
         )}
         {call.micOn && <button type="button" onClick={call.hangup}>Завершить вызов</button>}{" "}
-        {call.micOn && call.incoming?.mode !== "exam" && (
+        {call.micOn && hintsAllowed(call.incoming?.mode) && (
           <button type="button" onClick={call.hint}>Подсказка</button>
         )}
       </p>
@@ -70,6 +74,8 @@ export function Call() {
           </p>
         </section>
         <section>
+          <h2>Нормативы</h2>
+          <Timers timers={call.timers} />
       <h2>Разговор</h2>
       <table className="grid">
         <tbody>
