@@ -69,3 +69,16 @@ button:disabled { opacity: 0.5; cursor: default; }
 .mode-training { background: #e8f0fb; }
 .mode-exam { background: #fde8e8; }
 .mode-self { background: #eef3ea; }
+
+/* Разбор. Ссылка на норматив — мелким, но рядом с фактом: отметка без
+   обоснования не появляется ни в одном интерфейсе. */
+.debrief h3 { font-size: 15px; margin: 16px 0 6px; }
+.ref { color: #5a6068; font-size: 12px; }
+.radar { display: block; margin: 4px 0 8px; }
+
+/* Внешний монитор: читается с последнего ряда. */
+.wall { font-size: 20px; }
+.wall h1 { font-size: 30px; }
+.wall h2 { font-size: 24px; }
+.wall .grid th { width: 160px; }
+.debrief-big { font-size: 20px; }

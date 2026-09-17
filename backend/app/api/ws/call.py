@@ -111,6 +111,7 @@ async def _handle(session_id: UUID, state, event) -> None:
                 return
             checklist_id, question = nxt
             state.hints_shown.append(checklist_id)
+            state.hints_log.append((checklist_id, now_utc()))
             shown = HintShown(checklist_id=checklist_id, question=question)
             hub.broadcast(session_id, shown)
             if hub.journal:

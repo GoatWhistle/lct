@@ -14,7 +14,7 @@ from app.domain.kio import KIO, missing_fields
 from app.domain.taxonomy import ERRORS, Competency, Finding, FindingSource
 from app.domain.timers import GOST_REF, NORMATIVES, TimerCode
 from app.scenarios.schema import Scenario
-from app.scoring.taxonomy import METRIC_MAP
+from app.scoring.taxonomy import METRIC_MAP, METRIC_WEIGHTS
 from app.session.timers import SessionTimers
 
 SOURCE_BY_CODE = {
@@ -64,7 +64,8 @@ class _Builder:
     def add(self, key: str, title: str, fact: str, norm: str, passed: bool, ref: str | None = None,
             finding: str | None = None) -> None:
         self.result.metrics.append(
-            Metric(key=key, title=title, fact=fact, norm=norm, ref=ref, passed=passed)
+            Metric(key=key, title=title, fact=fact, norm=norm, ref=ref, passed=passed,
+                   weight=METRIC_WEIGHTS.get(key, 1.0))
         )
         if passed:
             return
@@ -156,6 +157,7 @@ def evaluate(
                 norm="все обязательные факты",
                 ref="чек-лист сценария",
                 passed=len(got) == len(required),
+                weight=METRIC_WEIGHTS["checklist_completeness"],
             )
         )
         # По отметке на каждый недобытый факт: в разборе нужен конкретный

@@ -511,6 +511,21 @@ class SelfAssessment(BaseModel):
     submitted_at: datetime
 
 
+class SelfAssessmentDiff(BaseModel):
+    """Расхождение самооценки с автооценкой — отдельный материал для преподавателя.
+
+    Курсант, не заметивший, что пропустил вопрос о пострадавших, — более важный
+    случай, чем сама ошибка (docs/product/DEBRIEF.md).
+    """
+
+    #: Пропустил и сам это заметил.
+    noticed: list[str] = []
+    #: Пропустил и не заметил — самое ценное для разбора.
+    unnoticed: list[str] = []
+    #: Отметил как пропущенное, хотя на деле спросил.
+    overcautious: list[str] = []
+
+
 class SessionReport(BaseModel):
     """Единица истории: из отчётов складываются профиль, дельта попыток, аналитика."""
 
@@ -526,6 +541,8 @@ class SessionReport(BaseModel):
     missed_checklist: list[str]
     hints_used: list[HintUsage]
     self_assessment: SelfAssessment | None = None
+    self_assessment_diff: SelfAssessmentDiff | None = None
+    notes: list[InstructorNoteShown] = []
     score_auto: float
     score_final: float
     overridden_by: str | None = None

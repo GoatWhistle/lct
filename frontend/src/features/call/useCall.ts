@@ -12,7 +12,13 @@ import { EnergyGate } from "@/shared/audio/levels";
 import { CALLER_RATE, Playback } from "@/shared/audio/playback";
 import { type CardState, applyPatch, edit, empty as emptyCard } from "@/features/kio-card/merge";
 import type { ChecklistItem } from "@/features/self-assessment/SelfAssessment";
-import type { CallIncoming, DDSCode, ServerToTrainee, TimerSnapshot } from "@/shared/types/generated";
+import type {
+  CallIncoming,
+  DDSCode,
+  ServerToTrainee,
+  SessionReport,
+  TimerSnapshot,
+} from "@/shared/types/generated";
 
 /** Правки копятся и уходят одной дельтой: 300 мс тишины — и отправка. */
 const PATCH_DEBOUNCE_MS = 300;
@@ -37,6 +43,7 @@ export function useCall(sessionId: string | null) {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [selfAssessed, setSelfAssessed] = useState(false);
   const [scoreReady, setScoreReady] = useState(false);
+  const [report, setReport] = useState<SessionReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const channel = useRef<ReturnType<typeof callChannel> | null>(null);
@@ -111,6 +118,10 @@ export function useCall(sessionId: string | null) {
             break;
           case "score.ready":
             setScoreReady(true);
+            void fetch(`/api/sessions/${sessionId}/report`)
+              .then((response) => (response.ok ? response.json() : null))
+              .then(setReport)
+              .catch(() => setReport(null));
             break;
           case "error":
             setError(event.message);
@@ -182,7 +193,7 @@ export function useCall(sessionId: string | null) {
 
   return {
     status, phase, incoming, lines, timers, callerSpeaking, micOn, error, card,
-    checklist, selfAssessed, scoreReady,
+    checklist, selfAssessed, scoreReady, report,
     answer, hangup, hint, patchKio, dispatch, submitSelfAssessment,
   };
 }

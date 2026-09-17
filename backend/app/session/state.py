@@ -45,6 +45,9 @@ class SessionState:
     transcript: list[TranscriptEntry] = field(default_factory=list)
     timers: SessionTimers = field(default_factory=SessionTimers)
     hints_shown: list[str] = field(default_factory=list)
+    #: Когда именно подсказывали — в разборе видно, какой пункт и на какой минуте.
+    hints_log: list[tuple[str, datetime]] = field(default_factory=list)
+    notes: list[dict] = field(default_factory=list)
     directives: list[str] = field(default_factory=list)
 
     # Звонящий. Автомата нет, если не скачана модель эмбеддингов:

@@ -338,6 +338,13 @@ export interface SelfAssessment {
   submitted_at: string;
 }
 
+/** Расхождение самооценки с автооценкой — отдельный материал для преподавателя. Курсант, не заметивший, что пропустил вопрос о пострадавших, — более важный случай, чем сама ошибка (docs/product/DEBRIEF.md). */
+export interface SelfAssessmentDiff {
+  noticed?: Array<string>;
+  unnoticed?: Array<string>;
+  overcautious?: Array<string>;
+}
+
 /** Самооценка до показа автооценки. */
 export interface SelfAssessmentSubmit {
   type: "self_assessment.submit";
@@ -367,6 +374,8 @@ export interface SessionReport {
   missed_checklist: Array<string>;
   hints_used: Array<HintUsage>;
   self_assessment?: SelfAssessment | null;
+  self_assessment_diff?: SelfAssessmentDiff | null;
+  notes?: Array<InstructorNoteShown>;
   score_auto: number;
   score_final: number;
   overridden_by?: string | null;

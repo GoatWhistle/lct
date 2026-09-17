@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { Call } from "@/pages/trainee/Call";
+import { Wall } from "@/pages/wall/Wall";
 import { Stub } from "@/shared/ui/Stub";
 
 // Четыре интерфейса — одна SPA (docs/arch/FRONTEND.md).
@@ -9,6 +10,6 @@ export const router = createBrowserRouter([
   { path: "/", element: <Navigate to="/trainee" replace /> },
   { path: "/trainee", element: <Call /> },
   { path: "/instructor", element: <Stub title="Пульт преподавателя" card="lct-17" /> },
-  { path: "/wall", element: <Stub title="Внешний монитор" card="lct-16" /> },
+  { path: "/wall", element: <Wall /> },
   { path: "/dds", element: <Stub title="АРМ диспетчера ДДС" card="lct-20" /> },
 ]);

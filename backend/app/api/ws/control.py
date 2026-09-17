@@ -16,6 +16,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from app.domain.events import (
     CallEndReason,
+    ScoreReady,
     CallIncoming,
     ErrorEvent,
     ErrorKind,
@@ -131,6 +132,14 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                 case "session.stop":
                     await _stop(session_id)
                 case "instructor_note.add":
+                    state = hub.get(session_id)
+                    if state is not None:
+                        state.notes.append({
+                            "type": "instructor_note.shown",
+                            "transcript_ref": event.transcript_ref,
+                            "text": event.text,
+                            "author": "преподаватель",
+                        })
                     hub.to_observers(
                         session_id,
                         InstructorNoteShown(
@@ -147,6 +156,17 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                     state = hub.get(session_id)
                     if state is not None:
                         hub.to_observers(session_id, ReferenceStarted(scenario_id=state.scenario_id))
+                case "score.override":
+                    state = hub.get(session_id)
+                    if state is not None and state.score is not None:
+                        # Автооценка остаётся рядом: видно, что скорректировано и кем.
+                        state.score = {
+                            **state.score,
+                            "score_final": float(event.verdict) if event.verdict.replace(".", "", 1).isdigit() else state.score["score_auto"],
+                            "overridden_by": "преподаватель",
+                            "override_comment": event.comment,
+                        }
+                        hub.to_observers(session_id, ScoreReady(session_id=session_id))
                 case "director.inject":
                     # Поведение звонящего — карточка lct-07, пульт — lct-22.
                     # До них директива копится в состоянии и видна в разборе.

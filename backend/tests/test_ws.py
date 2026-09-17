@@ -258,3 +258,52 @@ def test_checklist_is_closed_until_the_call_is_over(client):
         after = client.get(f"/api/sessions/{session_id}/checklist")
         assert after.status_code == 200
         assert all(item["question"] for item in after.json())
+
+
+def test_report_shows_missed_questions_and_self_assessment_gap(client):
+    """Главное в разборе: по пропущенному пункту виден эталонный вопрос,
+    а расхождение самооценки — отдельным блоком."""
+    with lesson(client) as (session_id, _):
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            trainee.send_json({"type": "call.answer"})
+            trainee.send_json({"type": "hint.request"})
+            trainee.send_json({"type": "kio.patch", "fields": {"address": "улица Ленина, 14", "dds": "01"}})
+            trainee.send_json({"type": "call.hangup"})
+            wait_for(lambda: hub.get(session_id).score is not None)
+            # Курсант считает, что пропустил только адрес — а не добыл он всё.
+            trainee.send_json({"type": "self_assessment.submit", "missed": ["q_address"], "comment": "торопился"})
+            wait_for(lambda: hub.get(session_id).self_assessed)
+
+        response = client.get(f"/api/sessions/{session_id}/report")
+    assert response.status_code == 200, response.text
+    report = response.json()
+
+    assert report["missed_checklist"], "не добытые пункты должны быть перечислены"
+    questions = {item["checklist_id"]: item["question"] for item in report["reference_questions"]}
+    assert all(questions.get(item) for item in report["missed_checklist"]), "у пропущенного нет эталонного вопроса"
+
+    for finding in report["findings"]:
+        assert finding["code"] and finding["fact"], "отметка без обоснования"
+
+    diff = report["self_assessment_diff"]
+    assert "q_address" in diff["overcautious"] or "q_address" in diff["noticed"]
+    assert diff["unnoticed"], "курсант не заметил часть пропущенного — это и есть материал разбора"
+    assert report["hints_used"], "использованные подсказки попадают в разбор"
+
+
+def test_instructor_correction_keeps_the_automatic_score(client):
+    with lesson(client) as (session_id, _):
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            trainee.send_json({"type": "call.answer"})
+            trainee.send_json({"type": "call.hangup"})
+            wait_for(lambda: hub.get(session_id).score is not None)
+
+        auto = client.get(f"/api/sessions/{session_id}/report").json()["score_auto"]
+        corrected = client.patch(
+            f"/api/sessions/{session_id}/report",
+            json={"score_final": 80.0, "comment": "связь рвалась не по вине курсанта"},
+        ).json()
+
+    assert corrected["score_final"] == 80.0
+    assert corrected["score_auto"] == auto, "автооценка должна сохраниться рядом"
+    assert corrected["overridden_by"] == "преподаватель"
