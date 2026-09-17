@@ -15,6 +15,8 @@ export type ChannelStatus = "connecting" | "open" | "reconnecting" | "closed";
 
 interface ChannelOptions<In> {
   onEvent?: (event: In) => void;
+  /** Бинарный кадр: звук звонящего, без обёртки JSON. */
+  onBinary?: (frame: ArrayBuffer) => void;
   onStatus?: (status: ChannelStatus) => void;
 }
 
@@ -49,7 +51,10 @@ export class Channel<In extends { type: string }, Out extends { type: string }> 
       this.options.onStatus?.("open");
     };
     socket.onmessage = (message) => {
-      if (typeof message.data !== "string") return; // бинарь курсанту разбирает аудиослой (lct-09)
+      if (typeof message.data !== "string") {
+        this.options.onBinary?.(message.data as ArrayBuffer);
+        return;
+      }
       this.options.onEvent?.(JSON.parse(message.data) as In);
     };
     socket.onclose = () => {
