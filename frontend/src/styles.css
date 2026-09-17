@@ -27,3 +27,15 @@ body {
   font-weight: 600;
   margin: 0 0 8px;
 }
+
+/* Плотная казённая сетка: таблица вместо карточек. */
+.page { padding: 16px 24px; }
+.page h1 { font-size: 20px; font-weight: 600; margin: 0 0 12px; }
+.page h2 { font-size: 16px; font-weight: 600; margin: 20px 0 8px; }
+.grid { border-collapse: collapse; background: var(--panel); min-width: 480px; }
+.grid th, .grid td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.grid th { width: 200px; font-weight: 600; background: var(--bg); }
+button { font: inherit; padding: 6px 16px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: default; }
+.warn { color: var(--warn); }
+.violated { color: var(--violated); }

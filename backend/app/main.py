@@ -1,5 +1,6 @@
 """Сборка приложения. Роутеры подключаются по мере готовности — см. tasks/."""
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -21,6 +22,12 @@ from app.scenarios.loader import ScenarioError
 
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
+
+# uvicorn настраивает только собственные логгеры: без этого INFO из модулей
+# приложения («получено N кадров», замеры задержки голоса) молча теряется,
+# а до лога доходят одни предупреждения. Чужие библиотеки — от WARNING.
+logging.basicConfig(level=logging.WARNING, format="%(levelname)-8s %(name)s: %(message)s")
+logging.getLogger("app").setLevel(logging.INFO)
 
 
 @asynccontextmanager

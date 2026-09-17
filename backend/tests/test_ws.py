@@ -168,3 +168,29 @@ def test_call_socket_refuses_session_that_was_not_started(client):
     with client.websocket_connect(f"/ws/call/{uuid4()}") as trainee:
         message = trainee.receive_json()
     assert message["type"] == "error" and message["code"] == "session_not_found"
+
+
+def test_audio_frames_reach_the_server(client):
+    """Веха lct-08: кадры PCM16 16 кГц по 20 мс долетают до бэкенда."""
+    with lesson(client) as (session_id, _):
+        state = hub.get(session_id)
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            for _ in range(50):
+                trainee.send_bytes(b"\x00\x00" * 320)  # секунда тишины
+            trainee.send_bytes(b"\x00" * 100)  # кадр не того размера
+            wait_value(lambda: state.bad_frames or None)
+
+        assert state.audio_frames == 50
+        assert state.bad_frames == 1, "кадр не того размера должен отбрасываться, а не считаться звуком"
+
+
+def test_events_still_work_between_audio_frames(client):
+    """Звук и события идут по одному сокету: бинарь не должен ломать разбор JSON."""
+    with lesson(client) as (session_id, _):
+        state = hub.get(session_id)
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            trainee.send_bytes(b"\x00\x00" * 320)
+            trainee.send_json({"type": "kio.patch", "fields": {"floor": "5"}})
+            trainee.send_bytes(b"\x00\x00" * 320)
+            wait_for(lambda: state.kio.floor == "5")
+        assert state.audio_frames == 2

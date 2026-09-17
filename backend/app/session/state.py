@@ -51,6 +51,11 @@ class SessionState:
     slots: SlotMachine | None = None
     persona: PersonaState | None = None
 
+    # Аудио курсанта. До голосового контура (lct-06) кадры только считаются —
+    # этого достаточно, чтобы доказать, что звук доходит от микрофона до сервера.
+    audio_frames: int = 0
+    bad_frames: int = 0
+
     started_at: datetime | None = None
     ended_at: datetime | None = None
     end_reason: CallEndReason | None = None

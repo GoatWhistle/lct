@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import json
 import logging
 from uuid import UUID
 
@@ -31,7 +32,26 @@ from app.session.state import now_utc
 log = logging.getLogger(__name__)
 router = APIRouter()
 
+#: Кадр контракта: 20 мс PCM16 моно 16 кГц = 320 сэмплов = 640 байт.
+FRAME_BYTES = 640
+FRAMES_PER_LOG = 250  # раз в пять секунд звука
+
 _adapter = TypeAdapter(TraineeToServer)
+
+
+def _on_audio(session_id: UUID, state, frame: bytes) -> None:
+    """Приём аудиокадра. Голосовой контур (lct-06) заменит счёт на VAD → STT."""
+    if len(frame) != FRAME_BYTES:
+        state.bad_frames += 1
+        if state.bad_frames == 1:
+            # Один раз, а не на каждый кадр: неверный формат повторяется 50 раз в секунду.
+            log.warning("сессия %s: кадр %d байт вместо %d — проверь ресемплинг на фронте",
+                        session_id, len(frame), FRAME_BYTES)
+        return
+    state.audio_frames += 1
+    if state.audio_frames % FRAMES_PER_LOG == 0:
+        log.info("сессия %s: получено %d кадров (%.0f с звука)",
+                 session_id, state.audio_frames, state.audio_frames * 0.02)
 
 
 def _next_hint(state) -> tuple[str, str] | None:
@@ -140,7 +160,22 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
         writer = asyncio.create_task(_pump(ws, queue))
         try:
             while True:
-                payload = await ws.receive_json()
+                message = await ws.receive()
+                if message["type"] == "websocket.disconnect":
+                    return
+                # Бинарные кадры — аудио, текстовые — события. Направление определяется
+                # каналом, обёртки JSON вокруг звука нет (docs/arch/CONTRACT.md).
+                if message.get("bytes") is not None:
+                    _on_audio(session_id, state, message["bytes"])
+                    continue
+                try:
+                    payload = json.loads(message.get("text") or "")
+                except json.JSONDecodeError:
+                    hub.to_trainee(
+                        session_id,
+                        ErrorEvent(code=ErrorKind.UNSUPPORTED_EVENT, message="не JSON"),
+                    )
+                    continue
                 try:
                     event = _adapter.validate_python(payload)
                 except ValidationError:

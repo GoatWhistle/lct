@@ -36,6 +36,9 @@ models: ## Скачать модели в backend/models/ (сейчас — эм
 seed: ## Залить сценарии из /scenarios в БД
 	cd backend && $(UV) run python scripts/seed.py
 
+lesson: ## Запустить занятие и напечатать ссылки: make lesson s=<сценарий> m=<режим>
+	cd backend && $(UV) run --no-project --with websockets python scripts/start_lesson.py "$(s)" "$(m)"
+
 migrate: ## Накатить миграции
 	cd backend && $(UV) run alembic upgrade head
 
@@ -51,4 +54,4 @@ pregen: ## Дерево диалога и WAV первых реплик для �
 demo: ## Поднять всё в демо-режиме: офлайн, прогретые модели
 	@echo "не реализовано — карточка tasks/lct-21-demo-readiness.md"; exit 1
 
-.PHONY: help dev down back front types test typecheck migrate revision models seed repl pregen demo
+.PHONY: help dev down back front types test typecheck lesson migrate revision models seed repl pregen demo
