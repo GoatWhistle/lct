@@ -70,6 +70,51 @@ export const useSessions = (params: { trainee?: string; group?: string; mode?: S
   });
 };
 
+export interface TraineeInfo {
+  id: string;
+  name: string;
+  group: string | null;
+}
+
+export interface Attempt {
+  session_id: string;
+  scenario_id: string;
+  mode: SessionMode;
+  attempt: number;
+  created_at: string;
+  score: number | null;
+  interview_ms: number | null;
+  facts_got: number | null;
+  facts_required: number | null;
+  hints: number | null;
+  codes: Record<string, number>;
+}
+
+export interface Profile {
+  trainee: TraineeInfo;
+  attempts: Attempt[];
+  competencies: Record<string, number>;
+  deltas: {
+    scenario_id: string;
+    from_attempt: number;
+    to_attempt: number;
+    score: number | null;
+    interview_ms: number | null;
+    facts_got: number | null;
+  }[];
+  hints_total: number;
+}
+
+export const useTrainees = () =>
+  useQuery({ queryKey: ["trainees"], queryFn: () => request<TraineeInfo[]>("/api/trainees") });
+
+export const useProfile = (traineeId: string | null) =>
+  useQuery({
+    queryKey: ["profile", traineeId],
+    queryFn: () => request<Profile>(`/api/trainees/${traineeId}/profile`),
+    enabled: Boolean(traineeId),
+  });
+
 export const useCreateSession = () =>
   useMutation({
     mutationFn: (body: { scenario_id: string; mode: SessionMode; trainee?: string; group?: string }) =>

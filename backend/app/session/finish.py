@@ -11,6 +11,7 @@ import logging
 from uuid import UUID
 
 from app.domain.events import ScoreReady
+from app.domain.timers import TimerCode
 from app.scenarios import store
 from app.scoring.competency import radar
 from app.scoring.gost import evaluate
@@ -32,8 +33,23 @@ async def finish(session_id: UUID, state) -> None:
         revealed_facts=[fact.id for fact in state.slots.revealed_facts()] if state.slots else None,
         end_reason=state.end_reason,
     )
+    # Сводка числами: по ней считается дельта между попытками в профиле.
+    # Вытаскивать её разбором текста метрик («94 с») — путь к тихим ошибкам.
+    required = scenario.ground_truth.required_facts
+    revealed = [fact.id for fact in state.slots.revealed_facts()] if state.slots else []
+    codes: dict[str, int] = {}
+    for finding in result.findings:
+        codes[finding.code.value] = codes.get(finding.code.value, 0) + 1
+
     state.score = {
         "score_auto": result.score,
+        "summary": {
+            "interview_ms": state.timers.measured_ms(TimerCode.INTERVIEW),
+            "facts_got": len([fact for fact in required if fact in revealed]),
+            "facts_required": len(required),
+            "hints": len(state.hints_shown),
+            "codes": codes,
+        },
         "metrics": [metric.model_dump() for metric in result.metrics],
         "findings": [finding.model_dump(mode="json") for finding in result.findings],
         "competencies": [item.model_dump() for item in radar(result.metrics)],

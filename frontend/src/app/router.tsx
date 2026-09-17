@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { Call } from "@/pages/trainee/Call";
 import { Instructor } from "@/pages/instructor/Instructor";
+import { Profile } from "@/pages/profile/Profile";
 import { Wall } from "@/pages/wall/Wall";
 import { Stub } from "@/shared/ui/Stub";
 
@@ -12,5 +13,6 @@ export const router = createBrowserRouter([
   { path: "/trainee", element: <Call /> },
   { path: "/instructor", element: <Instructor /> },
   { path: "/wall", element: <Wall /> },
+  { path: "/profile", element: <Profile /> },
   { path: "/dds", element: <Stub title="АРМ диспетчера ДДС" card="lct-20" /> },
 ]);

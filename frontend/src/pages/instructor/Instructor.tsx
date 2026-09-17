@@ -185,6 +185,7 @@ export function Instructor() {
 
         <section style={{ flex: "0 0 260px" }}>
           <h2>История группы</h2>
+          <p><a href="/profile">профили курсантов</a></p>
           <table className="grid">
             <tbody>
               {history.data?.slice(0, 15).map((item) => (
