@@ -10,6 +10,7 @@ import { Debrief } from "@/features/debrief/Debrief";
 import { Director } from "@/features/instructor/Director";
 import { useControl } from "@/features/instructor/useControl";
 import { KioCard } from "@/features/kio-card/KioCard";
+import { StandStatus } from "@/features/health/StandStatus";
 import { ModeBanner } from "@/features/mode-banner/ModeBanner";
 import { useObserve } from "@/features/observe/useObserve";
 import { InterviewTimer, Timers } from "@/features/timers/Timers";
@@ -68,6 +69,7 @@ export function Instructor() {
 
   return (
     <main className="page">
+      <StandStatus />
       <ModeBanner mode={session.mode ?? mode} />
       <h1>Рабочее место преподавателя</h1>
 

@@ -97,3 +97,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 /* Возврат карточки: список полей в две колонки, чтобы диспетчер не скроллил. */
 .bounce-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; margin: 8px 0; }
+
+/* Готовность стенда: курсант не должен гадать, почему звонящий молчит. */
+.stand { padding: 6px 24px; margin: -16px -24px 12px; font-weight: 600; }
+.stand-warn { background: #fff4d6; border-bottom: 1px solid var(--warn); }
+.stand-bad { background: #fde8e8; border-bottom: 1px solid var(--violated); color: var(--violated); }

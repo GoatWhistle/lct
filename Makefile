@@ -2,6 +2,11 @@
 # и называют карточку, которая их закрывает, — README не должен врать.
 
 UV ?= uv
+
+# `make test` и `make demo` не запускать одновременно: они просят у uv разные
+# группы зависимостей, и uv пересобирает одно и то же окружение, а второй запуск
+# молча ждёт блокировку. Один раз поставить оба набора:
+#   cd backend && uv sync --extra dev --extra voice
 COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := help
@@ -57,7 +62,7 @@ repl: ## Текстовый диалог со звонящим без голос
 pregen: ## Дерево диалога и WAV первых реплик для офлайна
 	@echo "не реализовано — карточка tasks/lct-19-reference-dialog.md"; exit 1
 
-demo: ## Поднять всё в демо-режиме: офлайн, прогретые модели
-	@echo "не реализовано — карточка tasks/lct-21-demo-readiness.md"; exit 1
+demo: ## Поднять стенд для занятия: база, сценарии, бэкенд с голосом, фронт
+	./scripts/demo.sh
 
 .PHONY: help dev down back front types test test-voice typecheck lesson latency migrate revision models seed repl pregen demo

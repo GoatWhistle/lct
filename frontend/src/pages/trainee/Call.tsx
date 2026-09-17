@@ -2,6 +2,7 @@
 // Карточка КИО — lct-10, таймеры — lct-11.
 
 import { KioCard } from "@/features/kio-card/KioCard";
+import { StandStatus } from "@/features/health/StandStatus";
 import { ModeBanner, hintsAllowed } from "@/features/mode-banner/ModeBanner";
 import { Debrief } from "@/features/debrief/Debrief";
 import { SelfAssessment } from "@/features/self-assessment/SelfAssessment";
@@ -32,6 +33,7 @@ export function Call() {
 
   return (
     <main className="page">
+      <StandStatus />
       <ModeBanner mode={call.incoming?.mode} />
       <h1>АРМ оператора 112</h1>
       <InterviewTimer timers={call.timers} />
