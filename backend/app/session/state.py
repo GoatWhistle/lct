@@ -18,6 +18,7 @@ from app.domain.events import (
     Speaker,
     TranscriptEntry,
 )
+from app.dialog.caller import TemplateCaller
 from app.dialog.persona import PersonaState
 from app.dialog.slots import SlotMachine
 from app.domain.kio import KIO, apply_patch
@@ -50,6 +51,10 @@ class SessionState:
     # занятие идёт, подсказки откатываются на порядок чек-листа.
     slots: SlotMachine | None = None
     persona: PersonaState | None = None
+    caller: TemplateCaller | None = None
+    # Голосовой контур звонка. Нет — если голос выключен или моделей нет:
+    # тогда кадры микрофона только считаются.
+    voice: object | None = None
 
     # Аудио курсанта. До голосового контура (lct-06) кадры только считаются —
     # этого достаточно, чтобы доказать, что звук доходит от микрофона до сервера.

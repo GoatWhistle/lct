@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     mic_sample_rate: int = 16_000
     tts_sample_rate: int = 24_000
     offline: bool = False
+    # Голосовой контур: грузит ~5 с моделей при старте. В тестах выключен.
+    voice_enabled: bool = True
 
     # LLM. Провайдер меняется значением, не кодом (docs/arch/STACK.md).
     # Имена COMPAT_MODEL_* принимаются тоже — так их выставляет командный сниппет.

@@ -15,8 +15,8 @@ dev: ## Поднять стенд: postgres + backend --reload + frontend
 down: ## Погасить стенд
 	$(COMPOSE) down
 
-back: ## Только бэкенд, локально, без докера
-	cd backend && $(UV) run uvicorn app.main:app --reload --port 8000
+back: ## Бэкенд нативно, с голосовым контуром (порт 8000: сначала docker compose stop backend)
+	cd backend && $(UV) run --extra voice uvicorn app.main:app --reload --port 8000 --workers 1
 
 front: ## Только фронтенд, локально
 	npm --prefix frontend install && npm --prefix frontend run dev
@@ -24,8 +24,11 @@ front: ## Только фронтенд, локально
 types: ## domain/events.py → frontend/src/shared/types/generated.ts
 	cd backend && $(UV) run --no-project --with 'pydantic>=2.7' python scripts/export_types.py
 
-test: ## Тесты бэкенда
+test: ## Тесты бэкенда (голосовой контур пропускается)
 	cd backend && $(UV) run --extra dev pytest -q
+
+test-voice: ## Тест голосового контура на настоящих моделях: задержка и перебивание
+	cd backend && $(UV) run --extra dev --extra voice pytest tests/test_voice_pipeline.py -q -s
 
 typecheck: ## Проверить фронтенд компилятором
 	npm --prefix frontend run typecheck
@@ -57,4 +60,4 @@ pregen: ## Дерево диалога и WAV первых реплик для �
 demo: ## Поднять всё в демо-режиме: офлайн, прогретые модели
 	@echo "не реализовано — карточка tasks/lct-21-demo-readiness.md"; exit 1
 
-.PHONY: help dev down back front types test typecheck lesson latency migrate revision models seed repl pregen demo
+.PHONY: help dev down back front types test test-voice typecheck lesson latency migrate revision models seed repl pregen demo

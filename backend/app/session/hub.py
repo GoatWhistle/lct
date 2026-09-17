@@ -79,7 +79,7 @@ class SessionHub:
     # ── вещание ──
 
     @staticmethod
-    def _put(queues: set[asyncio.Queue], event: BaseModel) -> None:
+    def _put(queues: set[asyncio.Queue], event: BaseModel | bytes) -> None:
         for queue in list(queues):
             try:
                 queue.put_nowait(event)
@@ -89,7 +89,7 @@ class SessionHub:
     def to_observers(self, session_id: UUID, event: BaseModel) -> None:
         self._put(self._observers.get(session_id, set()), event)
 
-    def to_trainee(self, session_id: UUID, event: BaseModel) -> None:
+    def to_trainee(self, session_id: UUID, event: BaseModel | bytes) -> None:
         self._put(self._trainees.get(session_id, set()), event)
 
     def broadcast(self, session_id: UUID, event: BaseModel) -> None:

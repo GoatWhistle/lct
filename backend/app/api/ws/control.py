@@ -25,12 +25,17 @@ from app.domain.events import (
     ReferenceStarted,
     SessionEnded,
 )
+import asyncio
+
+from app.dialog.caller import TemplateCaller
 from app.dialog.persona import PersonaState
 from app.dialog.runtime import get_embedder
 from app.dialog.slots import SlotMachine
 from app.scenarios import store
 from app.session.hub import hub
 from app.session.state import SessionState, now_utc
+from app.voice.models import get_voice_models
+from app.voice.pipeline import FILLERS, prefetch
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -69,6 +74,13 @@ async def _start(session_id: UUID, event) -> None:
     if embedder is not None:
         state.slots = SlotMachine(scenario, embedder)
     state.persona = PersonaState(scenario.persona)
+    state.caller = TemplateCaller()
+
+    # Первая реплика и филлеры синтезируются, пока курсант не снял трубку:
+    # «Алло! Помогите!» должно прозвучать мгновенно (docs/arch/BACKEND.md).
+    models = get_voice_models()
+    if models is not None:
+        asyncio.create_task(prefetch(models, [scenario.first_line, *FILLERS.values()]))
     state.on_event("call.incoming")
     hub.start_ticker(session_id)
 

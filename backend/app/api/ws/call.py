@@ -25,9 +25,12 @@ from app.domain.events import (
     TimerTick,
     TraineeToServer,
 )
+from app.domain.events import BgStart
 from app.scenarios import store
 from app.session.hub import hub
 from app.session.state import now_utc
+from app.voice.models import get_voice_models
+from app.voice.pipeline import VoiceSession
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -40,7 +43,7 @@ _adapter = TypeAdapter(TraineeToServer)
 
 
 def _on_audio(session_id: UUID, state, frame: bytes) -> None:
-    """Приём аудиокадра. Голосовой контур (lct-06) заменит счёт на VAD → STT."""
+    """Приём аудиокадра: в голосовой контур, а без него — только счёт."""
     if len(frame) != FRAME_BYTES:
         state.bad_frames += 1
         if state.bad_frames == 1:
@@ -49,6 +52,8 @@ def _on_audio(session_id: UUID, state, frame: bytes) -> None:
                         session_id, len(frame), FRAME_BYTES)
         return
     state.audio_frames += 1
+    if state.voice is not None:
+        state.voice.feed(frame)
     if state.audio_frames % FRAMES_PER_LOG == 0:
         log.info("сессия %s: получено %d кадров (%.0f с звука)",
                  session_id, state.audio_frames, state.audio_frames * 0.02)
@@ -81,6 +86,7 @@ async def _handle(session_id: UUID, state, event) -> None:
             hub.to_observers(session_id, state.snapshot())
             if hub.journal:
                 await hub.journal.session_started(session_id, state.started_at)
+            _start_voice(session_id, state)
 
         case "kio.patch":
             state.patch_kio(event.fields)
@@ -125,6 +131,8 @@ async def _handle(session_id: UUID, state, event) -> None:
                 )
 
         case "call.hangup":
+            if state.voice is not None:
+                await state.voice.close()
             state.ended_at = now_utc()
             state.end_reason = CallEndReason.HANGUP
             hub.stop_ticker(session_id)
@@ -136,10 +144,35 @@ async def _handle(session_id: UUID, state, event) -> None:
                 )
 
 
+def _start_voice(session_id: UUID, state) -> None:
+    """Голос включается, когда курсант снял трубку: звонящий сразу кричит первую реплику."""
+    models = get_voice_models()
+    scenario = store.get(state.scenario_id)
+    if models is None or scenario is None or state.voice is not None:
+        return
+    state.voice = VoiceSession(
+        session_id=session_id,
+        state=state,
+        models=models,
+        send_event=lambda event: hub.to_trainee(session_id, event),
+        send_observer=lambda event: hub.to_observers(session_id, event),
+        send_audio=lambda pcm: hub.to_trainee(session_id, pcm),
+        journal=hub.journal,
+    )
+    if scenario.background:
+        event = BgStart(loop=scenario.background.loop, gain_db=scenario.background.gain_db)
+        hub.broadcast(session_id, event)
+    state.voice.speak(scenario.first_line, state.persona.mood)
+
+
 async def _pump(ws: WebSocket, queue: asyncio.Queue) -> None:
     while True:
-        event = await queue.get()
-        await ws.send_text(event.model_dump_json())
+        item = await queue.get()
+        # Бинарь — звук звонящего, без обёртки JSON (docs/arch/CONTRACT.md).
+        if isinstance(item, bytes):
+            await ws.send_bytes(item)
+        else:
+            await ws.send_text(item.model_dump_json())
 
 
 @router.websocket("/ws/call/{session_id}")

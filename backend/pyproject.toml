@@ -19,6 +19,9 @@ dependencies = [
     "onnxruntime>=1.18",
     "tokenizers>=0.19",
     "numpy>=1.26",
+    # Числа словами перед синтезом: Silero молча выбрасывает цифры, и звонящий
+    # произносит «улица Ленина, дом… квартира…» без номеров.
+    "num2words>=0.5.13",
 ]
 
 [project.optional-dependencies]

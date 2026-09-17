@@ -33,12 +33,15 @@ TASK-<id>.md      исполнительный гайд: файл → что с�
 ## Команды
 
 ```
-make dev        docker compose: postgres + backend + frontend
+make dev        docker compose: postgres + backend + frontend (без голоса)
+make back       бэкенд нативно, с голосовым контуром (сначала docker compose stop backend)
 make types      domain/events.py → frontend/src/shared/types/generated.ts
-make test       тесты контракта
+make test       тесты бэкенда
+make test-voice голосовой контур на настоящих моделях: задержка и перебивание
 make typecheck  tsc --noEmit на фронте
 make models     эмбеддинги, GigaAM, Silero VAD; Silero TTS — вручную, скрипт подскажет
-make latency    замер задержки голосового контура по этапам
+make latency    замер моделей речи по этапам
+make lesson     запустить занятие и напечатать ссылки на экраны
 make seed       сценарии в БД
 make repl       текстовый диалог со звонящим, без голоса и LLM
 make migrate    накатить миграции
