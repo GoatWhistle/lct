@@ -1,6 +1,8 @@
 // АРМ курсанта: приём вызова и разговор голосом.
 // Карточка КИО — lct-10, таймеры — lct-11.
 
+import { KioCard } from "@/features/kio-card/KioCard";
+import { display } from "@/features/kio-card/merge";
 import { useCall } from "@/features/call/useCall";
 import { sessionIdFromUrl } from "@/shared/api/session";
 
@@ -48,6 +50,26 @@ export function Call() {
 
       {call.error && <p className="violated">{call.error}</p>}
 
+      <div className="columns">
+        <section>
+          <h2>Карточка информационного обмена</h2>
+          <KioCard
+            state={call.card}
+            required={call.incoming?.required_fields ?? []}
+            readOnly={!call.micOn}
+            onChange={call.patchKio}
+          />
+          <p>
+            <button
+              type="button"
+              disabled={!call.micOn || !display(call.card, "dds")}
+              onClick={() => call.dispatch(display(call.card, "dds") as never)}
+            >
+              Передать в ДДС
+            </button>
+          </p>
+        </section>
+        <section>
       <h2>Разговор</h2>
       <table className="grid">
         <tbody>
@@ -60,6 +82,8 @@ export function Call() {
           {call.lines.length === 0 && <tr><td colSpan={2}>—</td></tr>}
         </tbody>
       </table>
+        </section>
+      </div>
     </main>
   );
 }

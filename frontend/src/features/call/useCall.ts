@@ -10,7 +10,11 @@ import { Ambience } from "@/shared/audio/ambience";
 import { type Capture, startCapture } from "@/shared/audio/capture";
 import { EnergyGate } from "@/shared/audio/levels";
 import { CALLER_RATE, Playback } from "@/shared/audio/playback";
-import type { CallIncoming, ServerToTrainee, TimerSnapshot } from "@/shared/types/generated";
+import { type CardState, applyPatch, edit, empty as emptyCard } from "@/features/kio-card/merge";
+import type { CallIncoming, DDSCode, ServerToTrainee, TimerSnapshot } from "@/shared/types/generated";
+
+/** Правки копятся и уходят одной дельтой: 300 мс тишины — и отправка. */
+const PATCH_DEBOUNCE_MS = 300;
 
 export interface Line {
   speaker: "caller" | "operator";
@@ -28,12 +32,15 @@ export function useCall(sessionId: string | null) {
   const [timers, setTimers] = useState<TimerSnapshot[]>([]);
   const [callerSpeaking, setCallerSpeaking] = useState(false);
   const [micOn, setMicOn] = useState(false);
+  const [card, setCard] = useState<CardState>(emptyCard);
   const [error, setError] = useState<string | null>(null);
 
   const channel = useRef<ReturnType<typeof callChannel> | null>(null);
   const capture = useRef<Capture | null>(null);
   const audio = useRef<{ context: AudioContext; playback: Playback; ambience: Ambience } | null>(null);
   const gate = useRef(new EnergyGate());
+  const outbox = useRef<Record<string, unknown>>({});
+  const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const append = useCallback((line: Line) => {
     setLines((prev) => {
@@ -81,6 +88,9 @@ export function useCall(sessionId: string | null) {
             break;
           case "bg.stop":
             audio.current?.ambience.stop();
+            break;
+          case "kio.patch":
+            setCard((prev) => applyPatch(prev, event.fields, event.source));
             break;
           case "timer.tick":
             setTimers(event.timers);
@@ -137,5 +147,23 @@ export function useCall(sessionId: string | null) {
 
   const hint = useCallback(() => channel.current?.send({ type: "hint.request" }), []);
 
-  return { status, phase, incoming, lines, timers, callerSpeaking, micOn, error, answer, hangup, hint };
+  const patchKio = useCallback((path: string, value: unknown) => {
+    setCard((prev) => edit(prev, path, value));
+    outbox.current[path] = value;
+    if (patchTimer.current) clearTimeout(patchTimer.current);
+    patchTimer.current = setTimeout(() => {
+      const fields = outbox.current;
+      outbox.current = {};
+      if (Object.keys(fields).length) channel.current?.send({ type: "kio.patch", fields });
+    }, PATCH_DEBOUNCE_MS);
+  }, []);
+
+  const dispatch = useCallback((service: DDSCode) => {
+    channel.current?.send({ type: "dds.dispatch", service });
+  }, []);
+
+  return {
+    status, phase, incoming, lines, timers, callerSpeaking, micOn, error, card,
+    answer, hangup, hint, patchKio, dispatch,
+  };
 }

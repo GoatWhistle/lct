@@ -7,7 +7,8 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && node scripts/check-kio-fields.mjs",
+    "check:kio": "node scripts/check-kio-fields.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.103.1",

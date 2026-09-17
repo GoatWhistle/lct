@@ -39,3 +39,15 @@ button { font: inherit; padding: 6px 16px; border: 1px solid var(--line); backgr
 button:disabled { opacity: 0.5; cursor: default; }
 .warn { color: var(--warn); }
 .violated { color: var(--violated); }
+
+/* Две колонки: карточка и разговор рядом, как на настоящем АРМ. */
+.columns { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+.columns > section { flex: 1 1 420px; min-width: 0; }
+.kio { display: flex; flex-direction: column; gap: 12px; }
+.kio .grid { width: 100%; }
+.kio thead th { background: var(--line); }
+.kio input[type="text"], .kio input[type="number"], .kio select { width: 100%; font: inherit; border: 1px solid var(--line); padding: 2px 4px; background: var(--panel); }
+/* Обязательное поле помечено точкой, незаполненное — жёлтым. */
+.required { color: var(--warn); font-weight: 700; }
+/* Правка, которую сервер ещё не подтвердил. */
+.pending { background: #fffbe6; }
