@@ -22,3 +22,6 @@ frontend/dist/
 
 # Python
 .pytest_cache/
+
+# Артефакты Windows рядом со скачанными файлами
+*:Zone.Identifier
