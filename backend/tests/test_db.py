@@ -17,15 +17,23 @@ from app.db.models import Group, Scenario, Session, Trainee
 @pytest.fixture
 async def db():
     """Свой движок на каждый тест: глобальный в app.db.base кэшируется и
-    привязывается к первому событийному циклу, а pytest даёт новый на каждый тест."""
-    engine = create_async_engine(get_settings().database_url, poolclass=None)
-    try:
-        async with engine.connect() as probe:
-            await probe.execute(text("select 1"))
-    except Exception as exc:  # noqa: BLE001 — важен факт недоступности, не причина
-        await engine.dispose()
-        pytest.skip(f"Postgres недоступен ({type(exc).__name__}) — подними `make dev`")
+    привязывается к первому событийному циклу, а pytest даёт новый на каждый тест.
 
+    Доступность проверяется подключением к порту, а не через engine.connect():
+    у asyncpg нет таймаута по умолчанию, и когда Postgres действительно недоступен
+    (Docker не поднят), connect() висит на TCP-таймауте ОС — минуты, а не секунды,
+    и `make test` зависает вместо того, чтобы пропустить тест. Тот же баг был
+    когда-то и в test_profile.py — здесь чинится тем же способом."""
+    import socket
+    from urllib.parse import urlparse
+
+    url = urlparse(get_settings().database_url)
+    try:
+        socket.create_connection((url.hostname or "localhost", url.port or 5432), timeout=2).close()
+    except OSError as exc:
+        pytest.skip(f"Postgres недоступен ({exc}) — подними `make dev`")
+
+    engine = create_async_engine(get_settings().database_url, poolclass=None)
     maker = async_sessionmaker(engine, expire_on_commit=False)
     async with maker() as session:
         yield session
