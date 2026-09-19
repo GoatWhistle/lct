@@ -12,6 +12,7 @@ METRIC_MAP: dict[str, tuple[ErrorCode, Competency]] = {
     "dds_chain": (ErrorCode.E6, Competency.CARD),
     "callback": (ErrorCode.E3, Competency.INTAKE),
     "checklist_completeness": (ErrorCode.E1, Competency.INTERVIEW),
+    "address_refined": (ErrorCode.E1, Competency.INTERVIEW),
     "interview_time": (ErrorCode.E3, Competency.NORMS),
     "incident_signs": (ErrorCode.E2, Competency.ROUTING),
     "incident_type": (ErrorCode.E2, Competency.ROUTING),
@@ -30,6 +31,7 @@ METRIC_MAP: dict[str, tuple[ErrorCode, Competency]] = {
 #: тренажёр, поэтому он весит больше всего.
 METRIC_WEIGHTS: dict[str, float] = {
     "checklist_completeness": 4.0,
+    "address_refined": 2.0,
     "incident_signs": 2.0,
     "incident_type": 2.0,
     "dds_choice": 2.0,

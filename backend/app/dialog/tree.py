@@ -64,7 +64,11 @@ class TreeCaller:
 
         parts: list[str] = []
         for fact_id in turn.revealed:
-            parts.append(self._line("reveal", fact_id, mood) or "")
+            section = "refine" if fact_id in turn.refined else "reveal"
+            parts.append(self._line(section, fact_id, mood) or "")
+        for fact_id in turn.refined:
+            if fact_id not in turn.revealed:
+                parts.append(self._line("refine", fact_id, mood) or "")
         for fact_id in turn.repeated:
             parts.append(self._line("repeat", fact_id, mood) or "")
 

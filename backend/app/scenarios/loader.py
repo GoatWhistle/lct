@@ -79,6 +79,23 @@ def _common_not_questions(root: Path) -> list[str]:
     return list(_read_yaml(common).get("not_questions", []))
 
 
+def _common_checklist(root: Path, wanted: set[str]) -> list[dict]:
+    """Общие пункты опроса — по требованию сценария, а не всем подряд.
+
+    В `common.yaml` лежат формулировки пунктов, которые не принадлежат ни одному
+    классификатору: проверка адреса, контакты заявителя. Сценарий подключает их,
+    объявив пункт с тем же `id` и без текста, — текст и примеры подставятся сюда.
+    Насильно добавлять их во все сценарии нельзя: непрочитанный пункт чек-листа
+    штрафует курсанта отметкой E1 за вопрос, которого сценарий не требовал.
+    """
+    common = root / COMMON
+    if not common.exists():
+        return []
+    return [
+        item for item in _read_yaml(common).get("checklist", []) if item.get("id") in wanted
+    ]
+
+
 def load_file(path: Path, root: Path) -> Scenario:
     raw = _read_yaml(path)
     raw["not_questions"] = _common_not_questions(root) + list(raw.get("not_questions", []))
@@ -91,15 +108,17 @@ def load_file(path: Path, root: Path) -> Scenario:
             "и руками не пишется — иначе факты и эталон разъедутся"
         )
 
+    own = raw.get("checklist", [])
+    base = _common_checklist(root, {item.get("id") for item in own})
     extends = raw.get("extends")
     if extends:
         base_path = root / extends
         if not base_path.exists():
             raise ScenarioError(f"{path.name}: чек-лист {extends} не найден")
-        base = _read_yaml(base_path).get("checklist", [])
+        base = base + _read_yaml(base_path).get("checklist", [])
+    if base:
         raw["checklist"] = [
-            item.model_dump(exclude_none=True)
-            for item in _merge_checklist(base, raw.get("checklist", []))
+            item.model_dump(exclude_none=True) for item in _merge_checklist(base, own)
         ]
 
     try:
@@ -118,11 +137,17 @@ def load_file(path: Path, root: Path) -> Scenario:
         if not item.question:
             raise ScenarioError(f"{path.name}: у пункта {item.id} нет текста вопроса")
 
+    item_ids = {item.id for item in scenario.checklist}
     for fact in scenario.facts:
         question_id = fact.reveal_on.question if fact.reveal_on else None
-        if question_id and question_id not in {item.id for item in scenario.checklist}:
+        if question_id and question_id not in item_ids:
             raise ScenarioError(
                 f"{path.name}: факт {fact.id} раскрывается вопросом {question_id}, "
+                "которого нет в чек-листе"
+            )
+        if fact.refine_on and fact.refine_on not in item_ids:
+            raise ScenarioError(
+                f"{path.name}: факт {fact.id} уточняется вопросом {fact.refine_on}, "
                 "которого нет в чек-листе"
             )
 

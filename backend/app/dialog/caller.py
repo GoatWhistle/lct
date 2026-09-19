@@ -69,6 +69,16 @@ REVEAL: dict[Mood, str] = {
     Mood.CONFUSED: "Так... {fact}... кажется.",
 }
 
+#: Уточнение: оператор переспросил, и выясняется, что адрес был не тот.
+#: Это не повтор — звонящий не раздражается, он поправляется.
+REFINE: dict[Mood, str] = {
+    Mood.PANIC: "Нет, не там! {fact}!",
+    Mood.WORRIED: "Ой, нет... {fact}.",
+    Mood.CALM: "Уточню: {fact}.",
+    Mood.AGGRESSIVE: "Да я же про другое! {fact}!",
+    Mood.CONFUSED: "А... нет, кажется {fact}...",
+}
+
 #: Повторный вопрос по уже сказанному.
 REPEAT: dict[Mood, str] = {
     Mood.PANIC: "Я же сказал — {fact}! Записывайте!",
@@ -94,7 +104,11 @@ class TemplateCaller:
 
         parts: list[str] = []
         for fact_id in turn.revealed:
-            parts.append(REVEAL[mood].format(fact=facts[fact_id]))
+            template = REFINE if fact_id in turn.refined else REVEAL
+            parts.append(template[mood].format(fact=facts[fact_id]))
+        for fact_id in turn.refined:
+            if fact_id not in turn.revealed:
+                parts.append(REFINE[mood].format(fact=facts[fact_id]))
         for fact_id in turn.repeated:
             parts.append(REPEAT[mood].format(fact=facts[fact_id]))
 
@@ -139,7 +153,11 @@ class LlmCaller:
         mood = persona.remember()
 
         facts = {fact.id: fact.value for fact in slots.revealed_facts()}
-        say_now = [facts[fact_id] for fact_id in turn.revealed if fact_id in facts]
+        say_now = [
+            facts[fact_id]
+            for fact_id in [*turn.revealed, *turn.refined]
+            if fact_id in facts
+        ]
         repeated = [facts[fact_id] for fact_id in turn.repeated if fact_id in facts]
 
         system = _prompt("caller.md").format(

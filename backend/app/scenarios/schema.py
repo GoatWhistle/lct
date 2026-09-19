@@ -44,10 +44,26 @@ class RevealOn(Strict):
 
 
 class Fact(Strict):
+    """Факт, который оператор должен добыть.
+
+    `refined` — второе, настоящее значение. Нужно там, где заявитель называет
+    ориентир или адрес, по которому стоит сам: «ул. Станционная, 28» оказывается
+    Королёвом, «дом с библиотекой №193» — домом 11 по улице Грина. Памятка
+    заказчика называет это обычным делом, а не краем сценария, и в билетах такой
+    вызов не один (docs/spec/TICKETS.md).
+
+    Пока оператор не переспросил, звонящий говорит `value`; после уточняющего
+    вопроса — `refined`, и эталон сверяется уже с ним.
+    """
+
     id: str
     value: str
     hidden: bool = False
     reveal_on: RevealOn | None = None
+    refined: str | None = None
+    refine_on: str | None = Field(
+        default=None, description="Пункт чек-листа, уточняющий этот факт"
+    )
 
     @model_validator(mode="after")
     def hidden_needs_condition(self):
@@ -55,6 +71,15 @@ class Fact(Strict):
             raise ValueError(
                 f"факт {self.id}: hidden требует reveal_on.approach — "
                 "скрытый факт не раскрывается прямым вопросом"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def refinement_needs_both_halves(self):
+        if bool(self.refined) != bool(self.refine_on):
+            raise ValueError(
+                f"факт {self.id}: refined и refine_on задаются вместе — "
+                "иначе уточнение либо нечем вызвать, либо нечего сказать"
             )
         return self
 

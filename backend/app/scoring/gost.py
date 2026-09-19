@@ -111,6 +111,7 @@ def evaluate(
     kio: KIO,
     timers: SessionTimers,
     revealed_facts: list[str] | None,
+    refined_facts: list[str] | None = None,
     end_reason: CallEndReason | None = None,
     bounced_fields: list[str] | None = None,
 ) -> GostResult:
@@ -220,6 +221,23 @@ def evaluate(
             passed=kio.dds == truth.dds,
             ref="классификатор ДДС",
             finding=f"Карточка ушла в ДДС {actual}, верная — {truth.dds.value}",
+        )
+
+    # ── подтверждение места происшествия, E1 ──
+    #
+    # Адрес заявителя не всегда адрес происшествия: он называет тот, где стоит
+    # сам, или ориентир вместо дома. В билетах заказчика это основной приём
+    # усложнения (docs/spec/TICKETS.md), и оператор обязан переспросить.
+    refinable = [fact.id for fact in scenario.facts if fact.refine_on]
+    if refinable and refined_facts is not None:
+        confirmed = [fact_id for fact_id in refinable if fact_id in refined_facts]
+        build.add(
+            "address_refined", "Место происшествия подтверждено",
+            f"уточнено {len(confirmed)} из {len(refinable)}", "уточнены все",
+            passed=len(confirmed) == len(refinable),
+            ref="памятка АРМ-112: адрес заявителя не всегда адрес происшествия",
+            finding="Оператор не переспросил про место происшествия — записан адрес,"
+                    " который назвал заявитель",
         )
 
     # ── карточка, E5 ──

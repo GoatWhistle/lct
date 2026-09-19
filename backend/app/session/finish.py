@@ -31,6 +31,7 @@ async def finish(session_id: UUID, state) -> None:
         kio=state.kio,
         timers=state.timers,
         revealed_facts=[fact.id for fact in state.slots.revealed_facts()] if state.slots else None,
+        refined_facts=list(state.slots.refined) if state.slots else None,
         end_reason=state.end_reason,
         bounced_fields=state.bounced_fields,
     )

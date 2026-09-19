@@ -1,0 +1,62 @@
+# Билет 3, вызов 1 (docs/spec/TICKETS.md). Взят первым из библиотеки заказчика,
+# потому что показывает приём, которого не было в наших сценариях: названный
+# адрес существует и в Москве, и в области, и правильный узнаётся только
+# переспросом. Механика — tasks/lct-35-address-refinement.md
+id: fire-private-house-l3
+title: "Пожар в частном доме, адрес уточняется"
+type: fire
+level: L3
+topics: [fires, address]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+
+signs: [жилой дом, частный дом, открытое пламя]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview,    mood: worried }
+    - { stage: dispatch,     mood: calm }
+
+first_line: "Здравствуйте! У нас крыша горит, дом деревянный! Приезжайте!"
+
+facts:
+  - id: f_address
+    value: "улица Станционная, дом 28"
+    # Заявитель называет улицу так, будто это Москва. Настоящий адрес —
+    # подмосковный Королёв, и он всплывает только на уточняющий вопрос.
+    refined: "Московская область, город Королёв, улица Станционная, дом 28"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_burns
+    value: "горит крыша, огонь открытый, дом деревянный"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "все вышли во двор, в доме никого нет"
+    reveal_on: { question: q_people }
+  - id: f_gas
+    value: "дом не газифицирован, газа нет"
+    reveal_on: { question: q_gas }
+
+checklist:
+  - { id: q_address,       fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_burns,    fact: f_what_burns }
+  - { id: q_people,        fact: f_people }
+  - { id: q_gas,           fact: f_gas }
+
+required_fields:
+  - address
+  - incident_type
+  - description
+
+ground_truth:
+  # Эталон — уточнённый адрес: записавший «улица Станционная, 28» отправит
+  # расчёт не в тот регион.
+  address: "Московская область, город Королёв, улица Станционная, дом 28"
+  victims: 0
+
+tree:
+  pregenerated: false

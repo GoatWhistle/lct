@@ -49,6 +49,7 @@ class TurnResult:
     matched: list[str] = field(default_factory=list)   # пункты чек-листа
     revealed: list[str] = field(default_factory=list)  # факты, раскрытые впервые
     repeated: list[str] = field(default_factory=list)  # факты, спрошенные повторно
+    refined: list[str] = field(default_factory=list)   # факты, уточнённые переспросом
     scores: dict[str, float] = field(default_factory=dict)
 
     @property
@@ -95,8 +96,16 @@ class SlotMachine:
             if question and not fact.hidden and fact.id not in self._reveals.get(question, []):
                 self._reveals.setdefault(question, []).append(fact.id)
 
+        # Какой пункт чек-листа какой факт уточняет: «это точно Москва?» меняет
+        # адрес заявителя на адрес происшествия (docs/spec/TICKETS.md).
+        self._refines: dict[str, list[str]] = {}
+        for fact in scenario.facts:
+            if fact.refine_on:
+                self._refines.setdefault(fact.refine_on, []).append(fact.id)
+
         self.asked: list[str] = []
         self.revealed: list[str] = []
+        self.refined: list[str] = []
 
     # ── реплика оператора ──
 
@@ -149,6 +158,18 @@ class SlotMachine:
                 else:
                     self.revealed.append(fact_id)
                     result.revealed.append(fact_id)
+
+            # Уточнение — не повтор: оператор спросил о другом и получил другое.
+            for fact_id in self._refines.get(item.id, []):
+                if fact_id in self.refined:
+                    continue
+                self.refined.append(fact_id)
+                result.refined.append(fact_id)
+                if fact_id not in self.revealed:
+                    # Уточнили раньше, чем спросили: факт считается раскрытым,
+                    # иначе звонящий промолчит о том, что только что назвал.
+                    self.revealed.append(fact_id)
+                    result.revealed.append(fact_id)
         return result
 
     def reveal_by_approach(self, fact_id: str) -> bool:
@@ -168,9 +189,20 @@ class SlotMachine:
 
     # ── что видят другие ──
 
+    def value_of(self, fact_id: str) -> str:
+        """Значение факта с учётом уточнения: до переспроса заявитель называет
+        ориентир, после — настоящий адрес."""
+        fact = self._facts[fact_id]
+        if fact_id in self.refined and fact.refined:
+            return fact.refined
+        return fact.value
+
     def revealed_facts(self) -> list[Fact]:
         """Единственное, что уходит в контекст звонящего."""
-        return [self._facts[fact_id] for fact_id in self.revealed]
+        return [
+            self._facts[fact_id].model_copy(update={"value": self.value_of(fact_id)})
+            for fact_id in self.revealed
+        ]
 
     def unasked(self) -> list[ChecklistItem]:
         """Неотработанные пункты по порядку чек-листа — источник подсказки."""
