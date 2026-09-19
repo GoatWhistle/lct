@@ -5,3 +5,8 @@
 *.jpg binary
 *.wav binary
 *.mp3 binary
+# Источники заказчика в docs/spec/source/
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.zip binary

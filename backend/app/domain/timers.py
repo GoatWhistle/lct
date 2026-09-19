@@ -55,7 +55,12 @@ NORMATIVES: dict[TimerCode, Normative] = {
         code=TimerCode.DDS_NOTIFY, title="Оповещение ДДС", limit_ms=60_000
     ),
     TimerCode.DDS_ACK: Normative(
-        code=TimerCode.DDS_ACK, title="Подтверждение получения карточки", limit_ms=4_000
+        # 30 секунд — ПП РФ № 1931 и памятка АРМ-112, а не ГОСТ: до получения
+        # датасета здесь стояло 4 секунды, взятые по догадке (docs/spec/DATASET.md).
+        code=TimerCode.DDS_ACK,
+        title="Подтверждение получения карточки",
+        limit_ms=30_000,
+        ref="ПП РФ № 1931",
     ),
     TimerCode.ZONE_CHECK: Normative(
         code=TimerCode.ZONE_CHECK, title="Проверка зоны ответственности", limit_ms=30_000

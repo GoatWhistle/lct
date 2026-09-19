@@ -440,7 +440,7 @@ class CardReceived(BaseModel):
 
 
 class CardAck(BaseModel):
-    """Останавливает норматив `dds_ack` (≤ 4 с)."""
+    """Останавливает норматив `dds_ack` (≤ 30 с)."""
 
     type: Literal["card.ack"] = "card.ack"
 

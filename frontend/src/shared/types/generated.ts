@@ -58,7 +58,7 @@ export interface CallerUtterance {
   mood: Mood;
 }
 
-/** Останавливает норматив `dds_ack` (≤ 4 с). */
+/** Останавливает норматив `dds_ack` (≤ 30 с). */
 export interface CardAck {
   type: "card.ack";
 }
