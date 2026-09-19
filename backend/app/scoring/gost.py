@@ -9,6 +9,7 @@
 import re
 from dataclasses import dataclass, field
 
+from app.domain import ekp
 from app.domain.events import CallEndReason, Metric
 from app.domain.kio import KIO, missing_fields
 from app.domain.taxonomy import ERRORS, Competency, Finding, FindingSource
@@ -182,7 +183,27 @@ def evaluate(
             )
 
     # ── классификация и маршрутизация, E2 ──
-    if truth.incident_type is not None:
+    #
+    # Признаки — то, что оператор действительно делает в боевом АРМ-112: службу
+    # он не выбирает, её считает система по ЕКП (docs/spec/DATASET.md). Поэтому
+    # размеченный признаками сценарий оценивается по ним, а не по выбору ДДС.
+    if truth.incident_code is not None:
+        found = ekp.incident(truth.incident_code)
+        expected = " · ".join(found.signs) if found else truth.incident_code
+        actual = " · ".join(kio.signs) if kio.signs else "не проставлены"
+        build.add(
+            "incident_signs", "Признаки происшествия",
+            actual, expected,
+            passed=kio.incident_code == truth.incident_code,
+            ref=f"классификатор ЕКП {ekp.reference().version}",
+            finding=(
+                f"Признаки «{actual}» дают {kio.incident_code or 'пустой код'}, "
+                f"верные — «{expected}» ({truth.incident_code})"
+            ),
+        )
+        # Список оповещения производен: при верных признаках он верен всегда,
+        # и штрафовать за него отдельно — штрафовать дважды за одно.
+    elif truth.incident_type is not None:
         actual = kio.incident_type.value if kio.incident_type else "не указан"
         build.add(
             "incident_type", "Тип происшествия",
@@ -191,7 +212,7 @@ def evaluate(
             ref="классификатор происшествий",
             finding=f"Тип происшествия {actual}, верный — {truth.incident_type.value}",
         )
-    if truth.dds is not None:
+    if truth.dds is not None and truth.incident_code is None:
         actual = kio.dds.value if kio.dds else "не выбрана"
         build.add(
             "dds_choice", "Выбор ДДС",

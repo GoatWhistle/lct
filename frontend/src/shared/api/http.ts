@@ -105,6 +105,23 @@ export interface Profile {
   hints_total: number;
 }
 
+/** Значения следующего признака происшествия при уже выбранных (ЕКП). */
+export interface SignsPage {
+  level: number;
+  values: string[];
+  incident: { code: string; type: string; notify: string[] } | null;
+}
+
+export function useSigns(prefix: string[]) {
+  const query = prefix.map((sign) => `prefix=${encodeURIComponent(sign)}`).join("&");
+  return useQuery({
+    queryKey: ["ekp-signs", prefix],
+    // Справочник не меняется между занятиями — перезапрашивать незачем.
+    staleTime: Infinity,
+    queryFn: () => request<SignsPage>(`/api/ekp/signs${query ? `?${query}` : ""}`),
+  });
+}
+
 export const useTrainees = () =>
   useQuery({ queryKey: ["trainees"], queryFn: () => request<TraineeInfo[]>("/api/trainees") });
 

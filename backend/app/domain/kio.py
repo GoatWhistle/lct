@@ -102,7 +102,10 @@ class KIO(BaseModel):
     intercom_code: str | None = None  # спрашивается чек-листом 03, без него скорая стоит у двери
     coords: Coords | None = None
 
-    # Происшествие
+    # Происшествие. Оператор проставляет признаки, остальное считает система
+    # по ЕКП (domain/ekp.py) — службу он не выбирает.
+    signs: list[str] = Field(default_factory=list, max_length=3)
+    incident_code: str | None = Field(default=None, description="Код ЕКП по признакам")
     incident_type: IncidentType | None = None
     description: str | None = None
     victims_count: int | None = None
@@ -110,8 +113,12 @@ class KIO(BaseModel):
     life_threat: bool = False
     evacuation_needed: bool = False
 
-    # ДДС
-    dds: DDSCode | None = None
+    # ДДС. `notify` считается из признаков и правится только системой:
+    # в боевом АРМ оператор может добавить службу вручную, но не удалить.
+    notify: list[str] = Field(default_factory=list, description="Список оповещения")
+    dds: DDSCode | None = Field(
+        default=None, description="Устаревшее: одна служба. Заменено списком оповещения"
+    )
     dispatch_order_at: datetime | None = None
     arrival_at: datetime | None = None
 
@@ -124,7 +131,7 @@ class KIO(BaseModel):
 
 #: Поля, которые курсант не редактирует: их проставляет система.
 READ_ONLY_FIELDS: frozenset[str] = frozenset(
-    {"card_id", "registered_at", "caller_number", "response_status"}
+    {"card_id", "registered_at", "caller_number", "response_status", "incident_code", "notify"}
 )
 
 
@@ -152,6 +159,23 @@ def missing_fields(card: KIO, required: list[str]) -> list[str]:
     return empty
 
 
+def derive_incident(card: KIO) -> KIO:
+    """Пересчитать код происшествия и список оповещения по признакам.
+
+    Вызывается после каждой правки признаков: в боевом АРМ список оповещения
+    пересобирается сам, и это главное, чему учит карточка.
+    """
+    from app.domain import ekp
+
+    found = ekp.by_signs(card.signs)
+    data = card.model_dump()
+    data["incident_code"] = found.code if found else None
+    # Добавленную вручную службу не теряем: удалить её оператор не может.
+    manual = [name for name in card.notify if name not in ekp.notify_list(data["incident_code"] or "")]
+    data["notify"] = (ekp.notify_list(found.code) if found else []) + manual
+    return KIO.model_validate(data)
+
+
 def apply_patch(card: KIO, fields: dict[str, Any]) -> KIO:
     """Применить дельту `kio.patch`. Служебные поля игнорируются.
 
@@ -168,4 +192,5 @@ def apply_patch(card: KIO, fields: dict[str, Any]) -> KIO:
         nested = data.get(head) or {}
         nested[tail] = value
         data[head] = nested
-    return KIO.model_validate(data)
+    updated = KIO.model_validate(data)
+    return derive_incident(updated) if "signs" in fields else updated

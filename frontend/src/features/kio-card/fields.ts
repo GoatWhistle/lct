@@ -6,7 +6,7 @@
 
 import type { DDSCode, IncidentType } from "@/shared/types/generated";
 
-export type FieldKind = "text" | "number" | "bool" | "select";
+export type FieldKind = "text" | "number" | "bool" | "select" | "signs" | "list";
 
 export interface Field {
   /** Путь в карточке: «floor», «fire.floors» — так же, как в `kio.patch`. */
@@ -74,6 +74,10 @@ export const GROUPS: FieldGroup[] = [
   {
     title: "Происшествие",
     fields: [
+      // Признаки по ЕКП — то, что оператор действительно проставляет.
+      // Код и список оповещения считает сервер (docs/spec/DATASET.md).
+      { path: "signs", label: "Признаки происшествия", kind: "signs" },
+      { path: "incident_code", label: "Код ЕКП", kind: "text", readOnly: true },
       { path: "incident_type", label: "Тип происшествия", kind: "select", options: INCIDENT },
       { path: "description", label: "Описание", kind: "text" },
       { path: "victims_count", label: "Пострадавших", kind: "number" },
@@ -85,7 +89,9 @@ export const GROUPS: FieldGroup[] = [
   {
     title: "Дежурно-диспетчерская служба",
     fields: [
-      { path: "dds", label: "Служба", kind: "select", options: DDS },
+      // Список оповещения оператор не выбирает: он производен от признаков.
+      { path: "notify", label: "Список оповещения", kind: "list", readOnly: true },
+      { path: "dds", label: "Служба (устаревшее)", kind: "select", options: DDS },
       { path: "dispatch_order_at", label: "Приказ на выезд", kind: "text", readOnly: true },
       { path: "arrival_at", label: "Прибытие", kind: "text", readOnly: true },
     ],

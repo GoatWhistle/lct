@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from app.domain.events import CallEndReason
-from app.domain.kio import KIO
+from app.domain.kio import KIO, derive_incident
 from app.domain.taxonomy import Competency, ErrorCode
 from app.scenarios.loader import load_file
 from app.scoring.competency import radar
@@ -36,14 +36,18 @@ def timeline(answer_s: float = 5, interview_s: float = 60) -> SessionTimers:
 
 
 def good_card() -> KIO:
-    return KIO(
+    """Карточка, заполненная верно. Признаки — то, что курсант проставляет сам;
+    код ЕКП и список оповещения из них выводит домен, а не тест."""
+    card = KIO(
         address="ул. Ленина, д. 14, кв. 47",
         floor="5",
         incident_type="fire",
         dds="01",
         victims_count=2,
         description="горит балкон",
+        signs=["жилой дом", "балкон", "открытое пламя"],
     )
+    return derive_incident(card)
 
 
 def test_perfect_call_passes_everything(scenario):
@@ -110,12 +114,23 @@ def test_each_missing_fact_is_its_own_e1_with_the_reference_question(scenario):
     assert completeness.fact == "добыто 3 из 5 обязательных фактов"
 
 
-def test_wrong_dds_is_e2(scenario):
-    card = good_card()
-    card.dds = "03"
+def test_wrong_signs_are_e2(scenario):
+    """Оператор ошибся признаком — и происшествие уехало не в ту службу.
+    Службу он не выбирает, поэтому и ошибка именно в признаках."""
+    card = wrong_routing_card()
     result = evaluate(scenario=scenario, kio=card, timers=timeline(), revealed_facts=ALL_FACTS)
     finding = next(f for f in result.findings if f.code is ErrorCode.E2)
-    assert "03" in finding.summary and "01" in finding.summary
+    assert "квартира" in finding.summary, finding.summary
+    assert "балкон" in finding.summary, "в отметке не видно верного признака"
+
+
+def test_notify_list_is_derived_not_chosen(scenario):
+    """Список оповещения считается по ЕКП: 01 в нём есть, а выбирать его
+    оператор не может."""
+    card = good_card()
+    assert card.incident_code == scenario.ground_truth.incident_code
+    assert "Служба 101" in card.notify
+    assert len(card.notify) > 1, "происшествие почти всегда поднимает больше одной службы"
 
 
 def test_address_abbreviations_are_not_punished(scenario):
@@ -159,13 +174,23 @@ def test_dropped_call_without_callback_fails(scenario):
     assert not callback.passed and callback.fact == "обратного дозвона не было"
 
 
-def test_radar_is_a_projection_of_the_same_metrics(scenario):
+def wrong_routing_card() -> KIO:
+    """Тот же вызов, но признак второго уровня выбран неверно: «квартира»
+    вместо «балкона» — другой код ЕКП и другой список оповещения."""
     card = good_card()
-    card.dds = "03"
+    card.signs = ["жилой дом", "квартира", "открытое пламя"]
+    return derive_incident(card)
+
+
+def test_radar_is_a_projection_of_the_same_metrics(scenario):
+    card = wrong_routing_card()
     result = evaluate(scenario=scenario, kio=card, timers=timeline(interview_s=94), revealed_facts=ALL_FACTS)
     values = {score.competency: score.value for score in radar(result.metrics)}
 
-    assert values["routing"] == 0.5, "из двух метрик маршрутизации провалена одна"
+    # Маршрутизацию меряет одна метрика — признаки. Выбор службы из неё убран:
+    # список оповещения производен, и штрафовать за него отдельно значит
+    # наказать дважды за одну ошибку (docs/spec/DATASET.md).
+    assert values["routing"] == 0.0, "единственная метрика маршрутизации провалена"
     assert values["card"] == 1.0
     assert Competency.COMMUNICATION.value not in values, "без судьи коммуникация не оценивалась, а не провалена"
 

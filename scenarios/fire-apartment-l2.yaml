@@ -10,6 +10,10 @@ modes: [training, exam, self]
 
 extends: checklists/fire.yaml
 
+# Признаки по классификатору заказчика (docs/spec/DATASET.md). Код и список
+# оповещения выводит загрузчик — руками их писать нельзя.
+signs: [жилой дом, балкон, открытое пламя]
+
 persona:
   base: panic
   arc:

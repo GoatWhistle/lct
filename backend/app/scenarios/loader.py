@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from app.domain import ekp
 from app.domain.classifiers import DDS_BY_INCIDENT
 from app.scenarios.schema import ChecklistItem, Scenario
 
@@ -53,6 +54,18 @@ def _derive_ground_truth(scenario: Scenario) -> Scenario:
     scenario.ground_truth.incident_type = scenario.type
     scenario.ground_truth.dds = DDS_BY_INCIDENT[scenario.type]
     scenario.ground_truth.required_facts = required
+
+    # Признаки → код ЕКП → список оповещения. Сценарий без признаков остаётся
+    # рабочим: такие оцениваются по старым полям, пока их не разметят (lct-34).
+    if scenario.signs:
+        found = ekp.by_signs(scenario.signs)
+        if found is None:
+            raise ScenarioError(
+                f"{scenario.id}: признаки {scenario.signs} не найдены в классификаторе ЕКП "
+                f"версии {ekp.reference().version}"
+            )
+        scenario.ground_truth.incident_code = found.code
+        scenario.ground_truth.notify = ekp.notify_list(found.code)
     return scenario
 
 
@@ -71,7 +84,7 @@ def load_file(path: Path, root: Path) -> Scenario:
     raw["not_questions"] = _common_not_questions(root) + list(raw.get("not_questions", []))
 
     declared = raw.get("ground_truth") or {}
-    forbidden = {"incident_type", "dds", "required_facts"} & set(declared)
+    forbidden = {"incident_type", "dds", "required_facts", "incident_code", "notify"} & set(declared)
     if forbidden:
         raise ScenarioError(
             f"{path.name}: {', '.join(sorted(forbidden))} в ground_truth выводится кодом "

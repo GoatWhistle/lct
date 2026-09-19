@@ -1,6 +1,7 @@
 // Карточка КИО. Один и тот же компонент рисуется у курсанта, на пульте,
 // на внешнем мониторе и на АРМ ДДС — там в режиме `readOnly`.
 
+import { useSigns } from "@/shared/api/http";
 import { type CardState, display } from "./merge";
 import { type Field, visibleGroups } from "./fields";
 
@@ -80,6 +81,9 @@ function Input({
 }) {
   const emit = (next: unknown) => onChange?.(field.path, next);
 
+  if (field.kind === "list") {
+    return <span>{formatValue(value)}</span>;
+  }
   if (field.kind === "bool") {
     return (
       <input type="checkbox" checked={value === true} onChange={(e) => emit(e.target.checked)} />
@@ -94,6 +98,9 @@ function Input({
         ))}
       </select>
     );
+  }
+  if (field.kind === "signs") {
+    return <SignsPicker value={(value as string[]) ?? []} onChange={(next) => emit(next)} />;
   }
   if (field.kind === "number") {
     return (
@@ -117,9 +124,63 @@ function Input({
   );
 }
 
+/** Три признака происшествия каскадом: выбор верхнего сужает нижний.
+ *
+ * Значения приходят с сервера, а не лежат на фронте: классификатор — 1283 строки,
+ * и он обновляется файлом от заказчика (docs/spec/DATASET.md). Служба из выбора
+ * не следует — её считает сервер, поэтому здесь её нет. */
+function SignsPicker({
+  value, onChange,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const levels = [0, 1, 2];
+  return (
+    <div className="signs">
+      {levels.map((level) => (
+        <SignSelect
+          key={level}
+          prefix={value.slice(0, level)}
+          chosen={value[level] ?? ""}
+          onPick={(sign) => {
+            // Смена верхнего признака обнуляет нижние: они относились
+            // к другой ветке классификатора.
+            const next = value.slice(0, level);
+            if (sign) next.push(sign);
+            onChange(next);
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SignSelect({
+  prefix, chosen, onPick,
+}: {
+  prefix: string[];
+  chosen: string;
+  onPick: (sign: string) => void;
+}) {
+  const page = useSigns(prefix);
+  const values = page.data?.values ?? [];
+  // Уровня может не быть: часть происшествий классифицируется двумя признаками.
+  if (!page.isLoading && values.length === 0) return null;
+  return (
+    <select value={chosen} onChange={(e) => onPick(e.target.value)} disabled={page.isLoading}>
+      <option value="">—</option>
+      {values.map((sign) => (
+        <option key={sign} value={sign}>{sign}</option>
+      ))}
+    </select>
+  );
+}
+
 function formatValue(value: unknown): string {
   if (value === true) return "да";
   if (value === false) return "нет";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "—";
   if (value === null || value === undefined || value === "") return "—";
   return String(value);
 }

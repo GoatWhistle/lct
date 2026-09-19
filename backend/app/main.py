@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from pathlib import Path
 
+from app.api.http import ekp as ekp_api
 from app.api.http import scenarios as scenarios_api
 from app.api.http import sessions
 from app.api.http import trainees
@@ -62,6 +63,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Учебный симулятор занятия для системы 112", lifespan=lifespan)
 app.include_router(sessions.router)
 app.include_router(scenarios_api.router)
+app.include_router(ekp_api.router)
 app.include_router(trainees.router)
 app.include_router(call_ws.router)
 app.include_router(observe_ws.router)

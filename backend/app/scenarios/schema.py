@@ -96,6 +96,8 @@ class GroundTruth(Strict):
 
     incident_type: IncidentType | None = None
     dds: DDSCode | None = None
+    incident_code: str | None = None
+    notify: list[str] = []
     required_facts: list[str] = []
     address: str | None = None
     victims: int | None = None
@@ -113,6 +115,10 @@ class Scenario(Strict):
     persona: Persona
     background: Background | None = None
     first_line: str
+
+    # Признаки происшествия по ЕКП — то, что курсант обязан проставить в карточке.
+    # Из них загрузчик выводит код и список оповещения (domain/ekp.py).
+    signs: list[str] = Field(default_factory=list, max_length=3)
 
     facts: list[Fact] = []
     checklist: list[ChecklistItem] = []

@@ -218,12 +218,18 @@ export interface KIO {
   floor?: string | null;
   intercom_code?: string | null;
   coords?: Coords | null;
+  signs?: Array<string>;
+  /** Код ЕКП по признакам */
+  incident_code?: string | null;
   incident_type?: IncidentType | null;
   description?: string | null;
   victims_count?: number | null;
   is_emergency?: boolean;
   life_threat?: boolean;
   evacuation_needed?: boolean;
+  /** Список оповещения */
+  notify?: Array<string>;
+  /** Устаревшее: одна служба. Заменено списком оповещения */
   dds?: DDSCode | null;
   dispatch_order_at?: string | null;
   arrival_at?: string | null;

@@ -41,6 +41,9 @@ typecheck: ## Проверить фронтенд компилятором
 models: ## Скачать модели в backend/models/: эмбеддинги, GigaAM, Silero VAD; Silero TTS — вручную
 	cd backend && $(UV) run python scripts/models.py
 
+ekp: ## Классификатор происшествий заказчика → app/domain/ekp.json (разовый импорт)
+	cd backend && $(UV) run --with openpyxl python scripts/import_ekp.py
+
 seed: ## Залить сценарии из /scenarios в БД
 	cd backend && $(UV) run python scripts/seed.py
 
@@ -71,4 +74,4 @@ pregen: ## Построить таблицу реплик звонящего д�
 demo: ## Поднять стенд для занятия: база, сценарии, бэкенд с голосом, фронт
 	./scripts/demo.sh
 
-.PHONY: help dev down back front types test test-voice typecheck test-llm lesson llm-check latency migrate revision models seed repl pregen demo
+.PHONY: help dev down back front types ekp test test-voice typecheck test-llm lesson llm-check latency migrate revision models seed repl pregen demo
