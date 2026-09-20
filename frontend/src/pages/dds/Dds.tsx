@@ -11,9 +11,11 @@ import { GROUPS } from "@/features/kio-card/fields";
 import { KioCard } from "@/features/kio-card/KioCard";
 import { applyState, empty as emptyCard, type CardState } from "@/features/kio-card/merge";
 import { stationChannel, type ChannelStatus } from "@/shared/api/ws";
+import type { ServiceStatus, StationSnapshot } from "@/shared/types/generated";
+import { SERVICE_STATUS_LABELS, CARD_STATUS_LABELS, ALARMING } from "./statuses";
 import { sessionIdFromUrl } from "@/shared/api/session";
 
-const ACK_LIMIT_S = 4; // норматив подтверждения получения карточки
+const ACK_LIMIT_S = 30; // норматив подтверждения, ПП РФ № 1931 и памятка АРМ-112
 
 const FIELDS = GROUPS.flatMap((group) =>
   group.fields.filter((field) => !field.readOnly).map((field) => ({ path: field.path, label: field.label })),
@@ -34,6 +36,7 @@ export function Dds() {
   const [comment, setComment] = useState("");
   const [zone, setZone] = useState<boolean | null>(null);
   const [marks, setMarks] = useState<string[]>([]);
+  const [station, setStation] = useState<StationSnapshot | null>(null);
   const channel = useRef<ReturnType<typeof stationChannel> | null>(null);
 
   useEffect(() => {
@@ -41,6 +44,8 @@ export function Dds() {
     const ch = stationChannel(sessionId, role, {
       onStatus: setStatus,
       onEvent: (event) => {
+        if (event.type === "station.state") setStation(event.snapshot);
+        if (event.type === "error") mark(`отклонено: ${event.message}`);
         if (event.type === "card.received") {
           setCard(applyState(emptyCard, event.card as unknown as Record<string, unknown>));
           setFrom(event.from_operator);
@@ -146,9 +151,59 @@ export function Dds() {
             }}>Прибытие</button>
           </p>
 
+          {station && station.services.length > 0 && (
+            <>
+              <h2>Статусы реагирования</h2>
+              <p>
+                Статус карточки:{" "}
+                <b className={ALARMING.includes(station.card) ? "state-violated" : "state-ok"}>
+                  {CARD_STATUS_LABELS[station.card]}
+                </b>
+              </p>
+              <table className="grid">
+                <thead>
+                  <tr><th>Служба</th><th>Статус</th><th>Отметить</th></tr>
+                </thead>
+                <tbody>
+                  {station.services.map((service) => (
+                    <StatusRow
+                      key={service}
+                      service={service}
+                      current={station.statuses[service]}
+                      available={station.available[service] ?? []}
+                      onSet={(status, comment) => {
+                        channel.current?.send({ type: "card.status", service, status, comment });
+                        mark(`${service}: ${SERVICE_STATUS_LABELS[status]}`);
+                      }}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
           <h2>Карточка от оператора 112</h2>
           {/* Снимок: после передачи он не меняется. */}
           <KioCard state={card} readOnly />
+        </>
+      )}
+
+      {station && station.log.length > 0 && (
+        <>
+          <h2>Журнал отметок</h2>
+          <table className="grid">
+            <tbody>
+              {station.log.map((entry, index) => (
+                <tr key={index}>
+                  <th>{entry.service}</th>
+                  <td>
+                    {SERVICE_STATUS_LABELS[entry.status]}
+                    {entry.comment && <> — {entry.comment}</>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </>
       )}
 
@@ -161,5 +216,67 @@ export function Dds() {
         </>
       )}
     </main>
+  );
+}
+
+/** Одна служба списка оповещения.
+ *
+ * Доступные статусы приходят с сервера: автомат переходов живёт там, и
+ * дублировать его на фронте нельзя — разъедется. Поле комментария появляется
+ * у отказов, потому что без комментария сервер такую отметку не примет. */
+function StatusRow({
+  service, current, available, onSet,
+}: {
+  service: string;
+  current: ServiceStatus;
+  available: ServiceStatus[];
+  onSet: (status: ServiceStatus, comment: string) => void;
+}) {
+  const [chosen, setChosen] = useState<ServiceStatus | "">("");
+  const [comment, setComment] = useState("");
+  const needsComment = chosen === "declined" || chosen === "refused";
+
+  if (available.length === 0) {
+    return (
+      <tr>
+        <th>{service}</th>
+        <td>{SERVICE_STATUS_LABELS[current]}</td>
+        <td>карточка закрыта для редактирования</td>
+      </tr>
+    );
+  }
+  return (
+    <tr>
+      <th>{service}</th>
+      <td>{SERVICE_STATUS_LABELS[current]}</td>
+      <td>
+        <select value={chosen} onChange={(event) => setChosen(event.target.value as ServiceStatus)}>
+          <option value="">—</option>
+          {available.map((status) => (
+            <option key={status} value={status}>{SERVICE_STATUS_LABELS[status]}</option>
+          ))}
+        </select>{" "}
+        {needsComment && (
+          <input
+            type="text"
+            value={comment}
+            placeholder="причина и куда передана информация"
+            onChange={(event) => setComment(event.target.value)}
+          />
+        )}{" "}
+        <button
+          type="button"
+          disabled={!chosen || (needsComment && !comment.trim())}
+          onClick={() => {
+            if (!chosen) return;
+            onSet(chosen, comment);
+            setChosen("");
+            setComment("");
+          }}
+        >
+          Поставить
+        </button>
+      </td>
+    </tr>
   );
 }

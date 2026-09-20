@@ -124,3 +124,91 @@ def test_bounced_card_becomes_e6_with_the_reason(client):
         assert "floor" in chain[0]["summary"] and "выезд сорван" in chain[0]["summary"]
     finally:
         control.__exit__(None, None, None)
+
+
+# ── статусы реагирования (lct-33) ──
+
+
+def dispatched(client):
+    """Занятие, доведённое до передачи карточки в ДДС, и подключённая станция."""
+    session_id, control, _ = lesson(client)
+    station_ctx = client.websocket_connect(f"/ws/station/{session_id}?role=dds_01")
+    station = station_ctx.__enter__()
+    call_ctx = client.websocket_connect(f"/ws/call/{session_id}")
+    trainee = call_ctx.__enter__()
+    trainee.send_json({"type": "call.answer"})
+    trainee.send_json(
+        {"type": "kio.patch", "fields": {"signs": ["жилой дом", "балкон", "открытое пламя"]}}
+    )
+    wait_for(lambda: hub.get(session_id).kio.incident_code)
+    trainee.send_json({"type": "dds.dispatch", "service": "01"})
+    read_until(station, "card.received")
+    return session_id, station, (control, station_ctx, call_ctx)
+
+
+def close_all(contexts):
+    for context in contexts:
+        context.__exit__(None, None, None)
+
+
+def test_station_sees_the_notify_list_from_the_classifier(client):
+    """Диспетчеру есть что отмечать только потому, что список оповещения
+    посчитан по ЕКП, а не выбран оператором (lct-32)."""
+    session_id, station, contexts = dispatched(client)
+    try:
+        state = read_until(station, "station.state")
+        assert "Служба 101" in state["snapshot"]["services"]
+        assert len(state["snapshot"]["services"]) > 1
+        assert state["snapshot"]["statuses"]["Служба 101"] == "added"
+    finally:
+        close_all(contexts)
+
+
+def test_dispatcher_sets_a_status_and_the_card_follows(client):
+    session_id, station, contexts = dispatched(client)
+    try:
+        read_until(station, "station.state")
+        station.send_json({"type": "card.status", "service": "Служба 101", "status": "accepted"})
+        state = read_until(station, "station.state")
+        assert state["snapshot"]["statuses"]["Служба 101"] == "accepted"
+        assert "responding" in state["snapshot"]["available"]["Служба 101"]
+        assert "accepted" not in state["snapshot"]["available"]["Служба 101"]
+    finally:
+        close_all(contexts)
+
+
+def test_out_of_order_status_is_rejected_with_a_reason(client):
+    """Автомат живёт на сервере: фронт может ошибиться, состояние — нет."""
+    session_id, station, contexts = dispatched(client)
+    try:
+        read_until(station, "station.state")
+        station.send_json({"type": "card.status", "service": "Служба 101", "status": "arrived"})
+        error = read_until(station, "error")
+        assert "Принята" in error["message"]
+        assert hub.get(session_id).status_log == []
+    finally:
+        close_all(contexts)
+
+
+def test_refusal_without_a_comment_is_rejected(client):
+    session_id, station, contexts = dispatched(client)
+    try:
+        read_until(station, "station.state")
+        station.send_json({"type": "card.status", "service": "Служба 101", "status": "declined"})
+        error = read_until(station, "error")
+        assert "комментар" in error["message"]
+    finally:
+        close_all(contexts)
+
+
+def test_ack_button_still_works_and_counts_as_accepted(client):
+    """Кнопка подтверждения из живой цепочки (lct-20) осталась и означает
+    «Принята» у главной службы — иначе два экрана учили бы разному."""
+    session_id, station, contexts = dispatched(client)
+    try:
+        read_until(station, "station.state")
+        station.send_json({"type": "card.ack"})
+        state = read_until(station, "station.state")
+        assert state["snapshot"]["statuses"]["Служба 101"] == "accepted"
+    finally:
+        close_all(contexts)

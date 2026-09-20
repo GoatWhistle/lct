@@ -13,6 +13,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
 from app.domain.events import (
+    StationState,
     CallEnded,
     CallEndReason,
     CallStarted,
@@ -123,6 +124,9 @@ async def _handle(session_id: UUID, state, event) -> None:
             # Карточка замораживается снимком и уходит диспетчеру: оператор
             # не должен иметь возможности дописать поле задним числом.
             hub.to_station(session_id, state.card_received_event())
+            # Список оповещения диспетчер должен видеть сразу, а не после
+            # первого своего действия: отмечаться ему по нему же (lct-33).
+            hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
             hub.to_observers(session_id, KioState(kio=state.kio))
             hub.to_observers(session_id, TimerTick(timers=state.timers.snapshot()))
 

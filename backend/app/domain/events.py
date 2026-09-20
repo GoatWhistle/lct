@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from app.domain.classifiers import DDSCode, IncidentType, Level
 from app.domain.kio import KIO, Coords
+from app.domain.statuses import ServiceStatus, StationSnapshot
 from app.domain.taxonomy import Finding
 from app.domain.timers import TimerSnapshot
 
@@ -453,6 +454,27 @@ class CardBounce(BaseModel):
     comment: str = ""
 
 
+class ServiceStatusSet(BaseModel):
+    """Диспетчер ставит статус реагирования своей службе.
+
+    Последовательность жёсткая, комментарий к отказу обязателен — это не
+    валидация формы, а то, чему учит второй режим занятия
+    (docs/spec/DATASET.md#статусы-реагирования).
+    """
+
+    type: Literal["card.status"] = "card.status"
+    service: str
+    status: ServiceStatus
+    comment: str = ""
+
+
+class StationState(BaseModel):
+    """Состояние АРМ ДДС после каждой отметки: что стоит и что доступно дальше."""
+
+    type: Literal["station.state"] = "station.state"
+    snapshot: StationSnapshot
+
+
 class ZoneDecision(BaseModel):
     type: Literal["zone.decision"] = "zone.decision"
     in_zone: bool
@@ -469,12 +491,12 @@ class CrewArrived(BaseModel):
 
 
 ServerToStation = Annotated[
-    CardReceived | TimerTick | SessionEnded | ErrorEvent,
+    CardReceived | StationState | TimerTick | SessionEnded | ErrorEvent,
     Field(discriminator="type"),
 ]
 
 StationToServer = Annotated[
-    CardAck | CardBounce | ZoneDecision | CrewDispatched | CrewArrived,
+    CardAck | CardBounce | ServiceStatusSet | ZoneDecision | CrewDispatched | CrewArrived,
     Field(discriminator="type"),
 ]
 

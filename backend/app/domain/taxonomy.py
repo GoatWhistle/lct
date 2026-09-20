@@ -12,18 +12,32 @@ from pydantic import BaseModel
 
 
 class ErrorCode(StrEnum):
+    """E — ошибки приёма вызова, D — ошибки диспетчера ДДС.
+
+    Две роли, две таксономии. D1–D6 взяты из памятки заказчика дословно:
+    она перечисляет типовые нарушения с реальными примерами, и преподаватель
+    узнаёт их формулировки (docs/spec/DATASET.md).
+    """
+
     E1 = "E1"
     E2 = "E2"
     E3 = "E3"
     E4 = "E4"
     E5 = "E5"
     E6 = "E6"
+    D1 = "D1"
+    D2 = "D2"
+    D3 = "D3"
+    D4 = "D4"
+    D5 = "D5"
+    D6 = "D6"
 
 
 class FindingSource(StrEnum):
     """Кто выставил отметку. `judge` — единственный недетерминированный источник."""
 
     SLOTS = "slots"
+    DISPATCHER = "dispatcher"
     GROUND_TRUTH = "ground_truth"
     TIMERS = "timers"
     KIO = "kio"
@@ -75,6 +89,42 @@ ERRORS: dict[ErrorCode, ErrorSpec] = {
         title="Неверное завершение",
         detail="Карточка ушла в ДДС непригодной, снятие с контроля до подтверждения",
         source=FindingSource.CHAIN,
+    ),
+    ErrorCode.D1: ErrorSpec(
+        code=ErrorCode.D1,
+        title="Статус реагирования не проставлен",
+        detail="Карточка осталась без первичного статуса и ушла в «Не оповещено»",
+        source=FindingSource.DISPATCHER,
+    ),
+    ErrorCode.D2: ErrorSpec(
+        code=ErrorCode.D2,
+        title="Статус не соответствует факту",
+        detail="«Принята» там, где работы проводиться не будут, и наоборот",
+        source=FindingSource.DISPATCHER,
+    ),
+    ErrorCode.D3: ErrorSpec(
+        code=ErrorCode.D3,
+        title="Отказ от профильного происшествия",
+        detail="Служба есть в списке оповещения, значит происшествие её — отказ неправомерен",
+        source=FindingSource.DISPATCHER,
+    ),
+    ErrorCode.D4: ErrorSpec(
+        code=ErrorCode.D4,
+        title="Нет комментария к отказу",
+        detail="«Не принята» и «Отказ от выполнения работ» без причины",
+        source=FindingSource.DISPATCHER,
+    ),
+    ErrorCode.D5: ErrorSpec(
+        code=ErrorCode.D5,
+        title="Неполный комментарий",
+        detail="Не указано, куда передана информация и что сделал диспетчер",
+        source=FindingSource.JUDGE,
+    ),
+    ErrorCode.D6: ErrorSpec(
+        code=ErrorCode.D6,
+        title="Нет статусов хода работ",
+        detail="Реагирование шло, но начало, прибытие и завершение не отмечены",
+        source=FindingSource.DISPATCHER,
     ),
 }
 

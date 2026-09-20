@@ -15,7 +15,8 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from app.domain.events import ErrorEvent, ErrorKind, StationToServer
+from app.domain.events import ErrorEvent, ErrorKind, StationState, StationToServer
+from app.domain.statuses import PRIMARY, ServiceStatus, StatusError
 from app.session.hub import hub
 from app.session.state import now_utc
 
@@ -28,8 +29,31 @@ _adapter = TypeAdapter(StationToServer)
 async def _handle(session_id: UUID, state, event) -> None:
     match event.type:
         case "card.ack":
+            # Подтверждение приёма — это статус «Принята» у главной службы.
+            # Кнопка осталась ради живой цепочки 112 → ДДС (lct-20), где
+            # диспетчер один и выбирать службу не из чего.
             state.on_event("card.ack")
             state.dds_log.append(("card.ack", now_utc(), None))
+            services = state.notified_services()
+            if services:
+                try:
+                    state.set_service_status(services[0], ServiceStatus.ACCEPTED)
+                except StatusError:
+                    pass  # статус уже стоит: повторное нажатие ничего не меняет
+        case "card.status":
+            try:
+                state.set_service_status(
+                    event.service, event.status, event.comment, author="диспетчер"
+                )
+            except StatusError as exc:
+                hub.to_station(
+                    session_id,
+                    ErrorEvent(code=ErrorKind.UNSUPPORTED_EVENT, message=str(exc)),
+                )
+                return
+            # Первичный статус останавливает норматив 30 секунд.
+            if event.status in PRIMARY:
+                state.on_event("card.ack")
         case "card.bounce":
             # Карточка вернулась: в разборе это E6 с конкретной причиной.
             state.bounced_fields = list(event.missing_fields)
@@ -44,6 +68,7 @@ async def _handle(session_id: UUID, state, event) -> None:
             state.on_event("crew.arrived")
             state.kio = state.kio.model_copy(update={"arrival_at": event.at})
             state.dds_log.append(("crew.arrived", now_utc(), None))
+    hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
     hub.to_observers(session_id, state.snapshot())
 
 
@@ -72,6 +97,7 @@ async def station(ws: WebSocket, session_id: UUID, role: str = "dds") -> None:
             # диспетчер садится за АРМ, когда вызов уже идёт.
             if state.dispatched_card is not None:
                 hub.to_station(session_id, state.card_received_event())
+                hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
             while True:
                 payload = await ws.receive_json()
                 try:

@@ -22,6 +22,16 @@ from app.dialog.caller import TemplateCaller
 from app.dialog.persona import PersonaState
 from app.dialog.slots import SlotMachine
 from app.scenarios.schema import Scenario
+from app.domain.statuses import (
+    NEXT,
+    ServiceStatus,
+    StationSnapshot,
+    StatusEntry,
+    card_status,
+    check,
+    current,
+)
+from app.domain.timers import NORMATIVES, TimerCode
 from app.domain.kio import KIO, apply_patch
 from app.session.timers import SessionTimers
 
@@ -81,6 +91,8 @@ class SessionState:
     #: Поля, из-за которых диспетчер вернул карточку, — основание E6.
     bounced_fields: list[str] = field(default_factory=list)
     dds_log: list[tuple[str, datetime, str | None]] = field(default_factory=list)
+    #: Отметки служб по списку оповещения — предмет второго режима занятия.
+    status_log: list[StatusEntry] = field(default_factory=list)
 
     def on_event(self, event_type: str) -> None:
         """Единственная точка, где событие двигает таймеры."""
@@ -108,6 +120,42 @@ class SessionState:
         self.dispatched_card = self.kio.model_copy(deep=True)
         self.dispatched_at = now_utc()
         return self.dispatched_card
+
+    def notified_services(self) -> list[str]:
+        """Список оповещения переданной карточки. До передачи — пусто:
+        отмечаться диспетчеру пока не по чему."""
+        card = self.dispatched_card or self.kio
+        return list(card.notify)
+
+    def set_service_status(
+        self, service: str, status: ServiceStatus, comment: str = "", author: str = ""
+    ) -> StatusEntry:
+        """Отметка службы. Проверка перехода — до записи: недопустимый статус
+        не должен попасть в журнал даже отвергнутым."""
+        check(self.status_log, service, status, comment)
+        entry = StatusEntry(
+            service=service, status=status, at=now_utc(), comment=comment, author=author
+        )
+        self.status_log.append(entry)
+        return entry
+
+    def station_snapshot(self) -> StationSnapshot:
+        """Что видит диспетчер: службы, их статусы и доступные переходы."""
+        services = self.notified_services()
+        statuses = {service: current(self.status_log, service) for service in services}
+        elapsed = self.timers.measured_ms(TimerCode.DDS_ACK)
+        limit = NORMATIVES[TimerCode.DDS_ACK].limit_ms
+        overdue = self.dispatched_at is not None and (
+            elapsed is None
+            and (now_utc() - self.dispatched_at).total_seconds() * 1000 > limit
+        )
+        return StationSnapshot(
+            services=services,
+            statuses=statuses,
+            available={service: list(NEXT[status]) for service, status in statuses.items()},
+            card=card_status(self.status_log, services, notify_deadline_passed=overdue),
+            log=list(self.status_log),
+        )
 
     def card_received_event(self):
         """Снимок карточки для станции ДДС."""

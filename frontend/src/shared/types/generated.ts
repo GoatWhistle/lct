@@ -78,6 +78,9 @@ export interface CardReceived {
   at: string;
 }
 
+/** Статус карточки целиком — считается из статусов служб, руками не ставится. */
+export type CardStatus = "registered" | "processed" | "checked" | "not_notified" | "refused" | "not_completed" | "completed";
+
 /** Шесть осей радара. Проекция уже посчитанных метрик, без пересчёта весов. */
 export type Competency = "intake" | "interview" | "card" | "routing" | "norms" | "communication";
 
@@ -130,7 +133,8 @@ export interface EraData {
   impact_force: string;
 }
 
-export type ErrorCode = "E1" | "E2" | "E3" | "E4" | "E5" | "E6";
+/** E — ошибки приёма вызова, D — ошибки диспетчера ДДС. Две роли, две таксономии. D1–D6 взяты из памятки заказчика дословно: она перечисляет типовые нарушения с реальными примерами, и преподаватель узнаёт их формулировки (docs/spec/DATASET.md). */
+export type ErrorCode = "E1" | "E2" | "E3" | "E4" | "E5" | "E6" | "D1" | "D2" | "D3" | "D4" | "D5" | "D6";
 
 export interface ErrorEvent {
   type: "error";
@@ -155,7 +159,7 @@ export interface Finding {
 }
 
 /** Кто выставил отметку. `judge` — единственный недетерминированный источник. */
-export type FindingSource = "slots" | "ground_truth" | "timers" | "kio" | "chain" | "judge" | "instructor";
+export type FindingSource = "slots" | "dispatcher" | "ground_truth" | "timers" | "kio" | "chain" | "judge" | "instructor";
 
 /** Уточняющие поля 01 — МЧС. */
 export interface FireDetails {
@@ -358,6 +362,17 @@ export interface SelfAssessmentSubmit {
   comment?: string;
 }
 
+/** Статус реагирования одной службы из списка оповещения. */
+export type ServiceStatus = "added" | "received" | "accepted" | "declined" | "responding" | "arrived" | "working" | "completed" | "refused";
+
+/** Диспетчер ставит статус реагирования своей службе. Последовательность жёсткая, комментарий к отказу обязателен — это не валидация формы, а то, чему учит второй режим занятия (docs/spec/DATASET.md#статусы-реагирования). */
+export interface ServiceStatusSet {
+  type: "card.status";
+  service: string;
+  status: ServiceStatus;
+  comment?: string;
+}
+
 export interface SessionEnded {
   type: "session.ended";
   reason: CallEndReason;
@@ -411,6 +426,30 @@ export interface SessionStop {
 }
 
 export type Speaker = "caller" | "operator";
+
+/** Что видит диспетчер: службы, их статусы и что доступно дальше. Все поля обязательные, хотя списки и могут быть пустыми: снимок всегда собирается целиком, а необязательное поле уезжает в TypeScript как `| undefined` и заставляет фронт проверять то, чего не бывает. */
+export interface StationSnapshot {
+  services: Array<string>;
+  statuses: Record<string, ServiceStatus>;
+  available: Record<string, Array<ServiceStatus>>;
+  card: CardStatus;
+  log: Array<StatusEntry>;
+}
+
+/** Состояние АРМ ДДС после каждой отметки: что стоит и что доступно дальше. */
+export interface StationState {
+  type: "station.state";
+  snapshot: StationSnapshot;
+}
+
+/** Одна отметка службы. Комментарий — часть отметки, а не примечание к ней. */
+export interface StatusEntry {
+  service: string;
+  status: ServiceStatus;
+  at: string;
+  comment?: string;
+  author?: string;
+}
 
 export interface SttFinal {
   type: "stt.final";
@@ -500,9 +539,9 @@ export type ServerToObserver = SessionSnapshot | TranscriptAppend | KioState | T
 
 export type InstructorToServer = ScenarioStart | DirectorInject | ReferencePlay | InstructorNoteAdd | ScoreOverride | ScenarioPublish | SessionStop;
 
-export type ServerToStation = CardReceived | TimerTick | SessionEnded | ErrorEvent;
+export type ServerToStation = CardReceived | StationState | TimerTick | SessionEnded | ErrorEvent;
 
-export type StationToServer = CardAck | CardBounce | ZoneDecision | CrewDispatched | CrewArrived;
+export type StationToServer = CardAck | CardBounce | ServiceStatusSet | ZoneDecision | CrewDispatched | CrewArrived;
 
 export type EventName =
   "bg.start"
@@ -517,6 +556,7 @@ export type EventName =
   | "card.ack"
   | "card.bounce"
   | "card.received"
+  | "card.status"
   | "crew.arrived"
   | "crew.dispatched"
   | "dds.dispatch"
@@ -540,6 +580,7 @@ export type EventName =
   | "session.ended"
   | "session.snapshot"
   | "session.stop"
+  | "station.state"
   | "stt.final"
   | "stt.partial"
   | "timer.tick"

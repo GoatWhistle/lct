@@ -11,9 +11,10 @@ import logging
 from uuid import UUID
 
 from app.domain.events import ScoreReady
-from app.domain.timers import TimerCode
+from app.domain.timers import NORMATIVES, TimerCode
 from app.scenarios import store
 from app.scoring.competency import radar
+from app.scoring.dispatcher import evaluate_dispatcher
 from app.scoring.gost import evaluate
 from app.session.hub import hub
 
@@ -35,6 +36,17 @@ async def finish(session_id: UUID, state) -> None:
         end_reason=state.end_reason,
         bounced_fields=state.bounced_fields,
     )
+    # Работа диспетчера — вторая роль и вторая таксономия. Отметки D1–D6 идут
+    # рядом с E1–E6, а не вместо: в живой цепочке 112 → ДДС в одном занятии
+    # участвуют оба (docs/spec/DATASET.md#статусы-реагирования).
+    dispatcher_findings = evaluate_dispatcher(
+        entries=state.status_log,
+        services=state.notified_services(),
+        deadline_ms=NORMATIVES[TimerCode.DDS_ACK].limit_ms,
+        elapsed_ms=state.timers.measured_ms(TimerCode.DDS_ACK),
+    )
+    result.findings.extend(dispatcher_findings)
+
     # Сводка числами: по ней считается дельта между попытками в профиле.
     # Вытаскивать её разбором текста метрик («94 с») — путь к тихим ошибкам.
     required = scenario.ground_truth.required_facts
@@ -56,6 +68,8 @@ async def finish(session_id: UUID, state) -> None:
         "findings": [finding.model_dump(mode="json") for finding in result.findings],
         "competencies": [item.model_dump() for item in radar(result.metrics)],
         "unavailable": result.unavailable,
+        # Статус карточки — готовая красная метка, понятная любому диспетчеру.
+        "card_status": state.station_snapshot().card.value,
     }
     log.info("сессия %s: оценка %.1f, отметок %d", session_id, result.score, len(result.findings))
 
