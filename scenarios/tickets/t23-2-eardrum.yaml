@@ -1,0 +1,57 @@
+# Билет 23, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t23-2-eardrum
+title: Повредила барабанную перепонку
+ticket: 23
+position: 2
+type: medical
+level: L3
+topics: [medical, address]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: ["Боль в ухе, нарушение слуха"]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "Я ухо чистила и перепонку повредила, кровь идёт."
+
+facts:
+  - id: f_address
+    value: "улица Лесная, дом 5"
+    refined: "Зеленоград, посёлок Малино, улица Лесная, дом 5"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: "чистила ухо, повредила барабанную перепонку, кровотечение"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Липатина Ольга Сергеевна, дата рождения 10.03.1977, вызывает себе"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: в сознании
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: телефон 916 896 3254
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Зеленоград, посёлок Малино, улица Лесная, дом 5"
+  victims: 1
+
+tree:
+  pregenerated: false

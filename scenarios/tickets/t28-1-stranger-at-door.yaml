@@ -1,0 +1,54 @@
+# Билет 28, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t28-1-stranger-at-door
+title: Незнакомый молодой человек у подъезда
+ticket: 28
+position: 1
+type: police
+level: L1
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: ["Подозрительные, посторонние граждане"]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "У подъезда молодой человек стоит, кого-то ждёт, объяснять не хочет."
+
+facts:
+  - id: f_address
+    value: "улица Матвеевская, дом 28, корпус 1, подъезд 5, код 100"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "стоит у домофона, в подъезд не заходит, причину присутствия старшей по подъезду не пояснил"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: пострадавших нет
+    reveal_on: { question: q_victims }
+  - id: f_suspects
+    value: "молодой человек лет двадцати, в синей джинсовой куртке, синих джинсах, чёрных ботинках, славянской внешности"
+    reveal_on: { question: q_suspects }
+  - id: f_caller
+    value: "Иванова Инна Васильевна, старшая по подъезду, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_suspects, fact: f_suspects }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, incident_type, description]
+
+ground_truth:
+  address: "улица Матвеевская, дом 28, корпус 1"
+  victims: 0
+
+tree:
+  pregenerated: false

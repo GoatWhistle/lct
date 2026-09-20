@@ -1,0 +1,53 @@
+# Билет 12, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t12-1-restaurant-smoke
+title: Сильное задымление в зале ресторана
+ticket: 12
+position: 1
+type: fire
+level: L2
+topics: [fire]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [объект, прочие объекты, дым]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "У нас в зале дым повалил, сильный!"
+
+facts:
+  - id: f_address
+    value: "Московская область, Рублёво-Успенское шоссе, деревня Жуковка, ресторан «Веранда у Дачи»"
+    refined: "Московская область, Рублёво-Успенское шоссе, деревня Жуковка, дом 70"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_burns
+    value: "сильное задымление в зале, открытого пламени не видно"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "о пострадавших точной информации нет, гостей выводят"
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Никитин Илья Вадимович, посетитель, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Московская область, Рублёво-Успенское шоссе, деревня Жуковка, дом 70"
+  victims: 0
+
+tree:
+  pregenerated: false

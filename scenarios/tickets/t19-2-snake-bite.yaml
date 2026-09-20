@@ -1,0 +1,58 @@
+# Билет 19, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t19-2-snake-bite
+title: "Укус змеи, вызов из другого региона"
+ticket: 19
+position: 2
+type: medical
+level: L3
+topics: [medical, address]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Животное угрожает людям, Укусило]
+outcome: transfer_region
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Человека змея укусила, у монастыря!"
+
+facts:
+  - id: f_address
+    value: "Свято-Иоанно-Богословский мужской монастырь, у входа"
+    refined: "Рязанская область, Свято-Иоанно-Богословский мужской монастырь, у входа"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: прихожанина укусила змея
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Сизов Иван Петрович, мужчина 60 лет"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: в сознании
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "вызывает прохожий Петров Илья Владимирович, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: []
+
+ground_truth:
+  address: "Рязанская область, Свято-Иоанно-Богословский мужской монастырь"
+  victims: 1
+
+tree:
+  pregenerated: false

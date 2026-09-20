@@ -1,0 +1,58 @@
+# Билет 32, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t32-1-carjacking
+title: Завладение автотранспортом на проезжей части
+ticket: 32
+position: 1
+type: police
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Угон транспорта, Транспорт автомашина, До 30 минут]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: worried }
+
+first_line: "Меня из машины вытащили и уехали! Перегородили и вытащили!"
+
+facts:
+  - id: f_address
+    value: "улица Маргелова, перед перекрёстком с улицей Гризодубовой"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "перегородили проезд машиной, вытащили из автомобиля и уехали; брошенный ваз 2115 остался на проезжей части"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "пострадавших нет, скорая не требуется"
+    reveal_on: { question: q_victims }
+  - id: f_fled
+    value: уехали в сторону Ходынского бульвара
+    reveal_on: { question: q_fled }
+  - id: f_vehicle
+    value: "скрылись на мерседесе чёрном а 128 аа 177; на месте ваз 2115 чёрная, грязная"
+    reveal_on: { question: q_vehicle }
+  - id: f_caller
+    value: "Соколов Иван Петрович, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_fled, fact: f_fled }
+  - { id: q_vehicle, fact: f_vehicle }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "улица Маргелова, перед перекрёстком с улицей Гризодубовой"
+  victims: 0
+
+tree:
+  pregenerated: false

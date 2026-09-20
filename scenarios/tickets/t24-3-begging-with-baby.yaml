@@ -1,0 +1,50 @@
+# Билет 24, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t24-3-begging-with-baby
+title: "Женщина с младенцем попрошайничает, ребёнок в крови"
+ticket: 24
+position: 3
+type: other
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Хулиганство, Попрошайки]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Женщина с младенцем попрошайничает, а у ребёнка лицо в крови!"
+
+facts:
+  - id: f_address
+    value: "улица Красная Пресня, напротив метро 1905 года"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "попрошайничает, пристаёт к гражданам, у ребёнка окровавленное лицо"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "младенец на руках, состояние неизвестно"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Степанова Антонина Марковна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "улица Красная Пресня, напротив метро 1905 года"
+  victims: 1
+
+tree:
+  pregenerated: false

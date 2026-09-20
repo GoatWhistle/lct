@@ -1,0 +1,54 @@
+# Билет 6, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t06-2-man-in-car
+title: Мужчине плохо в автомобиле
+ticket: 6
+position: 2
+type: medical
+level: L1
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Плохо]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Мне плохо очень, я в машине сижу, выйти не могу."
+
+facts:
+  - id: f_address
+    value: "улица Красный Казанец, дом 19Б, напротив дома, на стоянке"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "стало плохо, находится в автомобиле форд синего цвета А284ТК 777"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Иванов Павел Сергеевич, сорок лет, вызывает себе"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "в сознании, говорит сам"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: телефон 916 897 5623
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "улица Красный Казанец, дом 19Б"
+  victims: 1
+
+tree:
+  pregenerated: false

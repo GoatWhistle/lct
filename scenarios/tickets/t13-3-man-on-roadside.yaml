@@ -1,0 +1,53 @@
+# Билет 13, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t13-3-man-on-roadside
+title: На обочине лежит мужчина в крови
+ticket: 13
+position: 3
+type: other
+level: L2
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Человек в опасности, Человек в крови]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "На обочине мужчина лежит, весь в крови."
+
+facts:
+  - id: f_address
+    value: "МКАД, внутренняя сторона, поворот на Гольяново"
+    refined: "МКАД, 103 километр, внутренняя сторона"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: "лежит на обочине в крови, на вид сорок лет"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: один пострадавший
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "МКАД, 103 километр, внутренняя сторона"
+  victims: 1
+
+tree:
+  pregenerated: false

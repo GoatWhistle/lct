@@ -1,0 +1,54 @@
+# Билет 13, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t13-2-birth-in-car
+title: Роды в автомобиле
+ticket: 13
+position: 2
+type: medical
+level: L3
+topics: [medical, address]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Роды]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: worried }
+
+first_line: "Жена рожает прямо в машине! Воды отошли две минуты назад!"
+
+facts:
+  - id: f_address
+    value: "Рублёвка от Кутузовского проспекта в сторону посёлка Жуковка, проехали реку Чеченку, перед автобусной остановкой, название не знаю"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "роды, сорок недель, воды отошли две минуты назад, кровотечения нет"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Соколова Ирина Ивановна, дата рождения 20.05.1979"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "в сознании, в автомобиле фольксваген синий О345ВН 177"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: телефон 916 897 5623
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: Рублёво-Успенское шоссе за рекой Чеченка
+  victims: 1
+
+tree:
+  pregenerated: false

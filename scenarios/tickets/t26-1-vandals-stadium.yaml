@@ -1,0 +1,57 @@
+# Билет 26, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t26-1-vandals-stadium
+title: Группа ломает тумбу у стадиона
+ticket: 26
+position: 1
+type: police
+level: L2
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Хулиганство, Оружие биты предметы]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "У входа на стадион толпа тумбу ломает, битами бьют!"
+
+facts:
+  - id: f_address
+    value: дворец спорта Мегаспорт на Ходынском поле
+    refined: "Ходынский бульвар, дом 3"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: "группа молодых людей ломает тумбу с афишей, разбили стекло"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: пострадавших нет
+    reveal_on: { question: q_victims }
+  - id: f_suspects
+    value: "десять-двенадцать человек, биты и железные палки"
+    reveal_on: { question: q_suspects }
+  - id: f_caller
+    value: "Соколов Иван Петрович, очевидец, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_suspects, fact: f_suspects }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Ходынский бульвар, дом 3"
+  victims: 0
+
+tree:
+  pregenerated: false

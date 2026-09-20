@@ -1,0 +1,53 @@
+# Билет 11, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t11-1-bus-cabin-fire
+title: Горит кабина автобуса
+ticket: 11
+position: 1
+type: fire
+level: L2
+topics: [fire]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [транспорт, общественный транспорт, открытое пламя]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Автобус горит, кабина занялась!"
+
+facts:
+  - id: f_address
+    value: "Дмитровское шоссе в сторону области, рядом с автобусной остановкой «Лианозовский электромеханический завод»"
+    refined: "Дмитровское шоссе, дом 110"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_burns
+    value: "горит кабина автобуса, маршрут 63, бортовой номер 15477, государственный знак назвать не могу"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "пострадавших нет, пассажиры вышли"
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Титов Павел Петрович, очевидец, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Дмитровское шоссе, дом 110"
+  victims: 0
+
+tree:
+  pregenerated: false

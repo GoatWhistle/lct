@@ -1,0 +1,50 @@
+# Билет 29, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t29-1-ticking-box
+title: "Коробка в парке, внутри что-то тикает"
+ticket: 29
+position: 1
+type: police
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: ["Подозрительный предмет, транспорт, боебприпасы, оружие", "Подозрительный предмет (коробка, сумка, мешок и т.д.)"]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "В парке на дорожке коробка лежит, замотана скотчем, внутри тикает!"
+
+facts:
+  - id: f_address
+    value: "парк Лосиный остров, вход от улицы Красной Сосны, далее по дорожке прямо до скамеек"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "лежит большая коробка, замотана скотчем, внутри что-то тикает"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "пострадавших нет, рядом гуляют люди"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Соколов Иван Петрович, прохожий, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "парк Лосиный остров, вход от улицы Красной Сосны"
+  victims: 0
+
+tree:
+  pregenerated: false

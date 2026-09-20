@@ -1,0 +1,54 @@
+# Билет 32, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t32-3-street-lights
+title: Уличное освещение горит днём
+ticket: 32
+position: 3
+type: gkh
+level: L1
+topics: [utility, address]
+modes: [training, exam, self]
+
+extends: checklists/utility.yaml
+signs: [Повод локального (частного) коммунального характера, Горит уличное освещение в дневное время]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "На МКАД фонари среди бела дня горят, на всём протяжении."
+
+facts:
+  - id: f_address
+    value: "МКАД между 74 и 68 километром, внутренняя и внешняя стороны"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: горит уличное освещение в дневное время на протяжении от Ленинградского шоссе до Волоколамского
+    reveal_on: { question: q_what_happened }
+  - id: f_scale
+    value: "обе стороны, участок между Ленинградским и Волоколамским шоссе"
+    reveal_on: { question: q_scale }
+  - id: f_threat
+    value: "пострадавших нет, угрозы нет"
+    reveal_on: { question: q_threat }
+  - id: f_caller
+    value: "Зотова Алина Петровна, телефон 916-320-12-83"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_scale, fact: f_scale }
+  - { id: q_threat, fact: f_threat }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: МКАД между 68 и 74 километром
+  victims: 0
+
+tree:
+  pregenerated: false

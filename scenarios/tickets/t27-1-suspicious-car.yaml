@@ -1,0 +1,54 @@
+# Билет 27, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t27-1-suspicious-car
+title: Подозрительный автомобиль с коробкой под днищем
+ticket: 27
+position: 1
+type: police
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: ["Подозрительный предмет, транспорт, боебприпасы, оружие", Подозрительная автомашина]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Во двор ночью машина заехала, а под ней коробка с проводами лежит."
+
+facts:
+  - id: f_address
+    value: "Тихорецкий бульвар, дом 12, корпус 1, во дворе у входа в магазин «Билла»"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "под машиной лежит непонятная коробка с проводами; машина приехала ночью, чем-то сильно нагружена, просели задние колёса"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "пострадавших нет, людей вокруг много"
+    reveal_on: { question: q_victims }
+  - id: f_vehicle
+    value: "ваз 2110 чёрная, очень грязная, государственный номер а155ат 33"
+    reveal_on: { question: q_vehicle }
+  - id: f_caller
+    value: "Соколов Иван Петрович, прохожий, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_vehicle, fact: f_vehicle }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Тихорецкий бульвар, дом 12, корпус 1"
+  victims: 0
+
+tree:
+  pregenerated: false

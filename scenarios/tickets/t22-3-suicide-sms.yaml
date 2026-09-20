@@ -1,0 +1,50 @@
+# Билет 22, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t22-3-suicide-sms
+title: Знакомый прислал СМС о намерении покончить с собой
+ticket: 22
+position: 3
+type: other
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Суицид, "Наблюдает приготовление к суициду (хочет спрыгнуть с моста, с крыши, отравиться, порезать вены и т.д.)"]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Знакомый СМС прислал, пишет, что повесится. В квартиру не попасть."
+
+facts:
+  - id: f_address
+    value: "улица Белозерская, дом 11Б, квартира 5, подъезд 1, этаж 2"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "прислал СМС о намерении повеситься, доступа в квартиру нет"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "один человек в квартире, на связь не выходит"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, подруга, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, floor, incident_type, description]
+
+ground_truth:
+  address: "улица Белозерская, дом 11Б, квартира 5"
+  victims: 1
+
+tree:
+  pregenerated: false

@@ -1,0 +1,54 @@
+# Билет 30, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t30-3-gas-smell-house
+title: Запах газа в частном доме
+ticket: 30
+position: 3
+type: gkh
+level: L2
+topics: [utility]
+modes: [training, exam, self]
+
+extends: checklists/utility.yaml
+signs: [Запах газа в помещении, Дом частный]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "В доме газом пахнет, от трубы на вводе, и шум в трубе слышно."
+
+facts:
+  - id: f_address
+    value: "Новомосковский административный округ, поселение Вороновское, посёлок ЛМС, микрорайон Солнечный, дом 20"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "запах газа от трубы на вводе в дом, слышен шум в трубе, газ магистральный"
+    reveal_on: { question: q_what_happened }
+  - id: f_scale
+    value: "запах по всему дому, окна открыли"
+    reveal_on: { question: q_scale }
+  - id: f_threat
+    value: "пострадавших нет, скорая не требуется"
+    reveal_on: { question: q_threat }
+  - id: f_caller
+    value: "Соколова Вера Ивановна, телефон 916-320-12-83"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_scale, fact: f_scale }
+  - { id: q_threat, fact: f_threat }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "НАО, поселение Вороновское, посёлок ЛМС, микрорайон Солнечный, дом 20"
+  victims: 0
+
+tree:
+  pregenerated: false

@@ -1,0 +1,53 @@
+# Билет 6, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t06-3-men-on-ice
+title: Трое мужчин на льдине
+ticket: 6
+position: 3
+type: other
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: ["Человек в воде, на льдине", Человек на льдине]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Тут трое мужиков на льдине плывут, их относит!"
+
+facts:
+  - id: f_address
+    value: "Московская область, Раменский городской округ, река Быковка, СНТ Малаховский городок"
+    refined: "Московская область, Раменский городской округ, река Быковка, деревня Михнево"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: "трое мужчин на оторвавшейся льдине, плывут по течению"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "трое, все живы, машут руками"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "Московская область, Раменский городской округ, река Быковка"
+  victims: 3
+
+tree:
+  pregenerated: false

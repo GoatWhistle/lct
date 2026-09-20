@@ -1,0 +1,50 @@
+# Билет 21, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t21-3-child-locked-in-car
+title: Ребёнок заперт в машине
+ticket: 21
+position: 3
+type: other
+level: L2
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [закрыт в автомашине]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: worried }
+
+first_line: "Ребёнок в машине заперт, двери заблокировались!"
+
+facts:
+  - id: f_address
+    value: "парковка ресторана WHEITE, около Живописной бухты"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "ребёнок один в автомобиле, двери заблокировались"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "ребёнок четырёх лет, один"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "парковка ресторана WHEITE, около Живописной бухты"
+  victims: 1
+
+tree:
+  pregenerated: false

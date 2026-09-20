@@ -1,0 +1,55 @@
+# Билет 5, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t05-1-window-fire-people
+title: "Горит окно на 9 этаже, люди на балконе"
+ticket: 5
+position: 1
+type: fire
+level: L3
+topics: [fire]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [жилой дом, квартира, открытое пламя]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: panic }
+    - { stage: dispatch, mood: worried }
+
+first_line: "Горит! На девятом этаже окно, а рядом на балконе люди кричат!"
+
+facts:
+  - id: f_address
+    value: "улица Цюрупы, дом 12, корпус 6, подъезд единственный, балкон со стороны подъезда"
+    reveal_on: { question: q_address }
+  - id: f_what_burns
+    value: "горит одно окно на девятом этаже, открытое пламя"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "на соседнем балконе двое людей, кричат о помощи"
+    reveal_on: { question: q_people }
+  - id: f_gas
+    value: "дом не газифицирован, этажность семнадцать"
+    reveal_on: { question: q_gas }
+  - id: f_caller
+    value: "Яшин Игорь Вадимович, телефон 916-126-34-71"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_gas, fact: f_gas }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, floor, incident_type, description, victims_count]
+
+ground_truth:
+  address: "улица Цюрупы, дом 12, корпус 6"
+  victims: 2
+
+tree:
+  pregenerated: false

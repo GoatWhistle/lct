@@ -1,0 +1,58 @@
+# Билет 7, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t07-2-headache-ryazan
+title: "Головная боль, вызов из Рязани"
+ticket: 7
+position: 2
+type: medical
+level: L3
+topics: [medical, address]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Головная боль]
+outcome: transfer_region
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Голова раскалывается, давление сто пятьдесят на восемьдесят."
+
+facts:
+  - id: f_address
+    value: "улица Вишнёвая, дом 15, частный дом"
+    refined: "Рязань, улица Вишнёвая, дом 15, частный дом"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: "сильная головная боль, артериальное давление 150 на 80"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Крючков Станислав Дмитриевич, дата рождения 30.06.2001, вызывает себе"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "в сознании, говорит сам"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: телефон 916 897 5623
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: []
+
+ground_truth:
+  address: "Рязань, улица Вишнёвая, дом 15"
+  victims: 1
+
+tree:
+  pregenerated: false

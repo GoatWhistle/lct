@@ -1,0 +1,54 @@
+# Билет 27, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t27-2-accident-tunnel
+title: ДТП без пострадавших у въезда в тоннель
+ticket: 27
+position: 2
+type: other
+level: L2
+topics: [police, address]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [ДТП, Транспорт легковой]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "ДТП тут, две машины, пострадавших нет."
+
+facts:
+  - id: f_address
+    value: "Садовое кольцо от проспекта Мира, после улицы Малая Дмитровка, въезд в тоннель"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "ДТП без пострадавших, без разлива топлива, пежо и фольксваген"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "пострадавших нет, все на ногах"
+    reveal_on: { question: q_victims }
+  - id: f_vehicle
+    value: пежо и фольксваген
+    reveal_on: { question: q_vehicle }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_vehicle, fact: f_vehicle }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Садовое кольцо, въезд в тоннель после Малой Дмитровки"
+  victims: 0
+
+tree:
+  pregenerated: false

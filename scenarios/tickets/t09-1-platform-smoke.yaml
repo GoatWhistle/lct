@@ -1,0 +1,53 @@
+# Билет 9, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t09-1-platform-smoke
+title: Задымление на платформе метро
+ticket: 9
+position: 1
+type: fire
+level: L2
+topics: [fires, address]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [метро, дым]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "На платформе дымом пахнет, дым идёт."
+
+facts:
+  - id: f_address
+    value: станция метро Арбатская
+    refined: "станция метро Арбатская, Филёвская линия"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_burns
+    value: "задымление на платформе, открытого пламени нет"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "пострадавших нет, людей выводят"
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Тихий Олег Юрьевич, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "станция метро Арбатская, Филёвская линия"
+  victims: 0
+
+tree:
+  pregenerated: false

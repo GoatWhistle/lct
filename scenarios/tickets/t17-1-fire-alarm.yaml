@@ -1,0 +1,50 @@
+# Билет 17, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t17-1-fire-alarm
+title: Сработала пожарная сигнализация в жилом доме
+ticket: 17
+position: 1
+type: fire
+level: L1
+topics: [fire]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [жилой дом, сигнализация]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "У нас пожарная сигнализация сработала, а дыма нет."
+
+facts:
+  - id: f_address
+    value: "Большой Сухаревский переулок, дом 19, строение 2, подъезд 1, код 2215"
+    reveal_on: { question: q_address }
+  - id: f_what_burns
+    value: "сигнализация сработала, дыма и возгорания не видно"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: пострадавших нет
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Сухов Леонид Сергеевич, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, incident_type, description]
+
+ground_truth:
+  address: "Большой Сухаревский переулок, дом 19, строение 2"
+  victims: 0
+
+tree:
+  pregenerated: false

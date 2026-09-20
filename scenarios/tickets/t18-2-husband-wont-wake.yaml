@@ -1,0 +1,54 @@
+# Билет 18, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t18-2-husband-wont-wake
+title: "Не может разбудить мужа, хрипы"
+ticket: 18
+position: 2
+type: medical
+level: L3
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Без сознания]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: worried }
+
+first_line: "Мужа разбудить не могу! Хрипит!"
+
+facts:
+  - id: f_address
+    value: "Московская область, Красногорск, улица Пионерская, дом 19, квартира 5, подъезд 1, этаж 2, код 5в"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "не просыпается, издаёт хрипы"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Титов Александр Петрович, дата рождения 10.08.1977"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "без сознания, дышит с хрипами"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: телефон 916 896 3254
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, floor, incident_type, description]
+
+ground_truth:
+  address: "Московская область, Красногорск, улица Пионерская, дом 19, квартира 5"
+  victims: 1
+
+tree:
+  pregenerated: false

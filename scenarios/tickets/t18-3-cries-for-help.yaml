@@ -1,0 +1,50 @@
+# Билет 18, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t18-3-cries-for-help
+title: С улицы слышны крики о помощи
+ticket: 18
+position: 3
+type: other
+level: L2
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Человек в опасности, Человек кричит о помощи]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Со двора мужчина кричит о помощи, а что там — не вижу."
+
+facts:
+  - id: f_address
+    value: "Огородный проезд, дом 12, во дворе"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "с улицы слышны крики о помощи, кричит мужчина"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "сколько человек и что с ними, не знаю"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Огородный проезд, дом 12"
+  victims: 1
+
+tree:
+  pregenerated: false

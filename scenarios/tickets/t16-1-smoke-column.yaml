@@ -1,0 +1,50 @@
+# Билет 16, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t16-1-smoke-column
+title: Столб чёрного дыма со стороны посёлка
+ticket: 16
+position: 1
+type: fire
+level: L3
+topics: [fires, address]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [объект, прочие объекты, дым]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "Вижу столб чёрного дыма, со стороны посёлка тянет."
+
+facts:
+  - id: f_address
+    value: "Московская область, железнодорожная станция Вялки, смотрю в сторону посёлка Быково"
+    reveal_on: { question: q_address }
+  - id: f_what_burns
+    value: "что именно горит, не знаю, вижу столб чёрного дыма со стороны жилых домов посёлка"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "информации о пострадавших нет, я далеко"
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Левин Борис Степанович, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Московская область, посёлок Быково"
+  victims: 0
+
+tree:
+  pregenerated: false

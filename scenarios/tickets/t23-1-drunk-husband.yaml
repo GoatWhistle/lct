@@ -1,0 +1,54 @@
+# Билет 23, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t23-1-drunk-husband
+title: "Скандал с пьяным мужем, нужна скорая"
+ticket: 23
+position: 1
+type: police
+level: L2
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Скандал]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "У соседей скандал, муж пьяный, женщине голову разбил!"
+
+facts:
+  - id: f_address
+    value: "улица Тихомирова, дом 15, корпус 1, квартира 79, подъезд 2, этаж 4, код 80В"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "скандал с пьяным мужем, требуется скорая"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "Петрова Елена Михайловна, 28 лет, травма головы, кровотечение"
+    reveal_on: { question: q_victims }
+  - id: f_suspects
+    value: "муж в квартире, пьян"
+    reveal_on: { question: q_suspects }
+  - id: f_caller
+    value: "Соколов Иван Петрович, сосед, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_suspects, fact: f_suspects }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, floor, incident_type, description, victims_count]
+
+ground_truth:
+  address: "улица Тихомирова, дом 15, корпус 1, квартира 79"
+  victims: 1
+
+tree:
+  pregenerated: false

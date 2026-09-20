@@ -1,0 +1,54 @@
+# Билет 14, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t14-2-asthma
+title: "Подросток задыхается, астма"
+ticket: 14
+position: 2
+type: medical
+level: L2
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Задыхается]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: worried }
+
+first_line: "Брат задыхается, у него астма! Ингалятор не помогает!"
+
+facts:
+  - id: f_address
+    value: "Ленинградское шоссе, дом 112, корпус 4, квартира 385, подъезд 29, этаж 3, код 385В"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "приступ астмы, задыхается"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Ковалев Иван Сергеевич, 12 лет"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "в сознании, дышит тяжело"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "вызывает брат, ему 19 лет, телефон 916 897 5623"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, floor, incident_type, description]
+
+ground_truth:
+  address: "Ленинградское шоссе, дом 112, корпус 4, квартира 385"
+  victims: 1
+
+tree:
+  pregenerated: false

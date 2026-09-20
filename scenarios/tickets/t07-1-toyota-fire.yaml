@@ -1,0 +1,54 @@
+# Билет 7, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t07-1-toyota-fire
+title: "Горит автомашина, пострадал водитель"
+ticket: 7
+position: 1
+type: fire
+level: L3
+topics: [fire]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [транспорт, автомашина, открытое пламя]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+    - { stage: dispatch, mood: calm }
+
+first_line: "Машина горит на проезжей части, водитель руки обжёг!"
+
+facts:
+  - id: f_address
+    value: "станция метро Отрадное, рядом с торговым комплексом «Золотой Вавилон», на проезжей части"
+    refined: "улица Декабристов, торговый комплекс «Золотой Вавилон» справа"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_burns
+    value: "горит тойота бежевого цвета, номер Р 254 ТС 99"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "пострадал водитель, Дюжев Юрий Петрович, 54 года, ожог рук"
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Фролова Яна Игоревна, очевидец, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "улица Декабристов, торговый комплекс «Золотой Вавилон»"
+  victims: 1
+
+tree:
+  pregenerated: false

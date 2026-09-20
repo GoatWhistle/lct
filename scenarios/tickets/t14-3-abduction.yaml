@@ -1,0 +1,58 @@
+# Билет 14, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t14-3-abduction
+title: Женщину затащили в машину
+ticket: 14
+position: 3
+type: other
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Похищение, Взрослый, Скрылись на автомашине]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: panic }
+
+first_line: "Жену в машину затащили и увезли! Помогите!"
+
+facts:
+  - id: f_address
+    value: "Комсомольская площадь, дом 2А, у «Бургер Кинга»"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: неизвестные затащили жену в машину у метро Комсомольская
+    reveal_on: { question: q_what_happened }
+  - id: f_suspects
+    value: "двое мужчин, кавказцы"
+    reveal_on: { question: q_suspects }
+  - id: f_fled
+    value: скрылись в сторону Третьего транспортного кольца
+    reveal_on: { question: q_fled }
+  - id: f_vehicle
+    value: "иномарка белая, государственный номер не запомнил"
+    reveal_on: { question: q_vehicle }
+  - id: f_caller
+    value: "Иванов Илья Львович, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_suspects, fact: f_suspects }
+  - { id: q_fled, fact: f_fled }
+  - { id: q_vehicle, fact: f_vehicle }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "Комсомольская площадь, дом 2А"
+  victims: 1
+
+tree:
+  pregenerated: false

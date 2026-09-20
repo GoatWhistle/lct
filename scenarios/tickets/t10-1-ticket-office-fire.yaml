@@ -1,0 +1,51 @@
+# Билет 10, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t10-1-ticket-office-fire
+title: Горит помещение кассы на железнодорожной станции
+ticket: 10
+position: 1
+type: fire
+level: L3
+topics: [fire]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [объект, прочие объекты, открытое пламя]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: panic }
+    - { stage: dispatch, mood: worried }
+
+first_line: "Касса горит! Кассирша обожглась, лицо и руки!"
+
+facts:
+  - id: f_address
+    value: "железнодорожная станция Текстильщики, платформа в сторону области, подъезд для служб со стороны улицы Люблинской"
+    reveal_on: { question: q_address }
+  - id: f_what_burns
+    value: "горит помещение кассы, открытый огонь"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "пострадала кассир Гвоздикова Анна Павловна, 45 лет, ожог лица и рук"
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Беликова Юлия Викторовна, очевидец, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: железнодорожная станция Текстильщики
+  victims: 1
+
+tree:
+  pregenerated: false

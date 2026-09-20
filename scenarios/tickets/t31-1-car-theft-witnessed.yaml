@@ -1,0 +1,54 @@
+# Билет 31, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t31-1-car-theft-witnessed
+title: Угон на глазах у владельца
+ticket: 31
+position: 1
+type: police
+level: L2
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Угон транспорта, Транспорт автомашина, До 30 минут]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: worried }
+
+first_line: "Машину угнали прямо при мне! Только что уехала!"
+
+facts:
+  - id: f_address
+    value: улица Большая Ордынка на пересечении с Пыжевским переулком
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: угон машины на глазах владельца
+    reveal_on: { question: q_what_happened }
+  - id: f_fled
+    value: уехала в сторону Садового кольца
+    reveal_on: { question: q_fled }
+  - id: f_vehicle
+    value: "мерседес чёрный, государственный номер А128АА 177"
+    reveal_on: { question: q_vehicle }
+  - id: f_caller
+    value: "Соколов Иван, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_fled, fact: f_fled }
+  - { id: q_vehicle, fact: f_vehicle }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: улица Большая Ордынка на пересечении с Пыжевским переулком
+  victims: 0
+
+tree:
+  pregenerated: false

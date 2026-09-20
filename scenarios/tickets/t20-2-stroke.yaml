@@ -1,0 +1,54 @@
+# Билет 20, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t20-2-stroke
+title: "Речь невнятная, лицо перекошено"
+ticket: 20
+position: 2
+type: medical
+level: L2
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Парализовало]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Женщине плохо, говорит невнятно, лицо перекосило."
+
+facts:
+  - id: f_address
+    value: "дорога от Каширского шоссе в сторону деревни Истомиха, около автобусной остановки Домодедовское кладбище, рядом с КПП"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "речь невнятная, лицо перекошено"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "женщина на вид семидесяти лет, неизвестная"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "в сознании, на ногах"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "вызывает прохожий Титов Олег Иванович, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: дорога от Каширского шоссе в сторону деревни Истомиха
+  victims: 1
+
+tree:
+  pregenerated: false

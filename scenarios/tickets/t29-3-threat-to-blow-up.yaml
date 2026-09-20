@@ -1,0 +1,54 @@
+# Билет 29, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t29-3-threat-to-blow-up
+title: Угроза взорвать квартиру
+ticket: 29
+position: 3
+type: police
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Человек в опасности, Человеку угрожают убийством]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: worried }
+
+first_line: "Бывший муж угрожает квартиру взорвать! Я боюсь!"
+
+facts:
+  - id: f_address
+    value: "проезд Шокальского, дом 67, корпус 1, квартира 3, подъезд 1, этаж 1, код 67"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: бывший муж угрожает взорвать квартиру
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "пострадавших нет, в квартире заявительница"
+    reveal_on: { question: q_victims }
+  - id: f_suspects
+    value: "бывший муж, где находится сейчас — неизвестно"
+    reveal_on: { question: q_suspects }
+  - id: f_caller
+    value: "Смирнова Ольга Ивановна, телефон 903-226-13-83"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_suspects, fact: f_suspects }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, incident_type, description]
+
+ground_truth:
+  address: "проезд Шокальского, дом 67, корпус 1, квартира 3"
+  victims: 0
+
+tree:
+  pregenerated: false
