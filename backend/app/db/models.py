@@ -195,6 +195,49 @@ class Score(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class User(Base):
+    """Учётная запись. Три роли из ТЗ: администратор, преподаватель, обучающийся.
+
+    `service` заполняется только у обучающегося и означает ДДС, в которой он
+    работает: ТЗ требует, чтобы «в ленту попадали только профильные события»,
+    а профильность определяется списком оповещения по ЕКП, больше ничем
+    (docs/spec/DATASET.md). У преподавателя и администратора поле пустое.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[UUID] = _uuid_pk()
+    login: Mapped[str] = mapped_column(String(80), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(200))
+    full_name: Mapped[str] = mapped_column(String(120))
+    role: Mapped[str] = mapped_column(String(16))
+    service: Mapped[str | None] = mapped_column(String(120))
+    trainee_id: Mapped[UUID | None] = mapped_column(ForeignKey("trainees.id", ondelete="SET NULL"))
+    blocked: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuditLog(Base):
+    """Журнал действий. ТЗ требует хранения не менее шести месяцев, поэтому
+    записи не удаляются вместе с сессией: `object_id` — строка, а не ссылка.
+
+    Пишется то, что меняет чужой результат или состав системы: запуск занятия,
+    оценка, коррекция оценки, правка сценария, вход и выход.
+    """
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[UUID] = _uuid_pk()
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    actor: Mapped[str] = mapped_column(String(80))
+    role: Mapped[str] = mapped_column(String(16))
+    action: Mapped[str] = mapped_column(String(40))
+    object_id: Mapped[str | None] = mapped_column(String(80))
+    detail: Mapped[str] = mapped_column(Text, default="")
+
+    __table_args__ = (Index("ix_audit_at", "at"),)
+
+
 class LlmCache(Base):
     """Кэш ответов LLM по хешу контекста. Работает и онлайн — экономия
     на повторах, — и как накопитель материала для офлайн-дерева."""

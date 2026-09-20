@@ -13,6 +13,9 @@ from app.session.hub import hub
 @pytest.fixture
 def client():
     with TestClient(app) as test_client:
+        # Сокеты закрыты ролями (lct-23): тесты входят так же,
+        # как `make lesson`, — через dev-token за флагом.
+        test_client.post("/api/auth/dev-token")
         hub.journal = None
         yield test_client
 

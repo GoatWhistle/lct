@@ -29,6 +29,8 @@ from app.domain.events import (
 from app.domain.events import BgStart
 from app.scenarios import store
 from app.session.finish import finish, release_score
+from app.api.auth import principal_of
+from app.domain.roles import Role
 from app.session.hub import hub
 from app.session.state import now_utc
 from app.voice.models import get_voice_models
@@ -198,9 +200,23 @@ async def _pump(ws: WebSocket, queue: asyncio.Queue) -> None:
             await ws.send_text(item.model_dump_json())
 
 
+async def _reject(ws: WebSocket, message: str) -> None:
+    """Отказ до входа в цикл: сокет закрывается с объяснением, а не молча."""
+    await ws.send_text(
+        ErrorEvent(code=ErrorKind.FORBIDDEN, message=message).model_dump_json()
+    )
+    await ws.close()
+
+
 @router.websocket("/ws/call/{session_id}")
 async def call(ws: WebSocket, session_id: UUID) -> None:
     await ws.accept()
+
+    # АРМ курсанта. Преподаватель допущен, чтобы показать приём вызова группе.
+    who = principal_of(ws)
+    if who is None or who.role not in (Role.TRAINEE, Role.INSTRUCTOR):
+        await _reject(ws, "Недостаточно прав для этого экрана")
+        return
 
     state = hub.get(session_id)
     if state is None:

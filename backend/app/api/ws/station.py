@@ -17,6 +17,8 @@ from pydantic import TypeAdapter, ValidationError
 
 from app.domain.events import ErrorEvent, ErrorKind, StationState, StationToServer
 from app.domain.statuses import PRIMARY, ServiceStatus, StatusError
+from app.api.auth import principal_of
+from app.domain.roles import Role
 from app.session.hub import hub
 from app.session.state import now_utc
 
@@ -78,9 +80,23 @@ async def _pump(ws: WebSocket, queue: asyncio.Queue) -> None:
         await ws.send_text(event.model_dump_json())
 
 
+async def _reject(ws: WebSocket, message: str) -> None:
+    """Отказ до входа в цикл: сокет закрывается с объяснением, а не молча."""
+    await ws.send_text(
+        ErrorEvent(code=ErrorKind.FORBIDDEN, message=message).model_dump_json()
+    )
+    await ws.close()
+
+
 @router.websocket("/ws/station/{session_id}")
 async def station(ws: WebSocket, session_id: UUID, role: str = "dds") -> None:
     await ws.accept()
+
+    # За АРМ ДДС садится обучающийся, преподаватель смотрит и подменяет.
+    who = principal_of(ws)
+    if who is None or who.role not in (Role.INSTRUCTOR, Role.TRAINEE):
+        await _reject(ws, "Недостаточно прав для этого экрана")
+        return
 
     state = hub.get(session_id)
     if state is None:

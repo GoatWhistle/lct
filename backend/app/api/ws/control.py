@@ -38,6 +38,8 @@ from app.dialog.persona import PersonaState
 from app.dialog.runtime import get_embedder
 from app.dialog.slots import SlotMachine
 from app.scenarios import store
+from app.api.auth import audit, principal_of
+from app.domain.roles import Role
 from app.session.hub import hub
 from app.session.state import SessionState, now_utc
 from app.voice.models import get_voice_models
@@ -49,7 +51,7 @@ router = APIRouter()
 _adapter = TypeAdapter(InstructorToServer)
 
 
-async def _start(session_id: UUID, event) -> None:
+async def _start(session_id: UUID, event, who=None) -> None:
     scenario = store.get(event.scenario_id)
     if scenario is None:
         hub.to_observers(
@@ -76,6 +78,7 @@ async def _start(session_id: UUID, event) -> None:
         scenario=scenario.model_copy(deep=True),
         required_fields=scenario.required_fields,
         trainee_name=event.trainee,
+        trainee_id=getattr(event, "trainee_id", None),
         attempt=attempt,
     )
     embedder = get_embedder()
@@ -92,6 +95,13 @@ async def _start(session_id: UUID, event) -> None:
         asyncio.create_task(prefetch(models, [scenario.first_line, *FILLERS.values()]))
     state.on_event("call.incoming")
     hub.start_ticker(session_id)
+    if who is not None:
+        # Запуск занятия меняет чужой результат — значит попадает в журнал
+        # аудита (ТЗ, хранение не менее шести месяцев).
+        asyncio.create_task(
+            audit(who.login, who.role.value, "lesson.start", str(session_id),
+                  f"{scenario.id}, режим {event.mode.value}, курсант {event.trainee}")
+        )
 
     hub.to_trainee(
         session_id,
@@ -120,9 +130,23 @@ async def _stop(session_id: UUID) -> None:
         await hub.journal.session_ended(session_id, state.ended_at, CallEndReason.INSTRUCTOR.value)
 
 
+async def _reject(ws: WebSocket, message: str) -> None:
+    """Отказ до входа в цикл: сокет закрывается с объяснением, а не молча."""
+    await ws.send_text(
+        ErrorEvent(code=ErrorKind.FORBIDDEN, message=message).model_dump_json()
+    )
+    await ws.close()
+
+
 @router.websocket("/ws/control/{session_id}")
 async def control(ws: WebSocket, session_id: UUID) -> None:
     await ws.accept()
+
+    # Пульт преподавателя: управление занятием доступно только ему.
+    who = principal_of(ws)
+    if who is None or who.role not in (Role.INSTRUCTOR,):
+        await _reject(ws, "Недостаточно прав для этого экрана")
+        return
     try:
         while True:
             payload = await ws.receive_json()
@@ -137,7 +161,7 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
 
             match event.type:
                 case "scenario.start":
-                    await _start(session_id, event)
+                    await _start(session_id, event, who)
                 case "session.stop":
                     await _stop(session_id)
                 case "instructor_note.add":

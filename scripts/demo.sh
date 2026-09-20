@@ -28,8 +28,9 @@ docker compose up -d postgres
 ( cd backend && uv run alembic upgrade head >/dev/null )
 echo "  миграции накатаны"
 
-say "3/5 Сценарии"
+say "3/5 Сценарии и учётные записи"
 make seed
+make users
 
 say "4/5 Бэкенд с голосом"
 # Контейнерные бэкенд и фронт гасим: порты те же, а голос работает нативно.
@@ -53,6 +54,7 @@ FRONTEND=$!
 
 say "Стенд поднят"
 cat <<'LINKS'
+  вход:                http://localhost:5173/  (пароли печатает make users)
   пульт преподавателя: http://localhost:5173/instructor
   профили курсантов:   http://localhost:5173/profile
   ссылки на АРМ курсанта, монитор и ДДС печатает сам пульт

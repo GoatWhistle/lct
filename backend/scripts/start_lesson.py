@@ -11,6 +11,7 @@
 import asyncio
 import json
 import sys
+import urllib.request
 import uuid
 
 import websockets
@@ -19,9 +20,35 @@ BACKEND = "ws://localhost:8000"
 FRONTEND = "http://localhost:5173"
 
 
+def dev_cookie() -> str:
+    """Вход для служебного скрипта.
+
+    Сокеты закрыты ролями (lct-23), а `make lesson` — наш инструмент, а не
+    пользователь. Точка `dev-token` живёт за флагом `DEV_AUTH_BYPASS` и на
+    рабочем стенде отвечает 404 — тогда скрипт честно скажет, что занятие
+    запускается с пульта преподавателя.
+    """
+    request = urllib.request.Request(
+        f"{BACKEND.replace('ws://', 'http://')}/api/auth/dev-token", method="POST"
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.headers.get("set-cookie", "").split(";")[0]
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise SystemExit(
+                "вход выключен: на стенде занятие запускается с пульта преподавателя.\n"
+                "Для разработки поставь DEV_AUTH_BYPASS=true в backend/.env"
+            ) from exc
+        raise
+
+
 async def main(scenario_id: str, mode: str) -> None:
     session_id = str(uuid.uuid4())
-    async with websockets.connect(f"{BACKEND}/ws/control/{session_id}") as control:
+    headers = {"Cookie": dev_cookie()}
+    async with websockets.connect(
+        f"{BACKEND}/ws/control/{session_id}", additional_headers=headers
+    ) as control:
         await control.send(json.dumps({
             "type": "scenario.start",
             "scenario_id": scenario_id,

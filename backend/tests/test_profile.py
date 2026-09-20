@@ -27,6 +27,9 @@ def client():
     except OSError as exc:
         pytest.skip(f"Postgres недоступен ({exc}) — подними `make dev`")
     with TestClient(app) as test_client:
+        # Сокеты закрыты ролями (lct-23): тесты входят так же,
+        # как `make lesson`, — через dev-token за флагом.
+        test_client.post("/api/auth/dev-token")
         yield test_client
 
 

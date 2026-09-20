@@ -16,6 +16,8 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.domain.events import ErrorEvent, ErrorKind
+from app.api.auth import principal_of
+from app.domain.roles import Role
 from app.session.hub import hub
 
 router = APIRouter()
@@ -36,9 +38,23 @@ async def _wait_for_disconnect(ws: WebSocket) -> None:
             return
 
 
+async def _reject(ws: WebSocket, message: str) -> None:
+    """Отказ до входа в цикл: сокет закрывается с объяснением, а не молча."""
+    await ws.send_text(
+        ErrorEvent(code=ErrorKind.FORBIDDEN, message=message).model_dump_json()
+    )
+    await ws.close()
+
+
 @router.websocket("/ws/observe/{session_id}")
 async def observe(ws: WebSocket, session_id: UUID) -> None:
     await ws.accept()
+
+    # Наблюдение за чужим занятием — не для обучающегося.
+    who = principal_of(ws)
+    if who is None or who.role not in (Role.INSTRUCTOR, Role.ADMIN):
+        await _reject(ws, "Недостаточно прав для этого экрана")
+        return
 
     state = hub.get(session_id)
     if state is None:

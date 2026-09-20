@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from app.domain.classifiers import DDSCode, IncidentType, Level, Outcome
 from app.domain.kio import KIO, Coords
+from app.domain.roles import Role
 from app.domain.statuses import ServiceStatus, StationSnapshot
 from app.domain.taxonomy import Finding
 from app.domain.timers import TimerSnapshot
@@ -79,6 +80,9 @@ class ErrorKind(StrEnum):
     DIRECTIVE_NEEDS_NETWORK = "directive_needs_network"
     SCENARIO_INVALID = "scenario_invalid"
     UNSUPPORTED_EVENT = "unsupported_event"
+    #: Канал открыт не тем, кому он предназначен (lct-23). Фронт по этому коду
+    #: отправляет на вход, а не показывает «занятие не найдено».
+    FORBIDDEN = "forbidden"
     INTERNAL = "internal"
 
 
@@ -585,8 +589,23 @@ class SessionReport(BaseModel):
     override_comment: str | None = None
 
 
+class Principal(BaseModel):
+    """Кто вошёл. В событиях не участвует, но фронт разводит по роли экраны,
+    и список ролей должен приезжать из домена, а не переписываться руками
+    (lct-23). Полная модель — в `app/api/auth.py`.
+    """
+
+    login: str
+    full_name: str
+    role: Role
+    service: str | None = None
+    trainee_id: UUID | None = None
+
+
 class EventCatalog(BaseModel):
     """Единственное назначение — собрать все союзы в одну JSON Schema для make types."""
+
+    principal: Principal
 
     server_to_trainee: ServerToTrainee
     trainee_to_server: TraineeToServer

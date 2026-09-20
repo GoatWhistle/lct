@@ -150,7 +150,7 @@ export interface ErrorEvent {
 }
 
 /** Коды канала `error`. Фронт разбирает код, а не текст сообщения: текст — для человека, код — для поведения интерфейса. */
-export type ErrorKind = "session_not_found" | "call_not_started" | "hint_denied_in_exam" | "models_warming_up" | "directive_needs_network" | "scenario_invalid" | "unsupported_event" | "internal";
+export type ErrorKind = "session_not_found" | "call_not_started" | "hint_denied_in_exam" | "models_warming_up" | "directive_needs_network" | "scenario_invalid" | "unsupported_event" | "forbidden" | "internal";
 
 /** Отметка в разборе. `fact` и `norm` — то самое обоснование. */
 export interface Finding {
@@ -314,6 +314,15 @@ export interface PoliceDetails {
   vehicle?: string | null;
 }
 
+/** Кто вошёл. В событиях не участвует, но фронт разводит по роли экраны, и список ролей должен приезжать из домена, а не переписываться руками (lct-23). Полная модель — в `app/api/auth.py`. */
+export interface Principal {
+  login: string;
+  full_name: string;
+  role: Role;
+  service?: string | null;
+  trainee_id?: string | null;
+}
+
 export interface ReferencePlay {
   type: "reference.play";
 }
@@ -325,6 +334,8 @@ export interface ReferenceStarted {
 }
 
 export type ResponseStatus = "registered" | "transferred" | "in_progress" | "closed";
+
+export type Role = "admin" | "instructor" | "trainee";
 
 export interface ScenarioPublish {
   type: "scenario.publish";

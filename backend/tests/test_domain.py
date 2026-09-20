@@ -76,7 +76,10 @@ def test_session_modes_are_the_three_from_docs():
 
 
 def test_event_catalog_covers_every_channel():
+    """`principal` каналом не является: он в каталоге ради того, чтобы список
+    ролей приезжал на фронт из домена, а не переписывался руками (lct-23)."""
     assert set(EventCatalog.model_fields) == {
+        "principal",
         "server_to_trainee",
         "trainee_to_server",
         "server_to_observer",

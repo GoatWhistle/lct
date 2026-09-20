@@ -7,15 +7,17 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.auth import audit, require
 from app.db import repo
 from app.db.base import get_session
 from app.domain.events import SessionMode, SessionReport
 from app.scenarios import store
 from app.scoring.report import build as build_report
+from app.domain.roles import Role
 from app.session.hub import hub
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -123,22 +125,29 @@ def _live(session_id: UUID):
 
 
 @router.get("/{session_id}/report", response_model=SessionReport)
-async def report(session_id: UUID) -> SessionReport:
+async def report(session_id: UUID, request: Request) -> SessionReport:
     """Разбор сессии: метрики, отметки, эталонные вопросы, самооценка, пометки.
 
-    Оценка курсанту открывается событием `score.ready` после самооценки; здесь
-    прав нет — в прототипе нет входа, и точка доступна всем, у кого есть номер
-    занятия (docs/arch/CONTRACT.md).
+    Обучающийся открывает только свой разбор: ТЗ запрещает доступ к чужим
+    результатам, а не только к чужим экранам. Проверка по `trainee_id`
+    занятия, а не по номеру в ссылке.
     """
+    who = require(request)
     state, scenario = _live(session_id)
+    if who.role is Role.TRAINEE and state.trainee_id != who.trainee_id:
+        raise HTTPException(status_code=403, detail="not_your_session")
     if state.score is None:
         raise HTTPException(status_code=409, detail="score_not_ready")
     return build_report(session_id, state, scenario)
 
 
 @router.patch("/{session_id}/report", response_model=SessionReport)
-async def override(session_id: UUID, body: ScoreOverride) -> SessionReport:
-    """Тренажёр готовит материал, преподаватель имеет последнее слово."""
+async def override(session_id: UUID, body: ScoreOverride, request: Request) -> SessionReport:
+    """Тренажёр готовит материал, преподаватель имеет последнее слово.
+
+    Администратору сюда нельзя: ТЗ запрещает ему вмешиваться в оценки прямо.
+    """
+    who = require(request, Role.INSTRUCTOR)
     state, scenario = _live(session_id)
     if state.score is None:
         raise HTTPException(status_code=409, detail="score_not_ready")
@@ -148,11 +157,16 @@ async def override(session_id: UUID, body: ScoreOverride) -> SessionReport:
         "overridden_by": body.author,
         "override_comment": body.comment,
     }
+    await audit(
+        who.login, who.role.value, "score.override", str(session_id),
+        f"{state.score.get('score_auto')} → {body.score_final}: {body.comment}",
+    )
     return build_report(session_id, state, scenario)
 
 
 @router.get("", response_model=list[SessionOut])
 async def listing(
+    request: Request,
     trainee: UUID | None = None,
     group: UUID | None = None,
     mode: SessionMode | None = None,
@@ -160,6 +174,10 @@ async def listing(
     limit: int = 100,
     db: AsyncSession = Depends(get_session),
 ) -> list[SessionOut]:
+    who = require(request)
+    # Обучающийся видит только свою историю, что бы он ни передал в фильтре.
+    if who.role is Role.TRAINEE:
+        trainee = who.trainee_id
     rows = await repo.history(
         db,
         trainee_id=trainee,

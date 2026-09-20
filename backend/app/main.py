@@ -4,9 +4,11 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from starlette.middleware.sessions import SessionMiddleware
 
 from pathlib import Path
 
+from app.api import auth
 from app.api.http import ekp as ekp_api
 from app.api.http import scenarios as scenarios_api
 from app.api.http import sessions
@@ -61,6 +63,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Учебный симулятор занятия для системы 112", lifespan=lifespan)
+# Сессия ставится до роутеров: роль должна быть известна и на HTTP, и в момент
+# рукопожатия сокета, иначе проверять её в канале будет нечем (app/api/auth.py).
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=get_settings().session_secret,
+    session_cookie="lct_session",
+    https_only=False,  # учебный класс живёт по http во внутренней сети
+    max_age=12 * 60 * 60,  # смена занятий, не месяц
+)
+app.include_router(auth.router)
 app.include_router(sessions.router)
 app.include_router(scenarios_api.router)
 app.include_router(ekp_api.router)

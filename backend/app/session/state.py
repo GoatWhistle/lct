@@ -50,6 +50,9 @@ class SessionState:
     mode: SessionMode
     required_fields: list[str] = field(default_factory=list)
     trainee_name: str | None = None
+    #: Чьё это занятие. Проставляется при запуске, когда курсант известен
+    #: по учётной записи: по нему разбор закрывается от чужих (lct-23).
+    trainee_id: UUID | None = None
     attempt: int = 1
 
     kio: KIO = field(default_factory=KIO)

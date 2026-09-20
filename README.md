@@ -39,6 +39,7 @@ make lesson     запустить занятие и получить ссылк
 make test       тесты бэкенда            make typecheck  проверка фронта
 make test-voice голосовой контур на моделях   make latency    замер задержки по этапам
 make seed       сценарии в БД            make migrate    миграции
+make users      учётные записи ролей     make ekp        классификатор происшествий
 make repl       диалог со звонящим без голоса и LLM
 make back       бэкенд нативно, с голосом (сначала docker compose stop backend)
 ```

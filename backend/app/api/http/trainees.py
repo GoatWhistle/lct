@@ -8,11 +8,13 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.auth import require
+from app.domain.roles import Role
 from app.db.base import get_session
 from app.db.models import Group, Score, Session, Trainee
 
@@ -59,7 +61,10 @@ class ProfileOut(BaseModel):
 
 
 @router.get("", response_model=list[TraineeOut])
-async def listing(db: AsyncSession = Depends(get_session)) -> list[TraineeOut]:
+async def listing(request: Request, db: AsyncSession = Depends(get_session)) -> list[TraineeOut]:
+    """Список курсантов — преподавателю и администратору: обучающемуся он
+    не нужен, а чужие фамилии из него видны."""
+    require(request, Role.INSTRUCTOR, Role.ADMIN)
     rows = await db.execute(
         select(Trainee, Group.name).join(Group, Group.id == Trainee.group_id, isouter=True)
     )
@@ -67,7 +72,12 @@ async def listing(db: AsyncSession = Depends(get_session)) -> list[TraineeOut]:
 
 
 @router.get("/{trainee_id}/profile", response_model=ProfileOut)
-async def profile(trainee_id: UUID, db: AsyncSession = Depends(get_session)) -> ProfileOut:
+async def profile(
+    trainee_id: UUID, request: Request, db: AsyncSession = Depends(get_session)
+) -> ProfileOut:
+    who = require(request)
+    if who.role is Role.TRAINEE and who.trainee_id != trainee_id:
+        raise HTTPException(status_code=403, detail="not_your_profile")
     trainee = await db.get(Trainee, trainee_id)
     if trainee is None:
         raise HTTPException(status_code=404, detail="trainee_not_found")

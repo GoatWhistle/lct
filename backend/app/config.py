@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     )
     judge_temperature: float = 0.0
 
+    # Вход и роли (lct-23). `session_secret` обязателен на рабочем стенде:
+    # значение по умолчанию годится только для разработки, и администратор
+    # видит в состоянии сервисов, что оно не заменено.
+    session_secret: str = "dev-secret-поменять-на-стенде"
+    #: Вход без пароля для `make lesson` и тестов. На стенде выключен.
+    dev_auth_bypass: bool = False
+
     # Нормативы: переопределяют значения по умолчанию из domain/timers.py
     timer_limits_ms: dict[TimerCode, int] = {}
 
