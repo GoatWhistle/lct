@@ -93,6 +93,9 @@ class SessionState:
     dds_log: list[tuple[str, datetime, str | None]] = field(default_factory=list)
     #: Отметки служб по списку оповещения — предмет второго режима занятия.
     status_log: list[StatusEntry] = field(default_factory=list)
+    #: Чем курсант закрыл вызов, если не карточкой (lct-36).
+    resolved_outcome: str | None = None
+    resolve_comment: str = ""
 
     def on_event(self, event_type: str) -> None:
         """Единственная точка, где событие двигает таймеры."""

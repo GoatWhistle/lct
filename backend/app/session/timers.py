@@ -34,6 +34,9 @@ STARTS: dict[str, tuple[TimerCode, ...]] = {
 STOPS: dict[str, tuple[TimerCode, ...]] = {
     "call.answer": (TimerCode.ANSWER,),
     "dds.dispatch": (TimerCode.INTERVIEW,),
+    # Справка и передача в другой регион заканчивают опрос так же, как передача
+    # карточки: норматив опроса не должен тикать после решения (lct-36).
+    "call.resolve": (TimerCode.INTERVIEW,),
     "card.ack": (TimerCode.DDS_ACK,),
     "zone.decision": (TimerCode.ZONE_CHECK,),
     "crew.arrived": (TimerCode.CLOSE,),

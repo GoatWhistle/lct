@@ -40,6 +40,13 @@ export interface CallIncoming {
   required_fields?: Array<string>;
 }
 
+/** Курсант решил, что карточка здесь не заводится. Не «завершить звонок», а именно «этот вызов закрывается иначе»: справкой или передачей в другой регион. Решение оценивается наравне с выбором признаков — это та же классификация, только на шаг раньше. */
+export interface CallResolve {
+  type: "call.resolve";
+  outcome: Outcome;
+  comment?: string;
+}
+
 export interface CallStarted {
   type: "call.started";
   started_at: string;
@@ -293,6 +300,9 @@ export interface ModeSet {
 /** Состояние звонящего. Фон подачи, не факты. */
 export type Mood = "calm" | "worried" | "panic" | "aggressive" | "confused";
 
+/** Чем заканчивается вызов. Весь продукт по умолчанию считает, что звонок → карточка → выезд. В билетах заказчика это не всегда так: «поругался с продавцом „Мегафон“» — справка, а вызов из Волгоградской области передаётся в систему-112 другого субъекта (docs/spec/TICKETS.md). Курсант, заведший карточку на такой вызов, ошибся, и система обязана это увидеть. */
+export type Outcome = "card" | "consultation" | "transfer_region";
+
 /** `auto` — сервер распознал факт из речи, `operator` — эхо правки курсанта. */
 export type PatchSource = "auto" | "operator";
 
@@ -533,7 +543,7 @@ export interface ZoneDecision {
 
 export type ServerToTrainee = CallIncoming | CallStarted | SttPartial | SttFinal | CallerUtterance | TtsBegin | TtsEnd | TtsCancel | BgStart | BgStop | EraData | KioPatchOut | HintShown | TimerTick | CallEnded | ScoreReady | ErrorEvent;
 
-export type TraineeToServer = CallAnswer | KioPatchIn | HintRequest | SelfAssessmentSubmit | DdsDispatch | CallHangup | CallbackDial;
+export type TraineeToServer = CallAnswer | KioPatchIn | HintRequest | SelfAssessmentSubmit | DdsDispatch | CallResolve | CallHangup | CallbackDial;
 
 export type ServerToObserver = SessionSnapshot | TranscriptAppend | KioState | TimerTick | ModeSet | HintShown | BgStart | BgStop | CallerUtterance | SessionEnded | ScoreReady | InstructorNoteShown | ReferenceStarted | ErrorEvent;
 
@@ -550,6 +560,7 @@ export type EventName =
   | "call.ended"
   | "call.hangup"
   | "call.incoming"
+  | "call.resolve"
   | "call.started"
   | "callback.dial"
   | "caller.utterance"

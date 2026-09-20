@@ -1,6 +1,8 @@
 // АРМ курсанта: приём вызова и разговор голосом.
 // Карточка КИО — lct-10, таймеры — lct-11.
 
+import { useState } from "react";
+
 import { KioCard } from "@/features/kio-card/KioCard";
 import { StandStatus } from "@/features/health/StandStatus";
 import { ModeBanner, hintsAllowed } from "@/features/mode-banner/ModeBanner";
@@ -18,7 +20,14 @@ const STATUS_LABEL: Record<string, string> = {
   closed: "отключено",
 };
 
+const RESOLVE_LABELS = {
+  consultation: "справочно-консультационная помощь",
+  transfer_region: "передан в систему-112 другого региона",
+} as const;
+
 export function Call() {
+  const [resolveComment, setResolveComment] = useState("");
+  const [resolved, setResolved] = useState<"consultation" | "transfer_region" | null>(null);
   const sessionId = sessionIdFromUrl();
   const call = useCall(sessionId);
 
@@ -82,6 +91,42 @@ export function Call() {
               Передать в ДДС
             </button>
           </p>
+          {/* Не каждый вызов заканчивается карточкой: справка и чужой регион —
+              отдельные исходы, и курсант выбирает их сам (docs/spec/TICKETS.md). */}
+          <details>
+            <summary>Закрыть вызов без карточки</summary>
+            <p>
+              <input
+                type="text"
+                value={resolveComment}
+                placeholder="что сказали заявителю, куда передали"
+                onChange={(event) => setResolveComment(event.target.value)}
+              />
+            </p>
+            <p>
+              <button
+                type="button"
+                disabled={!call.micOn || resolved !== null}
+                onClick={() => {
+                  call.resolve("consultation", resolveComment);
+                  setResolved("consultation");
+                }}
+              >
+                Справка, выезд не нужен
+              </button>{" "}
+              <button
+                type="button"
+                disabled={!call.micOn || resolved !== null}
+                onClick={() => {
+                  call.resolve("transfer_region", resolveComment);
+                  setResolved("transfer_region");
+                }}
+              >
+                Передать в другой регион
+              </button>
+            </p>
+            {resolved && <p className="warn">Вызов закрыт: {RESOLVE_LABELS[resolved]}</p>}
+          </details>
         </section>
         <section>
           <h2>Нормативы</h2>

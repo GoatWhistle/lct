@@ -7,7 +7,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.domain.classifiers import DDSCode, IncidentType, Level
+from app.domain.classifiers import DDSCode, IncidentType, Level, Outcome
 from app.domain.events import Mood
 
 
@@ -145,6 +145,15 @@ class Scenario(Strict):
     # Из них загрузчик выводит код и список оповещения (domain/ekp.py).
     signs: list[str] = Field(default_factory=list, max_length=3)
 
+    # Билет — единица занятия у заказчика: три вызова подряд, разные службы
+    # (docs/spec/TICKETS.md). Преподаватель выбирает билет, а не сценарий.
+    ticket: int | None = None
+    position: int | None = Field(default=None, ge=1, le=3, description="Номер вызова в билете")
+
+    # Чем вызов заканчивается правильно. По умолчанию — карточка и выезд;
+    # справка и передача в другой регион разбираются в lct-36.
+    outcome: Outcome = Outcome.CARD
+
     facts: list[Fact] = []
     checklist: list[ChecklistItem] = []
     required_fields: list[str] = Field(default_factory=list)
@@ -155,6 +164,12 @@ class Scenario(Strict):
     ground_truth: GroundTruth = GroundTruth()
     era_glonass: EraGlonass | None = None
     tree: Tree = Tree()
+
+    @model_validator(mode="after")
+    def ticket_needs_position(self):
+        if (self.ticket is None) != (self.position is None):
+            raise ValueError("ticket и position задаются вместе: билет без номера вызова неполон")
+        return self
 
     @model_validator(mode="after")
     def era_only_for_era_type(self):

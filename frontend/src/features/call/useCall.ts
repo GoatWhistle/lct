@@ -13,6 +13,7 @@ import { CALLER_RATE, Playback } from "@/shared/audio/playback";
 import { type CardState, applyPatch, edit, empty as emptyCard } from "@/features/kio-card/merge";
 import type { ChecklistItem } from "@/features/self-assessment/SelfAssessment";
 import type {
+  Outcome,
   CallIncoming,
   DDSCode,
   ServerToTrainee,
@@ -186,12 +187,20 @@ export function useCall(sessionId: string | null) {
     channel.current?.send({ type: "dds.dispatch", service });
   }, []);
 
+  /** Закрыть вызов не карточкой: справкой или передачей в другой регион.
+   *  Отдельное действие, а не «положил трубку»: система должна отличить
+   *  осознанное решение от брошенного вызова (docs/spec/TICKETS.md). */
+  const resolve = useCallback((outcome: Outcome, comment: string) => {
+    channel.current?.send({ type: "call.resolve", outcome, comment });
+  }, []);
+
   const submitSelfAssessment = useCallback((missed: string[], comment: string) => {
     channel.current?.send({ type: "self_assessment.submit", missed, comment });
     setSelfAssessed(true);
   }, []);
 
   return {
+    resolve,
     status, phase, incoming, lines, timers, callerSpeaking, micOn, error, card,
     checklist, selfAssessed, scoreReady, report,
     answer, hangup, hint, patchKio, dispatch, submitSelfAssessment,

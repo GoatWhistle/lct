@@ -1,0 +1,58 @@
+# Билет 1, вызов 2 (docs/spec/TICKETS.md). Массовая драка с пострадавшими:
+# в списке оповещения и полиция, и скорая — это тот случай, где выбор одной
+# службы был бы неверен по построению.
+id: t01-2-mass-fight
+title: "Массовая драка у посольства, пятеро пострадавших"
+ticket: 1
+position: 2
+type: police
+level: L2
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Драка, Улица общественное место, Массовая (от 10 человек)]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview,    mood: worried }
+
+first_line: "Алло! Тут человек пятнадцать дерутся, прутами машут! Скорее!"
+
+facts:
+  - id: f_address
+    value: "рядом с посольством Азербайджана, на тротуаре"
+    refined: "Леонтьевский переулок, дом 16, строение 1"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: "дерутся десять-пятнадцать человек"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "пятеро пострадавших с разными травмами"
+    reveal_on: { question: q_victims }
+  - id: f_suspects
+    value: "дерутся палками и железными прутами, огнестрельного не видно"
+    reveal_on: { question: q_suspects }
+  - id: f_caller
+    value: "Иванов Пётр Иванович, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address,        fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened,  fact: f_what_happened }
+  - { id: q_victims,        fact: f_victims }
+  - { id: q_suspects,       fact: f_suspects }
+  - { id: q_caller,         fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "Леонтьевский переулок, дом 16, строение 1"
+  victims: 5
+
+tree:
+  pregenerated: false

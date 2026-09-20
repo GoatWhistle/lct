@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass, field
 
 from app.domain import ekp
+from app.domain.classifiers import OUTCOME_LABELS, Outcome
 from app.domain.events import CallEndReason, Metric
 from app.domain.kio import KIO, missing_fields
 from app.domain.taxonomy import ERRORS, Competency, Finding, FindingSource
@@ -112,6 +113,8 @@ def evaluate(
     timers: SessionTimers,
     revealed_facts: list[str] | None,
     refined_facts: list[str] | None = None,
+    resolved_outcome: str | None = None,
+    dispatched: bool = False,
     end_reason: CallEndReason | None = None,
     bounced_fields: list[str] | None = None,
 ) -> GostResult:
@@ -223,6 +226,26 @@ def evaluate(
             finding=f"Карточка ушла в ДДС {actual}, верная — {truth.dds.value}",
         )
 
+    # ── исход вызова, E2 ──
+    #
+    # Не каждый звонок заканчивается карточкой: «поругался с продавцом» — справка,
+    # вызов из другого субъекта передаётся туда (docs/spec/TICKETS.md). Курсант,
+    # заведший карточку на такой вызов, сделал лишнюю работу и занял расчёт.
+    expected_outcome = scenario.outcome
+    if expected_outcome is not Outcome.CARD:
+        actual = resolved_outcome or ("card" if dispatched else "ничего не решено")
+        build.add(
+            "outcome", "Исход вызова",
+            OUTCOME_LABELS.get(Outcome(actual), actual) if actual in set(Outcome) else actual,
+            OUTCOME_LABELS[expected_outcome],
+            passed=actual == expected_outcome.value,
+            ref="классификатор происшествий, группа 23 «Прочие происшествия»",
+            finding=(
+                f"Вызов закрыт как «{actual}», правильно — "
+                f"«{OUTCOME_LABELS[expected_outcome]}»"
+            ),
+        )
+
     # ── подтверждение места происшествия, E1 ──
     #
     # Адрес заявителя не всегда адрес происшествия: он называет тот, где стоит
@@ -241,6 +264,11 @@ def evaluate(
         )
 
     # ── карточка, E5 ──
+    #
+    # Там, где карточка не заводится, пустые поля — не ошибка, а правильное
+    # поведение: штрафовать за них значит учить заполнять лишнее.
+    if expected_outcome is not Outcome.CARD:
+        return build.result
     if truth.address:
         written = kio.address or " ".join(filter(None, [kio.street, kio.building]))
         expected = _normalize_address(truth.address)

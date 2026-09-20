@@ -65,7 +65,12 @@ def _derive_ground_truth(scenario: Scenario) -> Scenario:
                 f"версии {ekp.reference().version}"
             )
         scenario.ground_truth.incident_code = found.code
-        scenario.ground_truth.notify = ekp.notify_list(found.code)
+        # Эталонный список оповещения — с учётом обстоятельств вызова: пятеро
+        # пострадавших поднимают скорую, и без них эталон был бы неполон.
+        keys: list[str] = []
+        if scenario.ground_truth.victims:
+            keys.append("casualties")
+        scenario.ground_truth.notify = ekp.notify_list(found.code, keys)
     return scenario
 
 
@@ -154,14 +159,32 @@ def load_file(path: Path, root: Path) -> Scenario:
     return _derive_ground_truth(scenario)
 
 
+#: Подкаталоги, которые сценариями не являются.
+NOT_SCENARIOS = {"checklists", "pregenerated"}
+
+
+def scenario_files(root: Path) -> list[Path]:
+    """Файлы сценариев, включая подкаталоги вроде `tickets/`.
+
+    Библиотека перестала быть плоской, когда в неё поехали билеты заказчика:
+    тридцать два билета по три вызова — это девяносто шесть файлов, и держать
+    их в одном каталоге рядом с чек-листами нельзя (docs/spec/TICKETS.md).
+    """
+    return sorted(
+        path
+        for path in root.rglob("*.yaml")
+        if not set(path.relative_to(root).parts[:-1]) & NOT_SCENARIOS
+    )
+
+
 def load_library(root: Path) -> list[Scenario]:
-    """Все сценарии каталога. Подкаталог `checklists/` — не сценарии."""
+    """Все сценарии каталога и его подкаталогов."""
     if not root.exists():
         raise ScenarioError(f"каталог сценариев не найден: {root}")
 
     scenarios: list[Scenario] = []
     seen: dict[str, Path] = {}
-    for path in sorted(root.glob("*.yaml")):
+    for path in scenario_files(root):
         scenario = load_file(path, root)
         if scenario.id in seen:
             raise ScenarioError(f"{path.name}: id {scenario.id} уже занят {seen[scenario.id].name}")

@@ -159,6 +159,28 @@ def missing_fields(card: KIO, required: list[str]) -> list[str]:
     return empty
 
 
+#: Поля карточки, которые меняют состав списка оповещения. В боевом АРМ это
+#: те же «признаки», только не про тип происшествия, а про обстоятельства:
+#: пострадавшие поднимают скорую, газификация — МОСГАЗ (domain/ekp.py).
+MODIFIER_FIELDS: frozenset[str] = frozenset(
+    {"signs", "victims_count", "life_threat", "evacuation_needed", "fire.gasified"}
+)
+
+
+def modifiers(card: KIO) -> list[str]:
+    """Какие условия оповещения включены обстоятельствами вызова."""
+    keys: list[str] = []
+    if card.victims_count:
+        keys.append("casualties")
+    if card.life_threat:
+        keys.append("life_threat")
+    if card.evacuation_needed:
+        keys.append("evacuation")
+    if card.fire is not None and card.fire.gasified:
+        keys.append("gas")
+    return keys
+
+
 def derive_incident(card: KIO) -> KIO:
     """Пересчитать код происшествия и список оповещения по признакам.
 
@@ -168,11 +190,13 @@ def derive_incident(card: KIO) -> KIO:
     from app.domain import ekp
 
     found = ekp.by_signs(card.signs)
+    keys = modifiers(card)
     data = card.model_dump()
     data["incident_code"] = found.code if found else None
+    computed = ekp.notify_list(found.code, keys) if found else []
     # Добавленную вручную службу не теряем: удалить её оператор не может.
-    manual = [name for name in card.notify if name not in ekp.notify_list(data["incident_code"] or "")]
-    data["notify"] = (ekp.notify_list(found.code) if found else []) + manual
+    manual = [name for name in card.notify if name not in ekp.notify_list(data["incident_code"] or "", keys)]
+    data["notify"] = computed + manual
     return KIO.model_validate(data)
 
 
@@ -193,4 +217,7 @@ def apply_patch(card: KIO, fields: dict[str, Any]) -> KIO:
         nested[tail] = value
         data[head] = nested
     updated = KIO.model_validate(data)
-    return derive_incident(updated) if "signs" in fields else updated
+    # Пересчитываем не только на смену признаков: пострадавшие поднимают скорую,
+    # газификация — МОСГАЗ, и список оповещения обязан это отразить сразу.
+    touched = MODIFIER_FIELDS & set(fields)
+    return derive_incident(updated) if touched else updated

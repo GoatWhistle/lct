@@ -17,7 +17,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.domain.classifiers import DDSCode, IncidentType, Level
+from app.domain.classifiers import DDSCode, IncidentType, Level, Outcome
 from app.domain.kio import KIO, Coords
 from app.domain.statuses import ServiceStatus, StationSnapshot
 from app.domain.taxonomy import Finding
@@ -278,12 +278,26 @@ class CallbackDial(BaseModel):
     type: Literal["callback.dial"] = "callback.dial"
 
 
+class CallResolve(BaseModel):
+    """Курсант решил, что карточка здесь не заводится.
+
+    Не «завершить звонок», а именно «этот вызов закрывается иначе»: справкой
+    или передачей в другой регион. Решение оценивается наравне с выбором
+    признаков — это та же классификация, только на шаг раньше.
+    """
+
+    type: Literal["call.resolve"] = "call.resolve"
+    outcome: Outcome
+    comment: str = ""
+
+
 TraineeToServer = Annotated[
     CallAnswer
     | KioPatchIn
     | HintRequest
     | SelfAssessmentSubmit
     | DdsDispatch
+    | CallResolve
     | CallHangup
     | CallbackDial,
     Field(discriminator="type"),

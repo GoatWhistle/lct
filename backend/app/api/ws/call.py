@@ -130,6 +130,15 @@ async def _handle(session_id: UUID, state, event) -> None:
             hub.to_observers(session_id, KioState(kio=state.kio))
             hub.to_observers(session_id, TimerTick(timers=state.timers.snapshot()))
 
+        case "call.resolve":
+            # Курсант закрывает вызов не карточкой. Отдельное действие, а не
+            # «положил трубку»: система должна отличить осознанное решение
+            # от брошенного вызова (docs/spec/TICKETS.md).
+            state.resolved_outcome = event.outcome.value
+            state.resolve_comment = event.comment
+            state.on_event("call.resolve")
+            hub.to_observers(session_id, state.snapshot())
+
         case "callback.dial":
             state.on_event("callback.dial")
 

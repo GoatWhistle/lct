@@ -97,3 +97,26 @@ def test_changing_signs_recalculates_the_card():
 def test_every_level_offers_something(level):
     prefix = ["жилой дом", "подъезд"][: level - 1]
     assert ekp.signs_at_level(level, prefix), f"уровень {level} пуст"
+
+
+def test_victims_bring_the_ambulance():
+    """Модификатор приходит не из классификатора, а из карточки: пострадавшие
+    в поле `victims_count` поднимают скорую (docs/spec/DATASET.md)."""
+    from app.domain.kio import KIO, derive_incident
+
+    quiet = derive_incident(KIO(signs=["Драка", "Улица общественное место", "Массовая (от 10 человек)"]))
+    hurt = derive_incident(
+        KIO(signs=["Драка", "Улица общественное место", "Массовая (от 10 человек)"], victims_count=5)
+    )
+    assert "СМП" not in quiet.notify
+    assert "СМП" in hurt.notify
+    assert set(quiet.notify) < set(hurt.notify), "модификатор только добавляет службы"
+
+
+def test_gasified_object_brings_mosgaz():
+    from app.domain.kio import KIO, FireDetails, derive_incident
+
+    card = derive_incident(
+        KIO(signs=["жилой дом", "балкон", "открытое пламя"], fire=FireDetails(gasified=True))
+    )
+    assert "МОСГАЗ" in card.notify

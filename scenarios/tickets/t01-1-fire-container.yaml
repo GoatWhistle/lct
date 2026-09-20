@@ -1,0 +1,53 @@
+# Билет 1, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — дословно из билета,
+# факты и чек-лист выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t01-1-fire-container
+title: "Возгорание мусорного контейнера"
+ticket: 1
+position: 1
+type: fire
+level: L2
+topics: [fires]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [на улице, мусор, открытое пламя]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview,    mood: calm }
+
+first_line: "Здравствуйте. Тут мусорный контейнер горит, у депо."
+
+facts:
+  - id: f_address
+    value: "Депо, около станции Москва-Пассажирская Киевская, длинное помещение недалеко от участкового пункта полиции"
+    refined: "Московская железная дорога, Киевская, 1 км, дом 2, строение 2"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_burns
+    value: "горит мусорный контейнер, пламя открытое"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "пострадавших нет, рядом никого"
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Сидоров Иван Сергеевич, телефон 916-126-34-71"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address,       fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_burns,    fact: f_what_burns }
+  - { id: q_people,        fact: f_people }
+  - { id: q_caller,        fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Московская железная дорога, Киевская, 1 км, дом 2, строение 2"
+  victims: 0
+
+tree:
+  pregenerated: false

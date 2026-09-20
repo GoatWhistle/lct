@@ -35,6 +35,8 @@ async def finish(session_id: UUID, state) -> None:
         refined_facts=list(state.slots.refined) if state.slots else None,
         end_reason=state.end_reason,
         bounced_fields=state.bounced_fields,
+        resolved_outcome=state.resolved_outcome,
+        dispatched=state.dispatched_card is not None,
     )
     # Работа диспетчера — вторая роль и вторая таксономия. Отметки D1–D6 идут
     # рядом с E1–E6, а не вместо: в живой цепочке 112 → ДДС в одном занятии
