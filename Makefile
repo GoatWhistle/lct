@@ -44,6 +44,9 @@ models: ## Скачать модели в backend/models/: эмбеддинги,
 ekp: ## Классификатор происшествий заказчика → app/domain/ekp.json (разовый импорт)
 	cd backend && $(UV) run --with openpyxl python scripts/import_ekp.py
 
+backup: ## Резервная копия базы в backend/backups/ (для cron: раз в сутки)
+	cd backend && $(UV) run python scripts/backup.py
+
 users: ## Завести учётные записи ролей и напечатать пароли: make users force=1
 	cd backend && $(UV) run python scripts/users.py
 
@@ -77,4 +80,4 @@ pregen: ## Построить таблицу реплик звонящего д�
 demo: ## Поднять стенд для занятия: база, сценарии, бэкенд с голосом, фронт
 	./scripts/demo.sh
 
-.PHONY: help dev down back front types ekp users test test-voice typecheck test-llm lesson llm-check latency migrate revision models seed repl pregen demo
+.PHONY: help dev down back front types ekp users backup test test-voice typecheck test-llm lesson llm-check latency migrate revision models seed repl pregen demo

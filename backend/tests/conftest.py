@@ -23,6 +23,22 @@ def _dev_auth():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _fresh_engine():
+    """Движок базы — на тест, а не на процесс.
+
+    Пул соединений привязан к событийному циклу, в котором создан, а каждый
+    `TestClient` поднимает свой. Общий движок даёт «Future attached to
+    a different loop» на втором обращении к базе — тест падает не там, где
+    ошибка, и только в компании других тестов.
+    """
+    from app.db import base
+
+    base.reset()
+    yield
+    base.reset()
+
+
 @pytest.fixture
 def as_instructor(client):
     """Клиент, вошедший преподавателем. Cookie живёт в самом TestClient."""

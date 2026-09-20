@@ -5,6 +5,9 @@
 # Веса моделей (тянутся make models)
 backend/models/
 
+# Резервные копии базы (make backup)
+backend/backups/
+
 # Python
 __pycache__/
 *.pyc

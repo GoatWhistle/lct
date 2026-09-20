@@ -30,6 +30,19 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
     return _sessionmaker
 
 
+def reset() -> None:
+    """Забыть движок и фабрику.
+
+    Нужно тестам: каждый `TestClient` поднимает свой событийный цикл, а пул
+    соединений привязан к тому, в котором создан. Переиспользование даёт
+    «Future attached to a different loop» — причём не сразу, а на втором
+    обращении к базе, и выглядит это как случайно падающий тест.
+    """
+    global _engine, _sessionmaker
+    _engine = None
+    _sessionmaker = None
+
+
 async def get_session() -> AsyncIterator[AsyncSession]:
     """Зависимость FastAPI: сессия на запрос, коммит явный."""
     async with get_sessionmaker()() as session:

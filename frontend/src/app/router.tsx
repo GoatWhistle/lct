@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import { Call } from "@/pages/trainee/Call";
 import { Instructor } from "@/pages/instructor/Instructor";
 import { Dds } from "@/pages/dds/Dds";
+import { Admin } from "@/pages/admin/Admin";
 import { Profile } from "@/pages/profile/Profile";
 import { Wall } from "@/pages/wall/Wall";
 import { RequireAuth } from "@/features/auth/Login";
@@ -23,4 +24,5 @@ export const router = createBrowserRouter([
   { path: "/wall", element: guarded("/wall", <Wall />) },
   { path: "/profile", element: guarded("/profile", <Profile />) },
   { path: "/dds", element: guarded("/dds", <Dds />) },
+  { path: "/admin", element: guarded("/admin", <Admin />) },
 ]);

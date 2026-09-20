@@ -9,6 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
 
 from app.api import auth
+from app.api.http import admin as admin_api
 from app.api.http import ekp as ekp_api
 from app.api.http import scenarios as scenarios_api
 from app.api.http import sessions
@@ -76,6 +77,7 @@ app.include_router(auth.router)
 app.include_router(sessions.router)
 app.include_router(scenarios_api.router)
 app.include_router(ekp_api.router)
+app.include_router(admin_api.router)
 app.include_router(trainees.router)
 app.include_router(call_ws.router)
 app.include_router(observe_ws.router)
