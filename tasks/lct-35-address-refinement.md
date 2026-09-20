@@ -98,7 +98,7 @@ estimate: "1 день"
 восемь формулировок уточняющего пункта разводятся с обычным чисто, тест
 `test_real_model_tells_the_two_questions_apart` это фиксирует.
 
-Первый сценарий из библиотеки заказчика — `scenarios/fire-private-house-l3.yaml`,
+Первый сценарий из библиотеки заказчика — `scenarios/tickets/t03-1-fire-private-house.yaml`,
 билет 3, вызов 1: «ул. Станционная, 28» оказывается Королёвом. Двенадцать тестов
 в `tests/test_refinement.py`.
 

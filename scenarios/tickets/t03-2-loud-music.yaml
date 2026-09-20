@@ -1,0 +1,55 @@
+# Билет 3, вызов 2 (docs/spec/TICKETS.md). Профильный, но не экстренный вызов:
+# карточка заводится, наряд не срывается с пожара. Курсант должен не раздуть
+# происшествие и не отмахнуться от него.
+id: t03-2-loud-music
+title: "Громкая музыка во дворе"
+ticket: 3
+position: 2
+type: police
+level: L1
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: ["Нарушение тишины - в неразрешенное время", "Шум, музыка, ремонт, сигнализация автомашины"]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview,    mood: calm }
+
+first_line: "Добрый вечер. Во дворе музыка на всю громкость, второй час уже."
+
+facts:
+  - id: f_address
+    value: "бульвар Маршала Рокоссовского, дом 25, во дворе"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "во дворе громко играет музыка из машины, компания сидит рядом"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "никто не пострадал, драки нет"
+    reveal_on: { question: q_victims }
+  - id: f_suspects
+    value: "человек пять молодых людей, оружия не видно"
+    reveal_on: { question: q_suspects }
+  - id: f_caller
+    value: "Соколов Иван Петрович, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address,       fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims,       fact: f_victims }
+  - { id: q_suspects,      fact: f_suspects }
+  - { id: q_caller,        fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "бульвар Маршала Рокоссовского, дом 25"
+  victims: 0
+
+tree:
+  pregenerated: false

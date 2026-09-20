@@ -1,0 +1,55 @@
+# Билет 2, вызов 1 (docs/spec/TICKETS.md). Дым без открытого пламени: курсант
+# должен различить задымление и пожар — в классификаторе это разные коды
+# и разные списки оповещения.
+id: t02-1-smoke-chute
+title: "Задымление мусоропровода в жилом доме"
+ticket: 2
+position: 1
+type: fire
+level: L2
+topics: [fires]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [жилой дом, мусоропровод, дым]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview,    mood: worried }
+
+first_line: "Здравствуйте, у нас дымом из мусоропровода тянет, весь подъезд в дыму."
+
+facts:
+  - id: f_address
+    value: "улица Берзарина, дом 21, корпус 1, подъезд 3, домофон 68"
+    reveal_on: { question: q_address }
+  - id: f_what_burns
+    value: "дымит мусоропровод, открытого пламени не видно"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "пострадавших нет, люди в квартирах"
+    reveal_on: { question: q_people }
+  - id: f_smoke
+    value: "дым идёт по подъезду, заявитель на 7-м этаже, в доме 17 этажей"
+    reveal_on: { question: q_smoke }
+  - id: f_caller
+    value: "Ким Олег Юрьевич, телефон 916-126-34-71"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address,    fact: f_address }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people,     fact: f_people }
+  - { id: q_smoke,      fact: f_smoke }
+  - { id: q_caller,     fact: f_caller }
+
+required_fields: [address, entrance, incident_type, description]
+
+ground_truth:
+  address: "улица Берзарина, дом 21, корпус 1"
+  victims: 0
+
+tree:
+  pregenerated: false

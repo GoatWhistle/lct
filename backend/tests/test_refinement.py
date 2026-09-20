@@ -101,7 +101,7 @@ def test_refinement_happens_once(slots):
 
 @pytest.fixture(scope="module")
 def library_scenario():
-    return load_file(LIBRARY / "fire-private-house-l3.yaml", LIBRARY)
+    return load_file(LIBRARY / "tickets" / "t03-1-fire-private-house.yaml", LIBRARY)
 
 
 def test_library_scenario_expects_the_refined_address(library_scenario):

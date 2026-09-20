@@ -1,0 +1,58 @@
+# Билет 3, вызов 3 (docs/spec/TICKETS.md). Водитель заблокирован в машине:
+# признак «Блокированные» поднимает и спасателей, и скорую. Адрес — линейный
+# объект, съезд с МКАД: улицы и дома нет вовсе.
+id: t03-3-log-blocked-driver
+title: "Бревно упало на машину, водитель заблокирован"
+ticket: 3
+position: 3
+type: other
+level: L3
+topics: [rescue, address]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: ["ДТП пострадавшие", "Блокированные"]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview,    mood: worried }
+
+first_line: "С грузовика бревно слетело, прямо на легковую! Водитель зажат, не вылезает!"
+
+facts:
+  - id: f_address
+    value: "съезд с МКАД на Симферопольское шоссе в область"
+    refined: "съезд с МКАД внутренней стороны на Симферопольское шоссе, 100 метров не доезжая, обочина"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: "бревно упало с грузовика на легковую машину"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "водитель заблокирован в машине, сам выйти не может"
+    reveal_on: { question: q_victims }
+  - id: f_vehicle
+    value: "ВАЗ красного цвета, номер не видно"
+    reveal_on: { question: q_vehicle }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address,       fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims,       fact: f_victims }
+  - { id: q_vehicle,       fact: f_vehicle }
+  - { id: q_caller,        fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "съезд с МКАД внутренней стороны на Симферопольское шоссе"
+  victims: 1
+
+tree:
+  pregenerated: false

@@ -1,0 +1,53 @@
+# Билет 2, вызов 2 (docs/spec/TICKETS.md). Непрофильный вызов: заявителю нужна
+# не экстренная служба, а объяснение, куда обращаться. Карточка здесь не
+# заводится — правильное действие — справка (механика в lct-36).
+id: t02-2-megafon-consultation
+title: "Скандал с продавцом связи — непрофильный вызов"
+ticket: 2
+position: 2
+type: other
+level: L3
+topics: [nonprofile]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Справка консультация, 101 102 103 104 112 прочие службы, В части касающейся службы]
+outcome: consultation
+
+persona:
+  base: aggressive
+  arc:
+    - { stage: registration, mood: aggressive }
+    - { stage: interview,    mood: aggressive }
+
+first_line: "Алло! Меня в салоне связи обманули, разбирайтесь!"
+
+facts:
+  - id: f_address
+    value: "Сущёвский Вал, дом 5, строение 1, салон «Мегафон»"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "поругался с продавцом, тот бросил трубку; угроз и рукоприкладства не было"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "никто не пострадал, помощь не нужна"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address,       fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims,       fact: f_victims }
+  - { id: q_caller,        fact: f_caller }
+
+# Карточка не заводится: обязательных полей нет.
+required_fields: []
+
+ground_truth:
+  address: "Сущёвский Вал, дом 5, строение 1"
+  victims: 0
+
+tree:
+  pregenerated: false
