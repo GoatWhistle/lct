@@ -74,8 +74,8 @@ revision: ## Создать миграцию: make revision m="что измен
 repl: ## Текстовый диалог со звонящим без голоса: make repl s=<сценарий>
 	cd backend && $(UV) run python scripts/repl.py "$(s)"
 
-pregen: ## Построить таблицу реплик звонящего для офлайна: make pregen s=<сценарий> force=1
-	cd backend && $(UV) run python scripts/pregenerate.py "$(s)"
+pregen: ## Офлайн-таблицы реплик: make pregen [s=<сценарий>] [t=<билет>] [force=1]
+	cd backend && s="$(s)" t="$(t)" force="$(force)" $(UV) run python scripts/pregenerate.py
 
 demo: ## Поднять стенд для занятия: база, сценарии, бэкенд с голосом, фронт
 	./scripts/demo.sh

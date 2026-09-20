@@ -88,3 +88,59 @@ async def test_caller_never_speaks_an_unrevealed_fact(caller, slots):
         for fact in SCENARIO.facts:
             if fact.id not in revealed:
                 assert fact.value not in text, f"выдал «{fact.value}» на «{question}»"
+
+
+def test_refined_line_comes_from_the_table(tmp_path, monkeypatch):
+    """Офлайн-звонящий должен поправляться уточнённым адресом, а не отвечать
+    заготовкой: секцию `refine` пишет `make pregen` (tasks/lct-19, lct-35)."""
+    import yaml as _yaml
+
+    from app.dialog import tree as tree_module
+    from app.scenarios.schema import Scenario
+
+    scenario = Scenario.model_validate(
+        {
+            "id": "refine-offline",
+            "title": "Проверка уточнения офлайн",
+            "type": "fire",
+            "level": "L3",
+            "persona": {"base": "calm", "arc": [{"stage": "registration", "mood": "calm"}]},
+            "first_line": "Горим!",
+            "facts": [
+                {
+                    "id": "f_address",
+                    "value": "улица Станционная, дом 28",
+                    "refined": "Королёв, улица Станционная, дом 28",
+                    "reveal_on": {"question": "q_address"},
+                    "refine_on": "q_city",
+                }
+            ],
+            "checklist": [
+                {"id": "q_address", "question": "Назовите адрес", "fact": "f_address"},
+                {"id": "q_city", "question": "Это точно Москва город?"},
+            ],
+        }
+    )
+    table = {
+        "scenario": scenario.id,
+        "first_line": "Горим!",
+        "reveal": {"f_address": {"calm": "Станционная, двадцать восемь."}},
+        "refine": {"f_address": {"calm": "Нет, это Королёв, Станционная, двадцать восемь."}},
+        "repeat": {},
+        "fillers": {"calm": ["Не расслышал."]},
+    }
+    monkeypatch.setattr(tree_module, "LIBRARY", tmp_path)
+    (tmp_path / f"{scenario.id}.yaml").write_text(
+        _yaml.safe_dump(table, allow_unicode=True), encoding="utf-8"
+    )
+
+    caller = tree_module.TreeCaller(scenario.id)
+    slots = SlotMachine(scenario, StemEmbedder(), floor=0.5)
+    persona = PersonaState(scenario.persona)
+
+    import asyncio
+
+    asyncio.run(caller.reply(slots.hear("Назовите адрес"), persona, slots))
+    line = asyncio.run(caller.reply(slots.hear("Это точно Москва город?"), persona, slots))
+    assert "Королёв" in line.text, f"звонящий не поправился: {line.text}"
+    assert caller.misses == 0, "реплика ушла в заготовки, хотя в таблице она есть"
