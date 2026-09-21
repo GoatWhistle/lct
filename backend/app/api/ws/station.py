@@ -86,7 +86,7 @@ async def _handle(session_id: UUID, state, event) -> None:
                 _error(session_id, "Служба отсутствует в списке оповещения карточки")
                 return
             phase = REPORT_FOR_STATUS.get(event.status)
-            if state.exercise is Exercise.DDS and phase is not None and not any(
+            if (state.exercise is Exercise.DDS or state.handoff_to_dds) and phase is not None and not any(
                 report.service == event.service and report.phase == phase
                 for report in state.phone_reports
             ):
@@ -144,7 +144,7 @@ async def _handle(session_id: UUID, state, event) -> None:
             state.dds_log.append(("phone.dial", now_utc(), crew))
             hub.to_station(session_id, PhoneReport(**report.model_dump()))
         case "card.reply":
-            if state.exercise is not Exercise.DDS or not state.dispatched_card or (
+            if (state.exercise is not Exercise.DDS and not state.handoff_to_dds) or not state.dispatched_card or (
                 event.card_id != state.dispatched_card.card_id
             ):
                 _error(session_id, "Ответ относится не к текущей карточке")
@@ -168,7 +168,7 @@ async def _handle(session_id: UUID, state, event) -> None:
             else:
                 await _finish_dds(session_id, state)
         case "station.finish":
-            if state.exercise is not Exercise.DDS:
+            if state.exercise is not Exercise.DDS and not state.handoff_to_dds:
                 _error(session_id, "Операторское занятие завершается после звонка 112")
                 return
             await _finish_dds(session_id, state)

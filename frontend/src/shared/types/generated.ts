@@ -85,6 +85,7 @@ export interface CardBriefing {
   text: string;
   required_fields: Array<string>;
   card?: KIO | null;
+  handoff_to_dds?: boolean;
 }
 
 export interface CardNext {
@@ -280,6 +281,7 @@ export interface KIO {
   floor?: string | null;
   intercom_code?: string | null;
   coords?: Coords | null;
+  incident_group?: number | null;
   signs?: Array<string>;
   /** Код ЕКП по признакам */
   incident_code?: string | null;
@@ -423,6 +425,7 @@ export interface ScenarioStart {
   group_id?: string | null;
   mode: SessionMode;
   exercise?: Exercise;
+  handoff_to_dds?: boolean;
 }
 
 /** Коррекция оценки. Автооценка сохраняется рядом. */

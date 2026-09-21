@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import audit, require
+from app.domain import ekp
 from app.db.base import get_session
 from app.domain.roles import Role
 from app.scenarios import store
@@ -131,6 +132,11 @@ async def listing() -> list[dict]:
             "topics": scenario.topics,
             "modes": scenario.modes,
             "dds": scenario.ground_truth.dds.value if scenario.ground_truth.dds else None,
+            "ticket": scenario.ticket,
+            "position": scenario.position,
+            "ekp_group": (ekp.incident(scenario.ground_truth.incident_code).group
+                          if scenario.ground_truth.incident_code
+                          and ekp.incident(scenario.ground_truth.incident_code) else None),
         }
         for scenario in store.all_scenarios()
     ]

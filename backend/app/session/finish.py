@@ -126,7 +126,9 @@ async def finish(session_id: UUID, state) -> None:
     # Работа диспетчера — вторая роль и вторая таксономия. Отметки D1–D6 идут
     # рядом с E1–E6, а не вместо: в живой цепочке 112 → ДДС в одном занятии
     # участвуют оба (docs/spec/DATASET.md#статусы-реагирования).
-    if state.dispatched_card is not None and state.exercise is Exercise.CALL:
+    if state.dispatched_card is not None and (
+        state.exercise is Exercise.CALL or state.handoff_to_dds
+    ):
         dispatcher_findings = evaluate_dispatcher(
             entries=state.status_log,
             services=state.notified_services(),

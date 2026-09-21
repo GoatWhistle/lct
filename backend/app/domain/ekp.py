@@ -95,12 +95,12 @@ def _by_code() -> dict[str, Incident]:
 
 
 @lru_cache(maxsize=1)
-def _by_signs() -> dict[tuple[str, ...], Incident]:
+def _by_signs() -> dict[tuple[int, tuple[str, ...]], Incident]:
     """Признаки → строка классификатора. Нормализуем регистр: методист пишет
     «Жилой дом», книга — «жилой дом», и это одно и то же."""
-    table: dict[tuple[str, ...], Incident] = {}
+    table: dict[tuple[int, tuple[str, ...]], Incident] = {}
     for incident in reference().incidents:
-        table.setdefault(tuple(sign.lower() for sign in incident.signs), incident)
+        table.setdefault((incident.group, tuple(sign.lower() for sign in incident.signs)), incident)
     return table
 
 
@@ -108,10 +108,14 @@ def incident(code: str) -> Incident | None:
     return _by_code().get(code)
 
 
-def by_signs(signs: list[str]) -> Incident | None:
+def by_signs(signs: list[str], group: int | None = None) -> Incident | None:
     """Комбинация признаков → происшествие. Порядок признаков значим:
     в книге это три уровня, а не множество."""
-    return _by_signs().get(tuple(sign.strip().lower() for sign in signs if sign.strip()))
+    key = tuple(sign.strip().lower() for sign in signs if sign.strip())
+    if group is not None:
+        return _by_signs().get((group, key))
+    return next((item for (item_group, item_signs), item in _by_signs().items()
+                 if item_signs == key), None)
 
 
 def groups() -> list[IncidentGroup]:
@@ -146,7 +150,7 @@ def notify_list(code: str, modifiers: list[str] | None = None) -> list[str]:
     return service_names(indexes)
 
 
-def signs_at_level(level: int, prefix: list[str] | None = None) -> list[str]:
+def signs_at_level(level: int, prefix: list[str] | None = None, group: int | None = None) -> list[str]:
     """Значения признака уровня 1–3 при уже выбранных предыдущих.
 
     Это источник выпадающих списков в карточке: выбрал «жилой дом» — во втором
@@ -155,6 +159,8 @@ def signs_at_level(level: int, prefix: list[str] | None = None) -> list[str]:
     chosen = [sign.strip().lower() for sign in (prefix or [])]
     values: list[str] = []
     for item in reference().incidents:
+        if group is not None and item.group != group:
+            continue
         if len(item.signs) < level or item.signs[0].lower() == HIDDEN_SIGN:
             continue
         if [sign.lower() for sign in item.signs[: len(chosen)]] != chosen:

@@ -43,6 +43,9 @@ export interface ScenarioSummary {
   topics: string[];
   modes: SessionMode[];
   dds: string | null;
+  ticket: number | null;
+  position: number | null;
+  ekp_group: number | null;
 }
 
 export interface SessionInfo {
@@ -113,10 +116,23 @@ export interface SignsPage {
   incident: { code: string; type: string; notify: string[] } | null;
 }
 
-export function useSigns(prefix: string[]) {
-  const query = prefix.map((sign) => `prefix=${encodeURIComponent(sign)}`).join("&");
+export interface IncidentGroupsPage {
+  version: string;
+  groups: { id: number; title: string }[];
+}
+
+export const useIncidentGroups = () => useQuery({
+  queryKey: ["ekp-groups"], staleTime: Infinity,
+  queryFn: () => request<IncidentGroupsPage>("/api/ekp/groups"),
+});
+
+export function useSigns(prefix: string[], group: number | null = null) {
+  const params = new URLSearchParams();
+  if (group !== null) params.set("group", String(group));
+  for (const sign of prefix) params.append("prefix", sign);
+  const query = params.toString();
   return useQuery({
-    queryKey: ["ekp-signs", prefix],
+    queryKey: ["ekp-signs", group, prefix],
     // Справочник не меняется между занятиями — перезапрашивать незачем.
     staleTime: Infinity,
     queryFn: () => request<SignsPage>(`/api/ekp/signs${query ? `?${query}` : ""}`),

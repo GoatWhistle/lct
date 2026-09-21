@@ -100,25 +100,37 @@ async def _handle(session_id: UUID, state, event) -> None:
             code=ErrorKind.UNSUPPORTED_EVENT, message="Действие недоступно в этом упражнении",
         ))
         return
+    if state.exercise is Exercise.CARD and state.dispatched_card is not None:
+        hub.to_trainee(session_id, ErrorEvent(
+            code=ErrorKind.UNSUPPORTED_EVENT,
+            message="Карточка уже передана в ДДС и не может быть изменена",
+        ))
+        return
     match event.type:
         case "card.submit":
             state.kio.registered_at = state.started_at or now_utc()
             state.kio.response_status = ResponseStatus.TRANSFERRED
             state.dispatched_card = state.kio.model_copy(deep=True)
             state.dispatched_at = now_utc()
-            state.ended_at = state.dispatched_at
-            state.end_reason = CallEndReason.COMPLETE
-            hub.stop_ticker(session_id)
+            if state.handoff_to_dds:
+                state.on_event("dds.dispatch")
+            else:
+                state.ended_at = state.dispatched_at
+                state.end_reason = CallEndReason.COMPLETE
+                hub.stop_ticker(session_id)
             hub.to_station(session_id, state.card_received_event())
             hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
             hub.to_observers(session_id, KioState(kio=state.kio))
             hub.to_trainee(session_id, CallEnded(reason=CallEndReason.COMPLETE))
-            hub.to_observers(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
-            if hub.journal:
-                await hub.journal.session_ended(
-                    session_id, state.ended_at, CallEndReason.COMPLETE.value
-                )
-            await finish(session_id, state)
+            if state.handoff_to_dds:
+                hub.to_observers(session_id, state.snapshot())
+            else:
+                hub.to_observers(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
+                if hub.journal:
+                    await hub.journal.session_ended(
+                        session_id, state.ended_at, CallEndReason.COMPLETE.value
+                    )
+                await finish(session_id, state)
         case "call.answer":
             state.on_event("call.answer")
             state.started_at = now_utc()
@@ -295,7 +307,7 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
             from app.api.ws.control import card_briefing
 
             hub.to_trainee(session_id, card_briefing(state))
-            if state.ended:
+            if state.ended or state.dispatched_card is not None:
                 hub.to_trainee(session_id, CallEnded(reason=state.end_reason or CallEndReason.COMPLETE))
             if state.score is not None:
                 hub.to_trainee(session_id, ScoreReady(session_id=session_id))

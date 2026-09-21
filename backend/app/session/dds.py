@@ -2,6 +2,7 @@
 
 import re
 
+from app.domain import ekp
 from app.domain.kio import KIO, ResponseStatus
 from app.scenarios.schema import Scenario
 from app.session.state import SessionState, now_utc
@@ -25,6 +26,8 @@ def prepare_card(state: SessionState, scenario: Scenario) -> None:
         address=truth.address or address_fact or None,
         floor=floor.group(1) if floor else None,
         incident_type=truth.incident_type, incident_code=truth.incident_code,
+        incident_group=(ekp.incident(truth.incident_code).group
+                        if truth.incident_code and ekp.incident(truth.incident_code) else None),
         dds=truth.dds, signs=list(scenario.signs),
         notify=list(truth.notify) or ([fallback[service]] if service in fallback else []),
         victims_count=truth.victims,

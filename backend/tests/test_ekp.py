@@ -5,9 +5,11 @@
 """
 
 import pytest
+from pathlib import Path
 
 from app.domain import ekp
 from app.domain.kio import KIO, derive_incident
+from app.scenarios.loader import load_library
 
 
 def test_reference_loads_whole_book():
@@ -18,6 +20,20 @@ def test_reference_loads_whole_book():
     assert len(reference.incidents) == 1283
     assert len(reference.groups) == 23
     assert all(incident.type for incident in reference.incidents), "код без итогового типа"
+
+
+def test_all_customer_ticket_cards_are_complete_and_classified():
+    cards = [scenario for scenario in load_library(Path(__file__).resolve().parents[2] / "scenarios")
+             if scenario.ticket is not None]
+    assert len(cards) == 96
+    assert {scenario.ticket for scenario in cards} == set(range(1, 33))
+    for ticket in range(1, 33):
+        assert {scenario.position for scenario in cards if scenario.ticket == ticket} == {1, 2, 3}
+    assert all(scenario.facts and scenario.signs and scenario.ground_truth.address
+               and scenario.ground_truth.victims is not None
+               and scenario.ground_truth.incident_code
+               and ekp.incident(scenario.ground_truth.incident_code)
+               for scenario in cards)
 
 
 def test_signs_give_the_code_from_the_book():
@@ -38,6 +54,20 @@ def test_next_level_narrows_by_previous():
     second = ekp.signs_at_level(2, ["жилой дом"])
     assert "балкон" in second
     assert "мусор" not in second, "«мусор» относится к улице, а не к жилому дому"
+
+
+def test_category_filters_all_three_incident_choices_and_card_derivation():
+    fire = ekp.by_signs(["жилой дом", "балкон", "открытое пламя"])
+    assert fire is not None
+    other_group = next(group.id for group in ekp.groups() if group.id != fire.group)
+    assert ekp.by_signs(fire.signs, fire.group) == fire
+    assert ekp.by_signs(fire.signs, other_group) is None
+    assert fire.signs[0] in ekp.signs_at_level(1, group=fire.group)
+    assert fire.signs[1] in ekp.signs_at_level(2, fire.signs[:1], group=fire.group)
+    assert fire.signs[2] in ekp.signs_at_level(3, fire.signs[:2], group=fire.group)
+    card = derive_incident(KIO(incident_group=fire.group, signs=fire.signs))
+    assert card.incident_code == fire.code
+    assert derive_incident(KIO(incident_group=other_group, signs=fire.signs)).incident_code is None
 
 
 def test_service_rows_hidden_from_operator_are_not_offered():

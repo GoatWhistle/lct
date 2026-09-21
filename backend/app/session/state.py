@@ -71,6 +71,8 @@ class SessionState:
     level: str
     mode: SessionMode
     exercise: Exercise = Exercise.CALL
+    #: После заполнения КИО занятие продолжится на АРМ ДДС, а не завершится.
+    handoff_to_dds: bool = False
     required_fields: list[str] = field(default_factory=list)
     trainee_name: str | None = None
     #: Чьё это занятие. Проставляется при запуске, когда курсант известен

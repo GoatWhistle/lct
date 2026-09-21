@@ -6,7 +6,7 @@
 
 import type { DDSCode, IncidentType } from "@/shared/types/generated";
 
-export type FieldKind = "text" | "textarea" | "number" | "bool" | "select" | "signs" | "list";
+export type FieldKind = "text" | "textarea" | "number" | "bool" | "select" | "signs" | "group" | "list";
 
 export interface Field {
   /** Путь в карточке: «floor», «fire.floors» — так же, как в `kio.patch`. */
@@ -88,6 +88,7 @@ export const GROUPS: FieldGroup[] = [
     title: "Происшествие",
     area: "incident",
     fields: [
+      { path: "incident_group", label: "Категория происшествия", kind: "group" },
       // Признаки по ЕКП — то, что оператор действительно проставляет.
       // Код и список оповещения считает сервер (docs/spec/DATASET.md).
       { path: "signs", label: "Признаки происшествия", kind: "signs" },

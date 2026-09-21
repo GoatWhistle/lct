@@ -72,10 +72,17 @@ def card_briefing(state: SessionState) -> CardBriefing:
         required_fields=([field for field in state.required_fields if field != "dds"]
                          if scenario.ground_truth.incident_code else list(state.required_fields)),
         card=state.kio,
+        handoff_to_dds=state.handoff_to_dds,
     )
 
 
 async def _start(session_id: UUID, event, who=None) -> None:
+    if event.handoff_to_dds and event.exercise is not Exercise.CARD:
+        hub.to_observers(session_id, ErrorEvent(
+            code=ErrorKind.SCENARIO_INVALID,
+            message="Передача в ДДС доступна только для текстовой карточки 112",
+        ))
+        return
     scenario = store.get(event.scenario_id)
     if scenario is None:
         hub.to_observers(
@@ -118,6 +125,7 @@ async def _start(session_id: UUID, event, who=None) -> None:
         level=scenario.level.value,
         mode=event.mode,
         exercise=event.exercise,
+        handoff_to_dds=event.handoff_to_dds,
         scenario=scenario.model_copy(deep=True),
         required_fields=scenario.required_fields,
         trainee_name=event.trainee,
@@ -188,12 +196,12 @@ async def _stop(session_id: UUID) -> None:
     if state.exercise in {Exercise.DDS, Exercise.CARD}:
         from app.session.finish import finish
 
-        if state.exercise is Exercise.DDS:
+        if state.exercise is Exercise.DDS or state.handoff_to_dds and state.dispatched_card is not None:
             hub.to_station(session_id, SessionEnded(reason=CallEndReason.INSTRUCTOR))
         else:
             hub.to_trainee(session_id, CallEnded(reason=CallEndReason.INSTRUCTOR))
         await finish(session_id, state)
-        if state.exercise is Exercise.DDS:
+        if state.exercise is Exercise.DDS or state.handoff_to_dds and state.dispatched_card is not None:
             hub.to_station(session_id, ScoreReady(session_id=session_id))
     if hub.journal:
         await hub.journal.session_ended(session_id, state.ended_at, CallEndReason.INSTRUCTOR.value)

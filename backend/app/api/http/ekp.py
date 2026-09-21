@@ -26,7 +26,7 @@ async def groups() -> dict:
 
 
 @router.get("/signs")
-async def signs(prefix: list[str] = Query(default=[])) -> dict:
+async def signs(prefix: list[str] = Query(default=[]), group: int | None = None) -> dict:
     """Значения следующего признака при уже выбранных.
 
     Пустой `prefix` — значения первого уровня. Возвращается и найденное
@@ -34,10 +34,10 @@ async def signs(prefix: list[str] = Query(default=[])) -> dict:
     он классифицировал, до того, как отправит карточку.
     """
     level = len(prefix) + 1
-    found = ekp.by_signs(prefix) if prefix else None
+    found = ekp.by_signs(prefix, group) if prefix else None
     return {
         "level": level,
-        "values": ekp.signs_at_level(level, prefix) if level <= 3 else [],
+        "values": ekp.signs_at_level(level, prefix, group) if level <= 3 else [],
         "incident": (
             {
                 "code": found.code,

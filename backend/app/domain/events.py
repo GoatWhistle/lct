@@ -128,6 +128,7 @@ class CardBriefing(BaseModel):
     text: str
     required_fields: list[str]
     card: KIO | None = None
+    handoff_to_dds: bool = False
 
 
 class CallStarted(BaseModel):
@@ -424,6 +425,7 @@ class ScenarioStart(BaseModel):
     group_id: str | None = None
     mode: SessionMode
     exercise: Exercise = Exercise.CALL
+    handoff_to_dds: bool = False
 
 
 class DirectorInject(BaseModel):

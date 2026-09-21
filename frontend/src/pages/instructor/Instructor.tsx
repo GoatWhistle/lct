@@ -15,7 +15,7 @@ import { StandStatus } from "@/features/health/StandStatus";
 import { ModeBanner } from "@/features/mode-banner/ModeBanner";
 import { useObserve } from "@/features/observe/useObserve";
 import { InterviewTimer, Timers } from "@/features/timers/Timers";
-import { useScenarios, useSessions, useTrainees } from "@/shared/api/http";
+import { useIncidentGroups, useScenarios, useSessions, useTrainees } from "@/shared/api/http";
 import { sessionIdFromUrl } from "@/shared/api/session";
 import type { SessionMode } from "@/shared/types/generated";
 
@@ -28,9 +28,12 @@ const MODES: { value: SessionMode; label: string }[] = [
 export function Instructor() {
   const [sessionId, setSessionId] = useState<string | null>(sessionIdFromUrl());
   const [scenarioId, setScenarioId] = useState("");
+  const [ticketFilter, setTicketFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [scenarioSearch, setScenarioSearch] = useState("");
   const [extraScenarioIds, setExtraScenarioIds] = useState<string[]>([]);
   const [mode, setMode] = useState<SessionMode>("training");
-  const [exercise, setExercise] = useState<"dds" | "call" | "card">("dds");
+  const [exercise, setExercise] = useState<"dds" | "call" | "card" | "card_dds">("dds");
   const [trainee, setTrainee] = useState("");
   const [traineeId, setTraineeId] = useState("");
   const [noteFor, setNoteFor] = useState<string | null>(null);
@@ -40,14 +43,24 @@ export function Instructor() {
   const [noteText, setNoteText] = useState("");
 
   const scenarios = useScenarios();
+  const incidentGroups = useIncidentGroups();
   const history = useSessions();
   const trainees = useTrainees();
   const session = useObserve(sessionId);
   const control = useControl(sessionId);
 
+  const visibleScenarios = (scenarios.data ?? []).filter((item) =>
+    (!ticketFilter || item.ticket === Number(ticketFilter)) &&
+    (!categoryFilter || item.ekp_group === Number(categoryFilter)) &&
+    (!scenarioSearch.trim() || `${item.title} ${item.id}`.toLocaleLowerCase("ru-RU")
+      .includes(scenarioSearch.trim().toLocaleLowerCase("ru-RU")))
+  ).sort((a, b) => (a.ticket ?? 99) - (b.ticket ?? 99) || (a.position ?? 0) - (b.position ?? 0));
+
   useEffect(() => {
-    if (scenarios.data?.length && !scenarioId) setScenarioId(scenarios.data[0].id);
-  }, [scenarios.data, scenarioId]);
+    if (!visibleScenarios.some((item) => item.id === scenarioId)) {
+      setScenarioId(visibleScenarios[0]?.id ?? "");
+    }
+  }, [scenarios.data, ticketFilter, categoryFilter, scenarioSearch, scenarioId]);
 
   function startLesson() {
     if (trainees.data?.length && !traineeId) return;
@@ -65,8 +78,10 @@ export function Instructor() {
     const selected = trainees.data?.find((item) => item.id === traineeId);
     const scenarioIds = exercise === "dds"
       ? [scenarioId, ...extraScenarioIds.filter((id) => id !== scenarioId)] : undefined;
-    control.start(scenarioId, mode, selected?.name || trainee || "Демо-курсант", exercise,
-      undefined, selected?.id, scenarioIds && scenarioIds.length > 1 ? scenarioIds : undefined);
+    control.start(scenarioId, mode, selected?.name || trainee || "Демо-курсант",
+      exercise === "card_dds" ? "card" : exercise,
+      undefined, selected?.id, scenarioIds && scenarioIds.length > 1 ? scenarioIds : undefined,
+      exercise === "card_dds");
   }, [sessionId, control, scenarioId, extraScenarioIds, mode, trainee, traineeId, trainees.data, exercise]);
 
   const links = sessionId
@@ -78,29 +93,44 @@ export function Instructor() {
     : null;
 
   return (
-    <main className="page">
+    <main className="page instructor-page">
       <StandStatus />
       <ModeBanner mode={session.mode ?? mode} />
       <h1>Рабочее место преподавателя</h1>
 
-      <div className="columns">
-        <section style={{ flex: "0 0 280px" }}>
+      <div className="instructor-layout">
+        <section>
           <h2>Занятие</h2>
           <table className="grid">
             <tbody>
               <tr>
                 <th>Сценарий</th>
                 <td>
+                  <div className="instructor-scenario-filters">
+                    <select aria-label="Категория происшествия" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+                      <option value="">Все 23 категории ЕКП</option>
+                      {incidentGroups.data?.groups.map((group) =>
+                        <option key={group.id} value={group.id}>{group.title}</option>)}
+                    </select>
+                    <select aria-label="Билет заказчика" value={ticketFilter} onChange={(event) => setTicketFilter(event.target.value)}>
+                      <option value="">Все 32 билета</option>
+                      {Array.from({ length: 32 }, (_, index) => <option key={index} value={index + 1}>Билет {index + 1}</option>)}
+                    </select>
+                    <input type="search" aria-label="Поиск сценария" value={scenarioSearch}
+                      placeholder="Название или ID карточки" onChange={(event) => setScenarioSearch(event.target.value)} />
+                  </div>
                   <select value={scenarioId} onChange={(event) => {
                     setScenarioId(event.target.value);
                     setExtraScenarioIds((previous) => previous.filter((id) => id !== event.target.value));
                   }}>
-                    {scenarios.data?.map((scenario) => (
+                    {!visibleScenarios.length && <option value="">Карточки не найдены</option>}
+                    {visibleScenarios.map((scenario) => (
                       <option key={scenario.id} value={scenario.id}>
-                        {scenario.title} · {scenario.level}
+                        {scenario.ticket ? `Билет ${scenario.ticket}, вызов ${scenario.position} · ` : ""}{scenario.title} · {scenario.level}
                       </option>
                     ))}
                   </select>
+                  <small className="ref">{visibleScenarios.length} из {scenarios.data?.length ?? 0} карточек (96 — билеты заказчика)</small>
                   {exercise === "dds" && <details className="scenario-queue">
                     <summary>Дополнительные карточки ({extraScenarioIds.length})</summary>
                     <p className="ref">Карточки поступят последовательно после завершения текущей.</p>
@@ -123,6 +153,8 @@ export function Instructor() {
                     onChange={() => setExercise("call")} /> Оператор 112 · звонок</label>
                   <label className="mode-choice"><input type="radio" checked={exercise === "card"}
                     onChange={() => setExercise("card")} /> Оператор 112 · текстовая вводная</label>
+                  <label className="mode-choice"><input type="radio" checked={exercise === "card_dds"}
+                    onChange={() => setExercise("card_dds")} /> Связка 112 → ДДС · одна карточка</label>
                 </td>
               </tr>
               <tr>
@@ -235,7 +267,7 @@ export function Instructor() {
           )}
         </section>
 
-        <section style={{ flex: "0 0 260px" }}>
+        <section>
           <h2>История группы</h2>
           <p><a href="/profile">профили курсантов</a> · <a href="/groups">аналитика группы</a></p>
           <table className="grid">

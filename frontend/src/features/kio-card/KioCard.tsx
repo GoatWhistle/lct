@@ -1,7 +1,7 @@
 // Карточка КИО. Один и тот же компонент рисуется у курсанта, на пульте,
 // на внешнем мониторе и на АРМ ДДС — там в режиме `readOnly`.
 
-import { useSigns } from "@/shared/api/http";
+import { useIncidentGroups, useSigns } from "@/shared/api/http";
 import { type CardState, display } from "./merge";
 import { type Field, type FieldGroup, visibleGroups } from "./fields";
 
@@ -16,6 +16,7 @@ interface Props {
 
 export function KioCard({ state, required = [], readOnly = false, referenceArm = false, onChange }: Props) {
   const dds = display(state, "dds") as string | null;
+  const incidentGroup = display(state, "incident_group") as number | null;
   const groups = visibleGroups(dds);
   const section = (group: FieldGroup) => (
     <section className={`kio-arm-section kio-arm-${group.area}`} key={group.title}>
@@ -32,6 +33,7 @@ export function KioCard({ state, required = [], readOnly = false, referenceArm =
             required={required.includes(field.path)}
             readOnly={readOnly || field.readOnly}
             referenceArm={referenceArm}
+            incidentGroup={incidentGroup}
             onChange={onChange}
           />
         ))}
@@ -54,7 +56,7 @@ export function KioCard({ state, required = [], readOnly = false, referenceArm =
 }
 
 function Row({
-  field, value, pending, required, readOnly, referenceArm, onChange,
+  field, value, pending, required, readOnly, referenceArm, incidentGroup, onChange,
 }: {
   field: Field;
   value: unknown;
@@ -62,6 +64,7 @@ function Row({
   required: boolean;
   readOnly?: boolean;
   referenceArm: boolean;
+  incidentGroup: number | null;
   onChange?: (path: string, value: unknown) => void;
 }) {
   const empty = value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
@@ -79,7 +82,7 @@ function Row({
         {readOnly ? (
           <span className="kio-arm-readonly">{formatValue(value, field)}</span>
         ) : (
-          <Input field={field} value={value} referenceArm={referenceArm} onChange={onChange} />
+          <Input field={field} value={value} referenceArm={referenceArm} incidentGroup={incidentGroup} onChange={onChange} />
         )}
       </div>
     </div>
@@ -87,17 +90,24 @@ function Row({
 }
 
 function Input({
-  field, value, referenceArm, onChange,
+  field, value, referenceArm, incidentGroup, onChange,
 }: {
   field: Field;
   value: unknown;
   referenceArm: boolean;
+  incidentGroup: number | null;
   onChange?: (path: string, value: unknown) => void;
 }) {
   const emit = (next: unknown) => onChange?.(field.path, next);
 
   if (field.kind === "list") {
     return <span className="kio-arm-readonly">{formatValue(value)}</span>;
+  }
+  if (field.kind === "group") {
+    return <IncidentGroupPicker value={value as number | null} onChange={(next) => {
+      onChange?.("incident_group", next);
+      onChange?.("signs", []);
+    }} />;
   }
   if (field.kind === "bool") {
     return (
@@ -129,7 +139,7 @@ function Input({
     );
   }
   if (field.kind === "signs") {
-    return <SignsPicker value={(value as string[]) ?? []} onChange={(next) => emit(next)} />;
+    return <SignsPicker value={(value as string[]) ?? []} group={incidentGroup} onChange={(next) => emit(next)} />;
   }
   if (field.kind === "textarea") {
     return <textarea aria-label={field.label} rows={5} value={(value as string) ?? ""} placeholder="Введите сведения со слов заявителя" onChange={(e) => emit(e.target.value)} />;
@@ -157,17 +167,30 @@ function Input({
   );
 }
 
+function IncidentGroupPicker({ value, onChange }: { value: number | null; onChange: (next: number | null) => void }) {
+  const page = useIncidentGroups();
+  return <select aria-label="Категория происшествия" value={value ?? ""}
+    onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}>
+    <option value="">Все категории ЕКП</option>
+    {page.data?.groups.map((group) => <option key={group.id} value={group.id}>{group.title}</option>)}
+  </select>;
+}
+
 /** Три признака происшествия каскадом: выбор верхнего сужает нижний.
  *
  * Значения приходят с сервера, а не лежат на фронте: классификатор — 1283 строки,
  * и он обновляется файлом от заказчика (docs/spec/DATASET.md). Служба из выбора
  * не следует — её считает сервер, поэтому здесь её нет. */
 function SignsPicker({
-  value, onChange,
+  value, group, onChange,
 }: {
   value: string[];
+  group: number | null;
   onChange: (next: string[]) => void;
 }) {
+  if (group === null) {
+    return <p className="kio-signs-hint">Сначала выберите категорию происшествия — затем появятся признаки ЕКП.</p>;
+  }
   const levels = [0, 1, 2];
   return (
     <div className="signs">
@@ -175,6 +198,7 @@ function SignsPicker({
         <SignSelect
           key={level}
           prefix={value.slice(0, level)}
+          group={group}
           chosen={value[level] ?? ""}
           onPick={(sign) => {
             // Смена верхнего признака обнуляет нижние: они относились
@@ -193,13 +217,14 @@ function SignsPicker({
 }
 
 function SignSelect({
-  prefix, chosen, onPick,
+  prefix, group, chosen, onPick,
 }: {
   prefix: string[];
+  group: number | null;
   chosen: string;
   onPick: (sign: string) => void;
 }) {
-  const page = useSigns(prefix);
+  const page = useSigns(prefix, group);
   const values = page.data?.values ?? [];
   // Уровня может не быть: часть происшествий классифицируется двумя признаками.
   if (!page.isLoading && values.length === 0) return null;

@@ -104,6 +104,7 @@ class KIO(BaseModel):
 
     # Происшествие. Оператор проставляет признаки, остальное считает система
     # по ЕКП (domain/ekp.py) — службу он не выбирает.
+    incident_group: int | None = None
     signs: list[str] = Field(default_factory=list, max_length=3)
     incident_code: str | None = Field(default=None, description="Код ЕКП по признакам")
     incident_type: IncidentType | None = None
@@ -163,7 +164,7 @@ def missing_fields(card: KIO, required: list[str]) -> list[str]:
 #: те же «признаки», только не про тип происшествия, а про обстоятельства:
 #: пострадавшие поднимают скорую, газификация — МОСГАЗ (domain/ekp.py).
 MODIFIER_FIELDS: frozenset[str] = frozenset(
-    {"signs", "victims_count", "life_threat", "evacuation_needed", "fire.gasified"}
+    {"incident_group", "signs", "victims_count", "life_threat", "evacuation_needed", "fire.gasified"}
 )
 
 
@@ -189,7 +190,7 @@ def derive_incident(card: KIO) -> KIO:
     """
     from app.domain import ekp
 
-    found = ekp.by_signs(card.signs)
+    found = ekp.by_signs(card.signs, card.incident_group)
     keys = modifiers(card)
     data = card.model_dump()
     data["incident_code"] = found.code if found else None

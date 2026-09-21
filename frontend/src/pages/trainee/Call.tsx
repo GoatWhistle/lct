@@ -72,10 +72,14 @@ export function Call() {
         </span>
         {!call.cardSubmitted && <button type="button" className="arm-primary" disabled={call.status !== "open"}
           onClick={call.submitCard}>Сохранить и проверить</button>}
-        {call.cardSubmitted && <strong>Карточка отправлена</strong>}
+        {call.cardSubmitted && <strong>{call.briefing.handoff_to_dds ? "Карточка передана ДДС" : "Карточка отправлена"}</strong>}
       </footer>
       {call.error && <p className="state-violated arm-message" role="alert">{call.error}</p>}
-      {call.cardSubmitted && !call.report && !call.reportError && <p className="arm-message">Карточка отправлена. Ожидаем итоговую оценку…</p>}
+      {call.cardSubmitted && !call.report && !call.reportError && <p className="arm-message">
+        {call.briefing.handoff_to_dds
+          ? <>Карточка передана в ДДС. <a href={`/dds?session=${sessionId}&role=dds_01`}>Открыть АРМ ДДС</a> и завершить реагирование для итоговой оценки.</>
+          : "Карточка отправлена. Ожидаем итоговую оценку…"}
+      </p>}
       {call.reportError && <p className="state-violated arm-message" role="alert">{call.reportError}</p>}
       {call.report && <Debrief report={call.report} />}
     </main>;

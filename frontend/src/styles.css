@@ -53,6 +53,26 @@ button:disabled { opacity: 0.5; cursor: default; }
 /* Две колонки: карточка и разговор рядом, как на настоящем АРМ. */
 .columns { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
 .columns > section { flex: 1 1 420px; min-width: 0; }
+/* Пульт содержит длинные названия сценариев. Узкая первая колонка вместе с
+   min-width таблицы раньше перекрывала «Ход занятия» при zoom 200%. */
+.instructor-layout { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr) minmax(230px, 280px); gap: 20px; align-items: start; }
+.instructor-layout > section { min-width: 0; }
+.instructor-layout .grid { width: 100%; min-width: 0; table-layout: fixed; }
+.instructor-layout .grid th { width: 105px; }
+.instructor-layout .grid td { min-width: 0; overflow-wrap: anywhere; }
+.instructor-layout select, .instructor-layout input { box-sizing: border-box; max-width: 100%; min-width: 0; }
+.instructor-layout section:first-child select, .instructor-layout section:first-child input[type="text"] { width: 100%; }
+.instructor-layout .mode-choice { overflow-wrap: anywhere; }
+.instructor-scenario-filters { display: grid; gap: 5px; margin-bottom: 6px; }
+.kio-signs-hint { margin: 4px 0; color: #586572; font-size: 12px; }
+@media (max-width: 1350px) {
+  .instructor-layout { grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); }
+  .instructor-layout > section:last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 900px) {
+  .instructor-layout { display: block; }
+  .instructor-layout > section { margin-bottom: 24px; }
+}
 .kio { display: flex; flex-direction: column; gap: 12px; }
 .kio .grid { width: 100%; }
 .kio thead th { background: var(--line); }
