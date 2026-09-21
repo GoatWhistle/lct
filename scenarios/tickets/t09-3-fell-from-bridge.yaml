@@ -1,0 +1,50 @@
+# Билет 9, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t09-3-fell-from-bridge
+title: Мужчина упал с моста в воду
+ticket: 9
+position: 3
+type: other
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: ["Человек в воде, на льдине", Падение с моста прыгнул с моста]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: panic }
+
+first_line: "Человек с моста упал в воду! Кричит, что плавать не умеет!"
+
+facts:
+  - id: f_address
+    value: "Бережковский мост, Третье транспортное кольцо, внутренняя сторона, середина моста"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "мужчина упал с моста в воду, плавать не умеет"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "один человек в воде, на поверхности, кричит"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "Бережковский мост, ТТК, внутренняя сторона"
+  victims: 1
+
+tree:
+  pregenerated: false

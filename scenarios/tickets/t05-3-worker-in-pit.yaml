@@ -1,0 +1,50 @@
+# Билет 5, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t05-3-worker-in-pit
+title: Рабочий упал в котлован на стройке
+ticket: 5
+position: 3
+type: other
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: ["Зажало, придавило, завалило, застрял человек", подземные коммуникации]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "У нас на стройке рабочий в котлован упал, сам не выбирается!"
+
+facts:
+  - id: f_address
+    value: "Московская область, городской округ Химки, микрорайон Подрезково, стройка между улицей Центральной и улицей 1-я Лесная"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: на стройке жилого дома рабочий упал в котлован
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "один пострадавший, в сознании, сам выбраться не может"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "Московская область, городской округ Химки, микрорайон Подрезково"
+  victims: 1
+
+tree:
+  pregenerated: false

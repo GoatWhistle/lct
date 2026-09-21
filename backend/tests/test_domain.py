@@ -1,0 +1,139 @@
+"""Тесты контракта. Домен — общий шов, ломать его молча нельзя."""
+
+from datetime import datetime, timezone
+from uuid import uuid4
+
+import pytest
+from pydantic import TypeAdapter, ValidationError
+
+from app.config import Settings
+from app.domain.events import (
+    CallIncoming,
+    ErrorKind,
+    EventCatalog,
+    KioPatchIn,
+    ServerToTrainee,
+    SessionMode,
+    SessionSnapshot,
+    TraineeToServer,
+)
+from app.domain.kio import KIO, Coords, apply_patch, missing_fields
+from app.domain.timers import NORMATIVES, TimerCode, TimerState, state_for
+from scripts.export_types import OUT, render
+
+
+def test_interview_normative_is_75_seconds():
+    """Центральная метрика продукта. Значение меняется только вместе с ГОСТ."""
+    assert NORMATIVES[TimerCode.INTERVIEW].limit_ms == 75_000
+
+
+@pytest.mark.parametrize(
+    "elapsed_ms,expected",
+    [(0, TimerState.OK), (59_000, TimerState.OK), (70_000, TimerState.WARN), (94_000, TimerState.VIOLATED)],
+)
+def test_timer_state(elapsed_ms, expected):
+    assert state_for(elapsed_ms, 75_000) is expected
+
+
+def test_patch_applies_nested_and_ignores_service_fields():
+    card = KIO(caller_number="+7 999 000-00-00")
+    patched = apply_patch(card, {"floor": "5", "fire.floors": 9, "caller_number": "подмена"})
+
+    assert patched.floor == "5"
+    assert patched.fire is not None and patched.fire.floors == 9
+    # Номер определяется автоматически и курсантом не редактируется.
+    assert patched.caller_number == "+7 999 000-00-00"
+
+
+def test_missing_fields_reports_required_only():
+    card = KIO(address="улица Ленина, 14")
+    assert missing_fields(card, ["address", "floor", "victims_count"]) == ["floor", "victims_count"]
+
+
+def test_trainee_events_are_discriminated_by_type():
+    adapter = TypeAdapter(TraineeToServer)
+    event = adapter.validate_python({"type": "kio.patch", "fields": {"floor": "5"}})
+    assert isinstance(event, KioPatchIn)
+
+    with pytest.raises(ValidationError):
+        adapter.validate_python({"type": "kio.state", "kio": {}})
+
+
+def test_server_events_round_trip_through_json():
+    adapter = TypeAdapter(ServerToTrainee)
+    payload = {
+        "type": "caller.utterance",
+        "utterance_id": str(uuid4()),
+        "text": "Алло! Помогите! Горим!",
+        "at": datetime.now(timezone.utc).isoformat(),
+        "mood": "panic",
+    }
+    assert adapter.validate_python(payload).text.startswith("Алло")
+
+
+def test_session_modes_are_the_three_from_docs():
+    assert {mode.value for mode in SessionMode} == {"training", "exam", "self"}
+
+
+def test_event_catalog_covers_every_channel():
+    """`principal` каналом не является: он в каталоге ради того, чтобы список
+    ролей приезжал на фронт из домена, а не переписывался руками (lct-23)."""
+    assert set(EventCatalog.model_fields) == {
+        "principal",
+        "server_to_trainee",
+        "trainee_to_server",
+        "server_to_observer",
+        "instructor_to_server",
+        "server_to_station",
+        "station_to_server",
+        "session_report",
+    }
+
+
+def test_coords_are_named_everywhere():
+    """Одно представление координат на весь контракт: в кортеже не видно,
+    где широта, и ошибка всплывает на карте, а не в типах."""
+    card = apply_patch(KIO(), {"coords.lat": 55.751244, "coords.lon": 37.618423})
+    assert card.coords == Coords(lat=55.751244, lon=37.618423)
+
+
+def test_required_fields_reach_the_screen():
+    """Без этого АРМ не подсветит незаполненное обязательное поле."""
+    incoming = CallIncoming(
+        scenario_id="fire-apartment-l2",
+        caller_number="+7 999 000-00-00",
+        level="L2",
+        mode=SessionMode.TRAINING,
+        required_fields=["address", "floor"],
+    )
+    assert incoming.required_fields == ["address", "floor"]
+    # Наблюдателю они нужны так же: монитор рисует ту же карточку
+    assert "required_fields" in SessionSnapshot.model_fields
+
+
+def test_error_channel_has_codes_not_prose():
+    """Фронт разбирает код, а не текст: текст — для человека."""
+    adapter = TypeAdapter(ServerToTrainee)
+    event = adapter.validate_python(
+        {"type": "error", "code": "hint_denied_in_exam", "message": "В контрольном режиме подсказок нет"}
+    )
+    assert event.code is ErrorKind.HINT_DENIED_IN_EXAM
+
+    with pytest.raises(ValidationError):
+        adapter.validate_python({"type": "error", "code": "что-то пошло не так", "message": ""})
+
+
+def test_normative_comes_from_config_not_code():
+    """Правка норматива не должна требовать правки кода."""
+    default = Settings()
+    assert default.limit_ms(TimerCode.INTERVIEW) == 75_000
+
+    overridden = Settings(timer_limits_ms={TimerCode.INTERVIEW: 90_000})
+    assert overridden.limit_ms(TimerCode.INTERVIEW) == 90_000
+    assert overridden.limit_ms(TimerCode.ANSWER) == 8_000
+
+
+def test_generated_types_match_models():
+    """Забытый `make types` ловится здесь, а не на фронте в последнюю ночь."""
+    assert OUT.exists(), "нет frontend/src/shared/types/generated.ts — запусти make types"
+    assert OUT.read_text(encoding="utf-8") == render(), "generated.ts устарел — запусти make types"

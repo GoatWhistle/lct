@@ -1,0 +1,58 @@
+# Билет 4, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t04-1-balcony-fire
+title: Горит балкон и два окна на 13-м этаже
+ticket: 4
+position: 1
+type: fire
+level: L2
+topics: [fire]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [жилой дом, балкон, открытое пламя]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+    - { stage: dispatch, mood: calm }
+
+first_line: "Здравствуйте! Тут балкон горит и окна рядом, с улицы видно!"
+
+facts:
+  - id: f_address
+    value: "улица Грина, номер дома не знаю, в этом доме библиотека № 193"
+    refined: "улица Грина, дом 11"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_burns
+    value: "горит балкон и два окна рядом на 13-м этаже, открытое пламя"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "пострадавших не видно, наблюдаем с улицы"
+    reveal_on: { question: q_people }
+  - id: f_gas
+    value: "дом газифицирован, этажность четырнадцать"
+    reveal_on: { question: q_gas }
+  - id: f_caller
+    value: "Сидорова Анна Викторовна, телефон 916-126-34-71"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_gas, fact: f_gas }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, floor, incident_type, description]
+
+ground_truth:
+  address: "улица Грина, дом 11"
+  victims: 0
+
+tree:
+  pregenerated: false

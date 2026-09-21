@@ -1,0 +1,50 @@
+# Билет 25, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t25-3-body-found
+title: Обнаружен труп в квартире
+ticket: 25
+position: 3
+type: other
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [В квартире, Причина неизвестна]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Я в квартиру бывшей жены пришёл, она на полу лежит, мёртвая."
+
+facts:
+  - id: f_address
+    value: "Московская область, город Домодедово, улица Текстильщиков, дом 31, квартира 5, подъезд 1, этаж 1, код 5В"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "обнаружен труп, трупные пятна, рядом большая лужа крови; соседи сообщили, что четыре дня воет собака"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "одна погибшая, бывшая жена заявителя"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Титов Игорь Романович, телефон 9031281223"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, incident_type, description, victims_count]
+
+ground_truth:
+  address: "Московская область, город Домодедово, улица Текстильщиков, дом 31, квартира 5"
+  victims: 1
+
+tree:
+  pregenerated: false

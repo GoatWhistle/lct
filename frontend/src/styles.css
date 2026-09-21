@@ -1,0 +1,104 @@
+/* Казённая база: системный шрифт, плотная сетка, три состояния норматива.
+   Продуктовой эстетики здесь быть не должно (docs/arch/FRONTEND.md). */
+:root {
+  --bg: #f2f3f5;
+  --panel: #ffffff;
+  --line: #b9bec6;
+  --text: #14171a;
+  --ok: #1f6f3d;
+  --warn: #9a6b00;
+  --violated: #a51d1d;
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.stub {
+  padding: 24px;
+}
+
+.stub h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+/* Плотная казённая сетка: таблица вместо карточек. */
+.page { padding: 16px 24px; }
+.page h1 { font-size: 20px; font-weight: 600; margin: 0 0 12px; }
+.page h2 { font-size: 16px; font-weight: 600; margin: 20px 0 8px; }
+.grid { border-collapse: collapse; background: var(--panel); min-width: 480px; }
+.grid th, .grid td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.grid th { width: 200px; font-weight: 600; background: var(--bg); }
+button { font: inherit; padding: 6px 16px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: default; }
+.warn { color: var(--warn); }
+.violated { color: var(--violated); }
+
+/* Две колонки: карточка и разговор рядом, как на настоящем АРМ. */
+.columns { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+.columns > section { flex: 1 1 420px; min-width: 0; }
+.kio { display: flex; flex-direction: column; gap: 12px; }
+.kio .grid { width: 100%; }
+.kio thead th { background: var(--line); }
+.kio input[type="text"], .kio input[type="number"], .kio select { width: 100%; font: inherit; border: 1px solid var(--line); padding: 2px 4px; background: var(--panel); }
+/* Обязательное поле помечено точкой, незаполненное — жёлтым. */
+.required { color: var(--warn); font-weight: 700; }
+/* Правка, которую сервер ещё не подтвердил. */
+.pending { background: #fffbe6; }
+
+/* Три состояния норматива — единственное место, где цвет несёт смысл.
+   На внешнем мониторе они должны различаться с последнего ряда. */
+.state-ok { color: var(--ok); }
+.state-warn { color: var(--warn); font-weight: 600; }
+.state-violated { color: var(--violated); font-weight: 700; }
+
+.interview { display: flex; align-items: baseline; gap: 12px; margin: 8px 0 16px; }
+.interview-label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; }
+.interview-value { font-size: 40px; font-variant-numeric: tabular-nums; font-weight: 700; line-height: 1; }
+.interview-limit { font-size: 12px; color: #5a6068; }
+.interview-big .interview-value { font-size: 96px; }
+.interview-big .interview-label, .interview-big .interview-limit { font-size: 20px; }
+
+.mode-banner { padding: 4px 24px; margin: -16px -24px 12px; border-bottom: 1px solid var(--line); font-weight: 600; }
+.mode-training { background: #e8f0fb; }
+.mode-exam { background: #fde8e8; }
+.mode-self { background: #eef3ea; }
+
+/* Разбор. Ссылка на норматив — мелким, но рядом с фактом: отметка без
+   обоснования не появляется ни в одном интерфейсе. */
+.debrief h3 { font-size: 15px; margin: 16px 0 6px; }
+.ref { color: #5a6068; font-size: 12px; }
+.radar { display: block; margin: 4px 0 8px; }
+
+/* Внешний монитор: читается с последнего ряда. */
+.wall { font-size: 20px; }
+.wall h1 { font-size: 30px; }
+.wall h2 { font-size: 24px; }
+.wall .grid th { width: 160px; }
+.debrief-big { font-size: 20px; }
+
+/* Пульт: кнопка запуска одна и крупная. */
+.start { font-size: 16px; padding: 10px 24px; font-weight: 600; }
+.mode-choice { display: block; }
+.clickable { cursor: pointer; }
+.clickable:hover th { background: #e8ecf1; }
+
+/* Пульт директив: кнопки крупные, обрыв связи отделён цветом. */
+.director-buttons { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.director-buttons button { padding: 10px 12px; text-align: left; font-size: 15px; }
+.director-buttons .danger { border-color: var(--violated); color: var(--violated); font-weight: 600; }
+.director input[type="text"] { width: 60%; }
+
+/* Возврат карточки: список полей в две колонки, чтобы диспетчер не скроллил. */
+.bounce-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; margin: 8px 0; }
+
+/* Готовность стенда: курсант не должен гадать, почему звонящий молчит. */
+.stand { padding: 6px 24px; margin: -16px -24px 12px; font-weight: 600; }
+.stand-warn { background: #fff4d6; border-bottom: 1px solid var(--warn); }
+.stand-bad { background: #fde8e8; border-bottom: 1px solid var(--violated); color: var(--violated); }

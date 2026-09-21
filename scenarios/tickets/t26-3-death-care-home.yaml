@@ -1,0 +1,50 @@
+# Билет 26, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t26-3-death-care-home
+title: Смерть в доме престарелых
+ticket: 26
+position: 3
+type: other
+level: L2
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [На улице, Улица общественное место, Труп]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: У нас в центре для пожилых женщина скончалась после инсульта.
+
+facts:
+  - id: f_address
+    value: "улица Лескова, дом 6Б, этаж 1, центр для пожилых людей «Союз», охрана встретит"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: скончалась после инсульта
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: Кривенко Лариса Степановна
+    reveal_on: { question: q_who }
+  - id: f_caller
+    value: "администратор Щеглова Ирина Ивановна, телефон 9031281223"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "улица Лескова, дом 6Б"
+  victims: 1
+
+tree:
+  pregenerated: false

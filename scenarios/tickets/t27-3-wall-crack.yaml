@@ -1,0 +1,55 @@
+# Билет 27, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t27-3-wall-crack
+title: Отлетела плитка и треснула стена — непрофильный вызов
+ticket: 27
+position: 3
+type: gkh
+level: L3
+topics: [nonprofile]
+modes: [training, exam, self]
+
+extends: checklists/utility.yaml
+signs: [Справка консультация, 101 102 103 104 112 прочие службы, В части касающейся службы]
+outcome: consultation
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Соседи ремонт делают, а у меня в ванной плитка отвалилась и трещина пошла."
+
+facts:
+  - id: f_address
+    value: "Ленинский проспект, дом 57, квартира 28, подъезд 1, этаж 5, код 57В"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "со стены в ванной отлетела плитка, образовалась трещина около метра в длину"
+    reveal_on: { question: q_what_happened }
+  - id: f_scale
+    value: "трещина одна, стена стоит, вода не течёт"
+    reveal_on: { question: q_scale }
+  - id: f_threat
+    value: "пострадавших нет, угрозы нет"
+    reveal_on: { question: q_threat }
+  - id: f_caller
+    value: "Селезнёва Наталья Петровна, телефон 903-226-13-83"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_scale, fact: f_scale }
+  - { id: q_threat, fact: f_threat }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: []
+
+ground_truth:
+  address: "Ленинский проспект, дом 57, квартира 28"
+  victims: 0
+
+tree:
+  pregenerated: false

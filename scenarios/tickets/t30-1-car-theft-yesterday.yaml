@@ -1,0 +1,54 @@
+# Билет 30, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t30-1-car-theft-yesterday
+title: "Угон машины, обнаружен утром"
+ticket: 30
+position: 1
+type: police
+level: L1
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Угон транспорта, Транспорт автомашина, Свыше 30 мин]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "Машину угнали, вчера вечером последний раз видел."
+
+facts:
+  - id: f_address
+    value: "улица Ташкентская, дом 25, корпус 1, двор от седьмого подъезда"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "машину угнали, последний раз видели вчера вечером"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: пострадавших нет
+    reveal_on: { question: q_victims }
+  - id: f_vehicle
+    value: "тойота синяя, государственный номер А128НА 177"
+    reveal_on: { question: q_vehicle }
+  - id: f_caller
+    value: "Соколов Иван Петрович, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_vehicle, fact: f_vehicle }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "улица Ташкентская, дом 25, корпус 1"
+  victims: 0
+
+tree:
+  pregenerated: false

@@ -1,0 +1,50 @@
+# Билет 7, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t07-3-lost-elderly
+title: Пожилой человек с потерей памяти не вернулся домой
+ticket: 7
+position: 3
+type: other
+level: L2
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Пропал / найден / похищен, Потерялся (пропал), "Недееспособный (пожилой, инвалид, потеря памяти)"]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Папа шесть часов назад ушёл в поликлинику и не вернулся, он память теряет."
+
+facts:
+  - id: f_address
+    value: "улица Маршала Соколовского, дом 1, квартира 5, подъезд 1, этаж 2, код 5В"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: шесть часов назад ушёл в поликлинику и не вернулся
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "Марков Илья Кузьмич, 85 лет, страдает потерей памяти"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Маркова Ирина Сергеевна, дочь, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "улица Маршала Соколовского, дом 1, квартира 5"
+  victims: 1
+
+tree:
+  pregenerated: false

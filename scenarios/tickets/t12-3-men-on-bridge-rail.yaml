@@ -1,0 +1,53 @@
+# Билет 12, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t12-3-men-on-bridge-rail
+title: Мужчины в крови на ограждении моста
+ticket: 12
+position: 3
+type: other
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: ["Человек ранен", "Прочее ранение"]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "На ограждении моста мужчины, в крови оба!"
+
+facts:
+  - id: f_address
+    value: "над МКАД между улицей Свободы и АЗС SHELL, внешняя сторона"
+    refined: "МКАД, 73 километр, внешняя сторона"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: "двое мужчин на ограждении моста, в крови"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "двое, в сознании, держатся за ограждение"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "МКАД, 73 километр, внешняя сторона"
+  victims: 2
+
+tree:
+  pregenerated: false

@@ -1,0 +1,54 @@
+# Билет 29, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t29-2-accident-fight
+title: "ДТП с дракой между водителями, другой регион"
+ticket: 29
+position: 2
+type: other
+level: L3
+topics: [police, address]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [ДТП, Драка]
+outcome: transfer_region
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "ДТП, и водители подрались между собой."
+
+facts:
+  - id: f_address
+    value: "дорога от Киреевска в сторону посёлка Октябрьский, между заводом ЗОК и железнодорожными путями, 500 метров от остановки"
+    refined: "Тульская область, дорога от Киреевска в сторону посёлка Октябрьский"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: "ДТП без пострадавших, драка между водителями, без оружия"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: пострадавших нет
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: []
+
+ground_truth:
+  address: "Тульская область, дорога от Киреевска в сторону посёлка Октябрьский"
+  victims: 0
+
+tree:
+  pregenerated: false

@@ -1,0 +1,54 @@
+# Билет 21, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t21-2-axe-wound
+title: "Ударила топором по руке, кровотечение"
+ticket: 21
+position: 2
+type: medical
+level: L2
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Кровотечение]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Я дрова рубила и себе по руке топором попала, кровь идёт."
+
+facts:
+  - id: f_address
+    value: "дорога от Клина в сторону Лотошино, не доезжая Теряевских прудов повернуть к церкви, дом напротив остановки"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "рубила дрова, случайно ударила топором по руке, кровотечение"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Перова Ирина Ивановна, дата рождения 10.02.1956, вызывает себе"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: в сознании
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: телефон 916 896 3254
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "дорога от Клина в сторону Лотошино, у церкви"
+  victims: 1
+
+tree:
+  pregenerated: false

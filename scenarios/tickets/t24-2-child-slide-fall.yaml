@@ -1,0 +1,54 @@
+# Билет 24, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t24-2-child-slide-fall
+title: Ребёнок упал с горки
+ticket: 24
+position: 2
+type: medical
+level: L1
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Травма]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Сын с горки упал, лицо разбил, кровь!"
+
+facts:
+  - id: f_address
+    value: "Погонный проезд, дом 1, корпус 4, двор, детская площадка"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "упал сам с горки, высота полтора метра, травма лица, кровотечение"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Касанов Константин Константинович, 8 лет"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "в сознании, плачет"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "вызывает мама, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "Погонный проезд, дом 1, корпус 4"
+  victims: 1
+
+tree:
+  pregenerated: false

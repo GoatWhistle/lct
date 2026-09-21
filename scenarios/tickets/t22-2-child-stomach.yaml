@@ -1,0 +1,54 @@
+# Билет 22, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t22-2-child-stomach
+title: У ребёнка боль в животе и рвота с кровью
+ticket: 22
+position: 2
+type: medical
+level: L3
+topics: [medical, address]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Боль в животе]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: worried }
+
+first_line: "Сыну живот скрутило, рвота с кровью! Мы в дороге!"
+
+facts:
+  - id: f_address
+    value: "Ленинградское шоссе около памятника Ленину, напротив вокзала станции Ржев-1, ехали из Зубцова в сторону Селижарова"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "боль в животе, рвота с кровью"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Соловьёв Максим, 4 года"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "в сознании, в автомобиле мазда-6 белая П325ОР 197"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "вызывает папа, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "Ленинградское шоссе у памятника Ленину, напротив вокзала Ржев-1"
+  victims: 1
+
+tree:
+  pregenerated: false

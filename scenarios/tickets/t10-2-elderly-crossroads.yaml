@@ -1,0 +1,54 @@
+# Билет 10, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t10-2-elderly-crossroads
+title: Пожилой женщине плохо на перекрёстке
+ticket: 10
+position: 2
+type: medical
+level: L3
+topics: [medical, address]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Головная боль]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "Тут пожилая женщина машины останавливает, просит скорую вызвать."
+
+facts:
+  - id: f_address
+    value: "Люберецкие поля фильтрации, на пересечении дороги из Кожухова в Железнодорожный и дороги из Некрасовки в Железнодорожный"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "сильные головные боли, стоит на перекрёстке, останавливает машины"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "женщина неизвестная, около семидесяти лет"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "в сознании, на ногах"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "Соколов Иван Петрович, прохожий, телефон 916 897 5623"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: Люберецкие поля фильтрации
+  victims: 1
+
+tree:
+  pregenerated: false

@@ -1,0 +1,54 @@
+# Билет 5, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t05-2-wrong-medicine
+title: "Женщина выпила не те лекарства, потеря сознания"
+ticket: 5
+position: 2
+type: medical
+level: L2
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Отравление]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: worried }
+
+first_line: "Жена таблетки не те выпила, сознание потеряла! Скорее!"
+
+facts:
+  - id: f_address
+    value: "Коломенская набережная, дом 18, квартира 142, подъезд 3, этаж 4, код 142"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "случайно выпила не те лекарственные препараты, потеряла сознание"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Иванова Ирина Петровна, дата рождения 10.03.1975"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "без сознания, дышит"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "вызывает супруг, телефон 916 897 5623"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, floor, incident_type, description]
+
+ground_truth:
+  address: "Коломенская набережная, дом 18, квартира 142"
+  victims: 1
+
+tree:
+  pregenerated: false

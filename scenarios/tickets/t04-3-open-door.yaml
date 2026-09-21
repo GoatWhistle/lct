@@ -1,0 +1,50 @@
+# Билет 4, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t04-3-open-door
+title: Пожилой инвалид не открывает дверь третий день
+ticket: 4
+position: 3
+type: other
+level: L2
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: ["Открыть дверь, поднять с пола, перенести в скорую", "Одинокий инвалид пожилой человек или болен, ограничен в движении", "Открыть дверь в квартиру"]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Сосед третий день не открывает, он пожилой, инвалид, живёт один."
+
+facts:
+  - id: f_address
+    value: "Зеленоград, 9-й микрорайон, корпус 902, квартира 45, подъезд 1, этаж 3, код 45В"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "не открывает дверь третий день, на звонки не отвечает"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "пожилой инвалид, живёт один"
+    reveal_on: { question: q_who }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, floor, incident_type, description]
+
+ground_truth:
+  address: "Зеленоград, 9-й микрорайон, корпус 902, квартира 45"
+  victims: 1
+
+tree:
+  pregenerated: false

@@ -1,0 +1,58 @@
+# Билет 16, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t16-2-child-bicycle-volzhsky
+title: "Ребёнок упал с велосипеда, другой регион"
+ticket: 16
+position: 2
+type: medical
+level: L3
+topics: [medical, address]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Травма]
+outcome: transfer_region
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Сын с велосипеда упал, рука и нога опухли!"
+
+facts:
+  - id: f_address
+    value: "улица Карла Маркса, около Молсыркомбината"
+    refined: "Волгоградская область, город Волжский, улица Карла Маркса, около Волжского Молсыркомбината"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: "упал с велосипеда сам, отёк руки и ноги"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Смирнов Илья, 11 лет"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "в сознании, плачет"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "звонит мама, телефон 9163201283"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: []
+
+ground_truth:
+  address: "Волгоградская область, город Волжский, улица Карла Маркса"
+  victims: 1
+
+tree:
+  pregenerated: false

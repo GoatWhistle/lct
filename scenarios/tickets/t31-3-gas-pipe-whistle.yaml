@@ -1,0 +1,54 @@
+# Билет 31, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t31-3-gas-pipe-whistle
+title: Свист от газовой трубы в квартире
+ticket: 31
+position: 3
+type: gkh
+level: L2
+topics: [utility]
+modes: [training, exam, self]
+
+extends: checklists/utility.yaml
+signs: [Нарушение работы газового оборудования, Прочая неисправность газового оборудования]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "На кухне от газовой трубы свист идёт, непонятный."
+
+facts:
+  - id: f_address
+    value: "улица Вавилова, дом 81, корпус 1, квартира 5, подъезд 1, этаж 2, код 5В"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "свист от газовой трубы в квартире, на кухне"
+    reveal_on: { question: q_what_happened }
+  - id: f_scale
+    value: "свистит одна труба, запаха газа нет"
+    reveal_on: { question: q_scale }
+  - id: f_threat
+    value: "пострадавших нет, скорая не требуется"
+    reveal_on: { question: q_threat }
+  - id: f_caller
+    value: "Трунов Олег Егорович, телефон 916-320-12-83"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_scale, fact: f_scale }
+  - { id: q_threat, fact: f_threat }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, floor, incident_type, description]
+
+ground_truth:
+  address: "улица Вавилова, дом 81, корпус 1, квартира 5"
+  victims: 0
+
+tree:
+  pregenerated: false

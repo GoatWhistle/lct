@@ -1,0 +1,53 @@
+# Билет 13, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t13-1-park-trees-fire
+title: Горят деревья в парке
+ticket: 13
+position: 1
+type: fire
+level: L2
+topics: [fire]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [на улице, Парк, открытое пламя]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "В парке деревья горят, площадь метров десять на десять."
+
+facts:
+  - id: f_address
+    value: Кусковский лесопарк
+    refined: "Кусковский лесопарк, рядом со стадионом Фрезер, вход со стороны аллеи Первой Маёвки"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_burns
+    value: "горят деревья, площадь возгорания десять на десять метров"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: пострадавших людей нет
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Сидорова Ольга Викторовна, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Кусковский лесопарк, рядом со стадионом Фрезер"
+  victims: 0
+
+tree:
+  pregenerated: false

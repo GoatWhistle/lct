@@ -1,0 +1,54 @@
+# Билет 15, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t15-2-dived-head-injury
+title: Нырнул и рассёк голову
+ticket: 15
+position: 2
+type: medical
+level: L2
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Травма]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Мужчина нырнул, о камень ударился, голова рассечена!"
+
+facts:
+  - id: f_address
+    value: "Московская область, Одинцовский район, деревня Сколково, дом 17, пруд справа от дома"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "нырнул в воду, ударился о камень, рассёк голову, кровотечение"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: мужчина тридцати лет
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: в сознании
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "Петрова Ирина Сергеевна, очевидец, телефон 916 897 5623"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "Московская область, Одинцовский район, деревня Сколково, дом 17"
+  victims: 1
+
+tree:
+  pregenerated: false

@@ -1,0 +1,54 @@
+# Билет 32, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t32-2-trolleybus-accident
+title: ДТП с тремя пострадавшими в троллейбусе
+ticket: 32
+position: 2
+type: other
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [ДТП пострадавшие, Транспорт общественный]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "ДТП, троллейбус и легковая, трое пострадавших, бензин течёт!"
+
+facts:
+  - id: f_address
+    value: "Волгоградский проспект в сторону области, остановка «Завод Спецэлектрод»"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "ДТП троллейбуса и легковой машины, течёт бензин"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "трое пострадавших в троллейбусе, не блокированы"
+    reveal_on: { question: q_victims }
+  - id: f_vehicle
+    value: "троллейбус маршрута 27, бортовой номер 11 458, и ваз2115"
+    reveal_on: { question: q_vehicle }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_vehicle, fact: f_vehicle }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "Волгоградский проспект, остановка «Завод Спецэлектрод»"
+  victims: 3
+
+tree:
+  pregenerated: false

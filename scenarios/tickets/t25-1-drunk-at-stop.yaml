@@ -1,0 +1,53 @@
+# Билет 25, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t25-1-drunk-at-stop
+title: Нетрезвый мужчина на остановке
+ticket: 25
+position: 1
+type: police
+level: L1
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: ["Пьют, курят в неположенном месте", Пьяный в общественном месте]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: На остановке нетрезвый мужчина ругается и за руки хватает.
+
+facts:
+  - id: f_address
+    value: "улица Фабрициуса, остановка 62 автобуса «улица Штурвальная»"
+    refined: "улица Фабрициуса, дом 18, остановка «улица Штурвальная»"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: "нетрезвый сильно ругается и хватает прохожих за руки, скорая не требуется"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: пострадавших нет
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Соколов Иван Петрович, очевидец, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "улица Фабрициуса, дом 18"
+  victims: 0
+
+tree:
+  pregenerated: false

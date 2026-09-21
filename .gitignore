@@ -5,6 +5,9 @@
 # Веса моделей (тянутся make models)
 backend/models/
 
+# Резервные копии базы (make backup)
+backend/backups/
+
 # Python
 __pycache__/
 *.pyc
@@ -14,6 +17,14 @@ __pycache__/
 node_modules/
 frontend/dist/
 
-# Env
+# Env: и .env, и .env.test, и всё, что рядом — там ключи
 .env
+.env.*
+!.env.example
 *.local
+
+# Python
+.pytest_cache/
+
+# Артефакты Windows рядом со скачанными файлами
+*:Zone.Identifier

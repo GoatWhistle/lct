@@ -1,0 +1,50 @@
+# Билет 24, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t24-1-parking-quarrel
+title: Ссора во дворе из-за парковки
+ticket: 24
+position: 1
+type: police
+level: L1
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Скандал]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "Во дворе ругаются из-за парковки, громко очень."
+
+facts:
+  - id: f_address
+    value: "улица Вешняковская, дом 37, двор у пятого подъезда"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: ссора во дворе из-за парковки
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: пострадавших нет
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Соколов Иван Петрович, очевидец, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "улица Вешняковская, дом 37"
+  victims: 0
+
+tree:
+  pregenerated: false

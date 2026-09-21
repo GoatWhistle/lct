@@ -1,0 +1,54 @@
+# Билет 4, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t04-2-unconscious-parking
+title: "Женщине плохо на парковке, потеря сознания"
+ticket: 4
+position: 2
+type: medical
+level: L2
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Без сознания]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Женщине плохо, на парковке лежит, сознание потеряла!"
+
+facts:
+  - id: f_address
+    value: "Московская область, Балашиха, Мирской проезд, дом 16, со стороны мусорной площадки"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "стало плохо на автомобильной парковке, потеряла сознание"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "женщина на вид сорока лет, имени не знаю"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "без сознания, дышит"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "Иванова Ирина Петровна, телефон 916 897 5623"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "Московская область, Балашиха, Мирской проезд, дом 16"
+  victims: 1
+
+tree:
+  pregenerated: false

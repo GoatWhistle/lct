@@ -1,0 +1,54 @@
+# Билет 28, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t28-3-loose-board
+title: Незакреплённое табло на вокзале
+ticket: 28
+position: 3
+type: gkh
+level: L2
+topics: [utility]
+modes: [training, exam, self]
+
+extends: checklists/utility.yaml
+signs: [Предмет - падение, Прочие объекты, Угроза падения]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "На вокзале табло висит на честном слове, под ним палатка торговая."
+
+facts:
+  - id: f_address
+    value: "Комсомольская площадь, дом 5, платформа пригородного направления № 3, Ярославский вокзал"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "нет одного крепления на табло с расписанием пригородных поездов, есть угроза падения на торговую палатку"
+    reveal_on: { question: q_what_happened }
+  - id: f_scale
+    value: "табло одно, держится на оставшихся креплениях"
+    reveal_on: { question: q_scale }
+  - id: f_threat
+    value: "пострадавших нет, под табло проходят люди"
+    reveal_on: { question: q_threat }
+  - id: f_caller
+    value: "Орлова Инна Сергеевна, телефон 903-226-13-83"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_scale, fact: f_scale }
+  - { id: q_threat, fact: f_threat }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Комсомольская площадь, дом 5, Ярославский вокзал"
+  victims: 0
+
+tree:
+  pregenerated: false

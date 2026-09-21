@@ -1,0 +1,54 @@
+# Билет 16, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t16-3-sleeping-pills
+title: Выпила упаковку снотворного
+ticket: 16
+position: 3
+type: medical
+level: L3
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Суицид, Выпил таблетки]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: worried }
+
+first_line: "Жена упаковку снотворного выпила! Засыпает уже!"
+
+facts:
+  - id: f_address
+    value: "улица Знаменские Садки, дом 7, корпус 2, квартира 216, подъезд 4, этаж 4, код 216"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: выпила упаковку снотворного «Донормил»
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Петрова Светлана Павловна, 35 лет"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "в сознании, засыпает"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "вызывает муж, Петров Олег, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, floor, incident_type, description, victims_count]
+
+ground_truth:
+  address: "улица Знаменские Садки, дом 7, корпус 2, квартира 216"
+  victims: 1
+
+tree:
+  pregenerated: false

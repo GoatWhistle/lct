@@ -1,0 +1,54 @@
+# Билет 15, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t15-3-knife-wound
+title: Сожитель ударил ножом в ногу
+ticket: 15
+position: 3
+type: other
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Человек ранен, Ранение ножевое]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview, mood: worried }
+
+first_line: "Меня сожитель ножом в ногу ударил, кровь идёт!"
+
+facts:
+  - id: f_address
+    value: "улица Зверенецкая, дом 22, квартира 7, подъезд 1, этаж 2, код 7В"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "сожитель ударил ножом в ногу, кровотечение"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "одна пострадавшая, в сознании"
+    reveal_on: { question: q_victims }
+  - id: f_suspects
+    value: "сожитель, находится в квартире"
+    reveal_on: { question: q_suspects }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_suspects, fact: f_suspects }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, floor, incident_type, description, victims_count]
+
+ground_truth:
+  address: "улица Зверенецкая, дом 22, квартира 7"
+  victims: 1
+
+tree:
+  pregenerated: false

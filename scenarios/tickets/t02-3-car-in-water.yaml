@@ -1,0 +1,54 @@
+# Билет 2, вызов 3 (docs/spec/TICKETS.md). Адрес — только ориентир на набережной:
+# ни дома, ни улицы, и уточнять придётся по ориентирам.
+id: t02-3-car-in-water
+title: "Автомашина упала в воду"
+ticket: 2
+position: 3
+type: other
+level: L3
+topics: [rescue, address]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: ["Человек в воде, на льдине", "Падение автомашины в воду"]
+
+persona:
+  base: panic
+  arc:
+    - { stage: registration, mood: panic }
+    - { stage: interview,    mood: panic }
+    - { stage: dispatch,     mood: worried }
+
+first_line: "Машина в воду ушла! Прямо с набережной! Там человек внутри!"
+
+facts:
+  - id: f_address
+    value: "набережная Яузы, в сторону области"
+    refined: "набережная Яузы, напротив Большого Нижнего пруда"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_happened
+    value: "автомашина съехала с набережной и ушла под воду"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "в машине был человек, наружу никто не выбрался"
+    reveal_on: { question: q_victims }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address,       fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims,       fact: f_victims }
+  - { id: q_caller,        fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "набережная Яузы, напротив Большого Нижнего пруда"
+  victims: 1
+
+tree:
+  pregenerated: false

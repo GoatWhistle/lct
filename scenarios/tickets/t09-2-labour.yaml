@@ -1,0 +1,54 @@
+# Билет 9, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t09-2-labour
+title: "Беременность 39 недель, отошли воды"
+ticket: 9
+position: 2
+type: medical
+level: L3
+topics: [medical, address]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Беременность]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "У жены воды отошли, тридцать девять недель, мы в дороге!"
+
+facts:
+  - id: f_address
+    value: "дорога от Носовихинского шоссе, от железнодорожной станции Купавна в сторону Горьковского шоссе, напротив Бисерова озера, на автобусной остановке «Кафе»"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "беременность 39 недель, отошли воды"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "Минина Ольга Петровна, 36 лет"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "в сознании, схватки начались"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "вызывает супруг Минин Сергей Антонович, телефон 916 897 5623"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "дорога от Носовихинского шоссе в сторону Горьковского, остановка «Кафе»"
+  victims: 1
+
+tree:
+  pregenerated: false

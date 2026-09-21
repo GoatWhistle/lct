@@ -1,0 +1,50 @@
+# Билет 18, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t18-1-unknown-fire
+title: "Видит пожар, что горит — не знает"
+ticket: 18
+position: 1
+type: fire
+level: L3
+topics: [fires, address]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [объект, прочие объекты, открытое пламя]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Пожар вижу, а что горит — не пойму, я на дороге."
+
+facts:
+  - id: f_address
+    value: "дорога от Киевского шоссе в сторону Минского через Крекшино, примерно полтора километра от железнодорожного переезда, напротив пруда"
+    reveal_on: { question: q_address }
+  - id: f_what_burns
+    value: "что горит, не знаю, вижу открытое пламя в стороне"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: информации о пострадавших нет
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Слобода Юрий Петрович, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: дорога от Киевского шоссе в сторону Минского через Крекшино
+  victims: 0
+
+tree:
+  pregenerated: false

@@ -1,0 +1,58 @@
+# Билет 31, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t31-2-hit-and-run
+title: "Наезд на пешехода, машина скрылась"
+ticket: 31
+position: 2
+type: other
+level: L3
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [ДТП пострадавшие, Автомашина скрылась]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "Пешехода сбили и уехали! Мужчина в сознании, голова разбита."
+
+facts:
+  - id: f_address
+    value: "Рублёвское шоссе, напротив торгового центра «Европарк»"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "наезд на пешехода, автомашина с места скрылась"
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "один пострадавший, мужчина в сознании, травма головы"
+    reveal_on: { question: q_victims }
+  - id: f_fled
+    value: скрылась в сторону области
+    reveal_on: { question: q_fled }
+  - id: f_vehicle
+    value: "ваз 2110 красная, номер разобрал частично: 128 и 177"
+    reveal_on: { question: q_vehicle }
+  - id: f_caller
+    value: "Иванова Елена Сергеевна, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_fled, fact: f_fled }
+  - { id: q_vehicle, fact: f_vehicle }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "Рублёвское шоссе, напротив ТЦ «Европарк»"
+  victims: 1
+
+tree:
+  pregenerated: false

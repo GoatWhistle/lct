@@ -1,0 +1,50 @@
+# Билет 15, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t15-1-forest-fire
+title: Горит лес за деревней
+ticket: 15
+position: 1
+type: fire
+level: L2
+topics: [fire]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [на улице, Лес, открытое пламя]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "Лес горит за деревней, я мимо проезжала."
+
+facts:
+  - id: f_address
+    value: "Московская область, Дмитровский городской округ, за деревней Варварино"
+    reveal_on: { question: q_address }
+  - id: f_what_burns
+    value: горит лес за деревней
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: пострадавших нет
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Антонова Мария Петровна, проезжала мимо, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Московская область, Дмитровский городской округ, за деревней Варварино"
+  victims: 0
+
+tree:
+  pregenerated: false

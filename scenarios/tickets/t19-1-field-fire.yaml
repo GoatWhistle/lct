@@ -1,0 +1,54 @@
+# Билет 19, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t19-1-field-fire
+title: "Горит поле, вызов из другого региона"
+ticket: 19
+position: 1
+type: fire
+level: L3
+topics: [fires, address]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [на улице, Трава, открытое пламя]
+outcome: transfer_region
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "Поле горит, между заводом и путями."
+
+facts:
+  - id: f_address
+    value: "дорога от Киреевска в сторону посёлка Октябрьский, между заводом ЗОК и железнодорожными путями, 500 метров от автобусной остановки"
+    refined: "Тульская область, дорога от Киреевска в сторону посёлка Октябрьский"
+    reveal_on: { question: q_address }
+    refine_on: q_address_check
+  - id: f_what_burns
+    value: горит поле
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: пострадавших нет
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Орлова Вера Ивановна, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_address_check }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people, fact: f_people }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: []
+
+ground_truth:
+  address: "Тульская область, дорога от Киреевска в сторону посёлка Октябрьский"
+  victims: 0
+
+tree:
+  pregenerated: false

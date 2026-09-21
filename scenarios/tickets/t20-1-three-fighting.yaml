@@ -1,0 +1,54 @@
+# Билет 20, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t20-1-three-fighting
+title: Дерутся трое у кладбища
+ticket: 20
+position: 1
+type: police
+level: L1
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Драка, Улица общественное место, До 10 человек]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview, mood: calm }
+
+first_line: "Тут трое дерутся, за домом на дорожке."
+
+facts:
+  - id: f_address
+    value: "Олонецкий проезд, дом 4, за домом, дорожка в сторону кладбища"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: дерутся трое человек
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: пострадавших нет
+    reveal_on: { question: q_victims }
+  - id: f_suspects
+    value: "трое мужчин, оружия не видно"
+    reveal_on: { question: q_suspects }
+  - id: f_caller
+    value: "Иванов Сергей Петрович, очевидец, телефон 916-123-98-78"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_suspects, fact: f_suspects }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Олонецкий проезд, дом 4"
+  victims: 0
+
+tree:
+  pregenerated: false

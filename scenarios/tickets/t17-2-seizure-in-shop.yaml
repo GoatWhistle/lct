@@ -1,0 +1,54 @@
+# Билет 17, вызов 2 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t17-2-seizure-in-shop
+title: Судороги у покупателя в магазине
+ticket: 17
+position: 2
+type: medical
+level: L2
+topics: [medical]
+modes: [training, exam, self]
+
+extends: checklists/medical.yaml
+signs: [Судороги]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "У покупателя судороги, пена изо рта, при падении голову разбил!"
+
+facts:
+  - id: f_address
+    value: "улица Твардовского, владение 2, корпус 1, строение 2, магазин «Лента», у касс"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: "судороги, пена изо рта, при падении разбил голову"
+    reveal_on: { question: q_what_happened }
+  - id: f_who
+    value: "мужчина 40–45 лет, имени не знаю"
+    reveal_on: { question: q_who }
+  - id: f_conscious
+    value: "без сознания, судороги"
+    reveal_on: { question: q_conscious }
+  - id: f_caller
+    value: "Соколова Вера Ивановна, кассир магазина, телефон 9163201283"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_who, fact: f_who }
+  - { id: q_conscious, fact: f_conscious }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, incident_type, description, victims_count]
+
+ground_truth:
+  address: "улица Твардовского, владение 2, корпус 1, магазин «Лента»"
+  victims: 1
+
+tree:
+  pregenerated: false

@@ -1,0 +1,54 @@
+# Билет 22, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
+# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+id: t22-1-flat-fight
+title: Драка в квартире
+ticket: 22
+position: 1
+type: police
+level: L1
+topics: [police]
+modes: [training, exam, self]
+
+extends: checklists/police.yaml
+signs: [Драка, Квартира]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview, mood: worried }
+
+first_line: "У соседей драка, двое мужчин, слышно через стену."
+
+facts:
+  - id: f_address
+    value: "улица Маршала Василевского, дом 13, корпус 3, квартира 2, подъезд 1, этаж 1, код 2В"
+    reveal_on: { question: q_address }
+  - id: f_what_happened
+    value: дерутся в квартире двое мужчин
+    reveal_on: { question: q_what_happened }
+  - id: f_victims
+    value: "пострадавших нет, насколько слышно"
+    reveal_on: { question: q_victims }
+  - id: f_suspects
+    value: "двое мужчин, оружия нет"
+    reveal_on: { question: q_suspects }
+  - id: f_caller
+    value: "Соколов Иван Петрович, сосед, телефон 916 896 3254"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address, fact: f_address }
+  - { id: q_what_happened, fact: f_what_happened }
+  - { id: q_victims, fact: f_victims }
+  - { id: q_suspects, fact: f_suspects }
+  - { id: q_caller, fact: f_caller }
+
+required_fields: [address, entrance, incident_type, description]
+
+ground_truth:
+  address: "улица Маршала Василевского, дом 13, корпус 3, квартира 2"
+  victims: 0
+
+tree:
+  pregenerated: false
