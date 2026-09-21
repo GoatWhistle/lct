@@ -75,7 +75,7 @@ async def ensure_session(
         scenario_id=scenario_id,
         mode=mode,
         trainee_id=trainee.id if trainee else None,
-        group_id=group.id if group else None,
+        group_id=group.id if group else trainee.group_id if trainee else None,
         session_id=session_id,
     )
 

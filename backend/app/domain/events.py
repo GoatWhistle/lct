@@ -418,6 +418,7 @@ ServerToObserver = Annotated[
 class ScenarioStart(BaseModel):
     type: Literal["scenario.start"] = "scenario.start"
     scenario_id: str
+    scenario_ids: list[str] | None = None
     trainee: str
     trainee_id: UUID | None = None
     group_id: str | None = None
@@ -483,6 +484,8 @@ class CardReceived(BaseModel):
     card: KIO
     from_operator: str
     at: datetime
+    card_index: int = 1
+    card_total: int = 1
 
 
 class CardAck(BaseModel):
@@ -535,6 +538,17 @@ class StationFinish(BaseModel):
     type: Literal["station.finish"] = "station.finish"
 
 
+class CardReply(BaseModel):
+    type: Literal["card.reply"] = "card.reply"
+    card_id: UUID
+    text: str = Field(max_length=2000)
+
+
+class CardNext(BaseModel):
+    type: Literal["card.next"] = "card.next"
+    card_id: UUID
+
+
 class StationState(BaseModel):
     """Состояние АРМ ДДС после каждой отметки: что стоит и что доступно дальше."""
 
@@ -564,6 +578,7 @@ ServerToStation = Annotated[
 
 StationToServer = Annotated[
     CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | StationFinish
+    | CardReply | CardNext
     | ZoneDecision | CrewDispatched | CrewArrived,
     Field(discriminator="type"),
 ]
@@ -616,6 +631,17 @@ class SelfAssessmentDiff(BaseModel):
     overcautious: list[str] = []
 
 
+class DdsCardReport(BaseModel):
+    card_id: UUID
+    scenario_id: str
+    score_auto: float
+    reply_text: str
+    metrics: list[Metric]
+    findings: list[Finding]
+    actions: list[dict[str, Any]] = []
+    duration_ms: int = 0
+
+
 class SessionReport(BaseModel):
     """Единица истории: из отчётов складываются профиль, дельта попыток, аналитика."""
 
@@ -626,6 +652,7 @@ class SessionReport(BaseModel):
     transcript: list[TranscriptEntry]
     findings: list[Finding]
     metrics: list[Metric]
+    card_results: list[DdsCardReport] = []
     competencies: list[CompetencyScore]
     reference_questions: list[HintShown]
     missed_checklist: list[str]

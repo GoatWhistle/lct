@@ -5,6 +5,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { Role } from "@/shared/types/generated";
 
+// Vite подставляет значение при сборке. В обычном стенде демо-вход и его
+// элементы интерфейса отсутствуют, даже если backend поддерживает endpoint.
+export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
+
 export interface Principal {
   login: string;
   full_name: string;
@@ -47,6 +51,17 @@ export function useLogin() {
   });
 }
 
+export function useDemoLogin() {
+  const cache = useQueryClient();
+  return useMutation({
+    mutationFn: () => {
+      if (!DEMO_MODE) throw new Error("demo_disabled");
+      return call<Principal>("/api/auth/dev-token", { method: "POST" });
+    },
+    onSuccess: (who) => cache.setQueryData(["me"], who),
+  });
+}
+
 export function useLogout() {
   const cache = useQueryClient();
   return useMutation({
@@ -58,7 +73,7 @@ export function useLogout() {
 /** Какие экраны открыты роли. Повторяет domain/roles.py: список короткий
  *  и меняется редко, а держать его на сервере ради двух строк — лишний запрос. */
 export const SCREENS: Record<Role, string[]> = {
-  admin: ["/admin", "/profile"],
-  instructor: ["/instructor", "/wall", "/profile", "/dds"],
+  admin: ["/admin", "/profile", "/groups"],
+  instructor: ["/instructor", "/wall", "/profile", "/dds", "/groups"],
   trainee: ["/trainee", "/dds", "/profile"],
 };

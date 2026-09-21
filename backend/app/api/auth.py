@@ -15,7 +15,10 @@
   протокола авторизации в канале нет.
 """
 
+import asyncio
 import logging
+import secrets
+import weakref
 from uuid import UUID
 
 from argon2 import PasswordHasher
@@ -31,8 +34,58 @@ from app.domain.roles import Role
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+DEMO_TRAINEE_ID = UUID("00000000-0000-4000-8000-000000000112")
 
 _hasher = PasswordHasher()
+# Cookie is signed, but carries a role snapshot. A changed account must not
+# keep its old privileges for the full 12-hour cookie lifetime. Compose runs
+# one worker; the process marker also invalidates all cookies after restart.
+_INSTANCE = secrets.token_urlsafe(32)
+_generations: dict[str, int] = {}
+_active_sockets: dict[str, weakref.WeakKeyDictionary] = {}
+
+
+async def _close_revoked(ws: WebSocket) -> None:
+    try:
+        await ws.close(code=1008, reason="Учётная запись изменена: войдите снова")
+    except (RuntimeError, OSError):
+        # The peer may already have disconnected; revocation still stands.
+        pass
+
+
+def invalidate_login(login: str) -> None:
+    """Revoke previously issued cookies after account/role/password changes."""
+    _generations[login] = _generations.get(login, 0) + 1
+    for ws, loop in list(_active_sockets.get(login, {}).items()):
+        try:
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(lambda socket=ws: asyncio.create_task(_close_revoked(socket)))
+        except RuntimeError:
+            pass  # loop closed between the check and scheduling
+
+
+def _session_principal(session: dict) -> "Principal | None":
+    data = session.get("principal")
+    if not isinstance(data, dict):
+        return None
+    login = data.get("login")
+    if not isinstance(login, str):
+        return None
+    if session.get("auth_instance") != _INSTANCE:
+        return None
+    if session.get("auth_generation") != _generations.get(login, 0):
+        return None
+    try:
+        return Principal.model_validate(data)
+    except Exception:  # malformed signed cookie: reject, do not 500
+        log.warning("неверный формат principal в cookie")
+        return None
+
+
+def _issue_session(request: Request, who: "Principal") -> None:
+    request.session["principal"] = who.model_dump(mode="json")
+    request.session["auth_instance"] = _INSTANCE
+    request.session["auth_generation"] = _generations.get(who.login, 0)
 
 
 def hash_password(password: str) -> str:
@@ -50,8 +103,7 @@ def verify_password(password_hash: str, password: str) -> bool:
 
 
 class Principal(BaseModel):
-    """Кто действует. Хранится в cookie целиком: ходить в базу за ролью
-    на каждый запрос незачем, а меняется она правкой учётной записи."""
+    """Кто действует. Cookie stores a snapshot, revoked on account edits."""
 
     login: str
     full_name: str
@@ -69,9 +121,23 @@ class LoginIn(BaseModel):
     password: str
 
 
+def _demo_local(request: Request) -> None:
+    # При ошибочном bind 0.0.0.0 удалённый клиент всё равно не получит cookie.
+    if request.client is None or request.client.host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
+        raise HTTPException(status_code=403, detail="demo_local_only")
+
+
+def _demo_principal(role: Role) -> Principal:
+    return Principal(
+        login="demo-trainee" if role is Role.TRAINEE else "demo-instructor",
+        full_name="Демо-курсант" if role is Role.TRAINEE else "Демо-преподаватель",
+        role=role,
+        trainee_id=DEMO_TRAINEE_ID if role is Role.TRAINEE else None,
+    )
+
+
 def current(request: Request) -> Principal | None:
-    data = request.session.get("principal")
-    return Principal.model_validate(data) if data else None
+    return _session_principal(request.session)
 
 
 def principal_of(websocket: WebSocket) -> Principal | None:
@@ -80,8 +146,10 @@ def principal_of(websocket: WebSocket) -> Principal | None:
     `WebSocket.session` доступен, потому что `SessionMiddleware` стоит до
     роутера: значит роль известна до входа в цикл приёма сообщений.
     """
-    data = websocket.session.get("principal") if "session" in websocket.scope else None
-    return Principal.model_validate(data) if data else None
+    who = _session_principal(websocket.session) if "session" in websocket.scope else None
+    if who is not None:
+        _active_sockets.setdefault(who.login, weakref.WeakKeyDictionary())[websocket] = asyncio.get_running_loop()
+    return who
 
 
 def require(request: Request, *roles: Role) -> Principal:
@@ -99,6 +167,8 @@ async def audit(
 ) -> None:
     """Запись в журнал. Аудит не должен ронять действие: если база недоступна,
     занятие продолжается, а пропуск виден в логе."""
+    if get_settings().demo_no_db:
+        return  # в явном demo-режиме запись и долговременный аудит недоступны
     try:
         async with get_sessionmaker()() as db:
             db.add(
@@ -113,6 +183,16 @@ async def audit(
 
 @router.post("/login")
 async def login(payload: LoginIn, request: Request) -> dict:
+    if get_settings().demo_no_db:
+        _demo_local(request)
+        demo_roles = {"demo-instructor": Role.INSTRUCTOR, "demo-trainee": Role.TRAINEE}
+        role = demo_roles.get(payload.login)
+        if role is None or not secrets.compare_digest(payload.password, "demo"):
+            raise HTTPException(status_code=401, detail="bad_credentials")
+        who = _demo_principal(role)
+        _issue_session(request, who)
+        return who.model_dump(mode="json")
+
     async with get_sessionmaker()() as db:
         user = await db.scalar(select(User).where(User.login == payload.login))
 
@@ -130,7 +210,7 @@ async def login(payload: LoginIn, request: Request) -> dict:
         service=user.service,
         trainee_id=user.trainee_id,
     )
-    request.session["principal"] = who.model_dump(mode="json")
+    _issue_session(request, who)
     await audit(who.login, who.role.value, "login")
     return who.model_dump(mode="json")
 
@@ -153,7 +233,7 @@ async def me(request: Request) -> dict:
 
 
 @router.post("/dev-token")
-async def dev_token(request: Request) -> dict:
+async def dev_token(request: Request, role: Role = Role.INSTRUCTOR) -> dict:
     """Вход без пароля для наших же инструментов.
 
     `make lesson` и тесты открывают сокеты напрямую и после включения ролей
@@ -161,8 +241,17 @@ async def dev_token(request: Request) -> dict:
     умолчанию выключенным: в рабочем стенде она отвечает 404, а не 401 —
     выключенной функции не должно быть видно вовсе.
     """
-    if not get_settings().dev_auth_bypass:
+    settings = get_settings()
+    if not settings.dev_auth_bypass:
         raise HTTPException(status_code=404, detail="not_found")
-    who = Principal(login="dev", full_name="Разработка", role=Role.INSTRUCTOR)
-    request.session["principal"] = who.model_dump(mode="json")
+    if role is not Role.INSTRUCTOR and not settings.demo_no_db:
+        raise HTTPException(status_code=404, detail="not_found")
+    if settings.demo_no_db:
+        _demo_local(request)
+        if role not in {Role.INSTRUCTOR, Role.TRAINEE}:
+            raise HTTPException(status_code=403, detail="demo_role_forbidden")
+    who = _demo_principal(role) if settings.demo_no_db else Principal(
+        login="dev", full_name="Разработка", role=Role.INSTRUCTOR
+    )
+    _issue_session(request, who)
     return who.model_dump(mode="json")

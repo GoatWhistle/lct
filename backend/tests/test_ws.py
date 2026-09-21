@@ -366,7 +366,34 @@ def test_instructor_correction_keeps_the_automatic_score(client):
 
     assert corrected["score_final"] == 80.0
     assert corrected["score_auto"] == auto, "автооценка должна сохраниться рядом"
-    assert corrected["overridden_by"] == "преподаватель"
+    assert corrected["overridden_by"] == "dev"
+
+
+def test_ws_score_override_rejects_other_session_and_invalid_value(client):
+    with lesson(client) as (session_id, control):
+        state = hub.get(session_id)
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            trainee.send_json({"type": "call.answer"})
+            trainee.send_json({"type": "call.hangup"})
+            wait_for(lambda: state.score is not None)
+        auto = state.score["score_auto"]
+        control.send_json({
+            "type": "score.override", "session_id": str(uuid4()),
+            "verdict": "90", "comment": "не тот номер",
+        })
+        control.send_json({
+            "type": "score.override", "session_id": str(session_id),
+            "verdict": "nan", "comment": "не число",
+        })
+        time.sleep(0.1)
+        assert state.score["score_auto"] == auto
+        assert "score_final" not in state.score
+        control.send_json({
+            "type": "score.override", "session_id": str(session_id),
+            "verdict": "85", "comment": "ручная проверка",
+        })
+        wait_for(lambda: state.score.get("score_final") == 85)
+        assert state.score["overridden_by"] == "dev"
 
 
 def test_soft_directive_changes_how_the_caller_sounds(client):

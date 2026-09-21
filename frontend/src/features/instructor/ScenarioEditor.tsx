@@ -167,7 +167,7 @@ export function ScenarioEditor({
       </div>
       {draft && (
         <>
-          <p className="ref">Черновик {draft.id}. Факты и эталон доступны только преподавателю до утверждения.</p>
+          <p className="ref">Черновик {draft.id}. Факты и эталон доступны только преподавателю до утверждения. Поле score_weights позволяет задать веса метрик (0–10), например {"{\"address\": 3, \"dds_ack\": 2}"}.</p>
           <label className="scenario-editor-json">JSON тела сценария
             <textarea value={bodyText} onChange={(event) => { setBodyText(event.target.value); setValidation(null); }} spellCheck={false} />
           </label>

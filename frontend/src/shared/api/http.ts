@@ -1,7 +1,7 @@
 // HTTP-клиент и хуки. Типы ответов HTTP в generated.ts пока не попадают —
 // там только события WS; здесь описаны руками по docs/arch/CONTRACT.md#http-api.
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { Level, SessionMode } from "@/shared/types/generated";
 
@@ -32,6 +32,7 @@ export interface Health {
   embeddings_ready: boolean;
   scenarios_loaded: number;
   offline: boolean;
+  demo_no_db?: boolean;
 }
 
 export interface ScenarioSummary {
@@ -124,6 +125,60 @@ export function useSigns(prefix: string[]) {
 
 export const useTrainees = () =>
   useQuery({ queryKey: ["trainees"], queryFn: () => request<TraineeInfo[]>("/api/trainees") });
+
+export interface GroupInfo {
+  id: string;
+  name: string;
+}
+
+export interface GroupAnalytics {
+  group: GroupInfo;
+  enrolled_trainees: number;
+  active_trainees: number;
+  scored_attempts: number;
+  average_score: number | null;
+  errors: {
+    code: string;
+    title: string;
+    affected_trainees: number;
+    occurrences: number;
+    rate_percent: number;
+    recommendation: string;
+  }[];
+}
+
+export const useGroups = () =>
+  useQuery({ queryKey: ["groups"], queryFn: () => request<GroupInfo[]>("/api/groups") });
+
+export function useCreateGroup() {
+  const cache = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => request<GroupInfo>("/api/groups", {
+      method: "POST", body: JSON.stringify({ name }),
+    }),
+    onSuccess: () => void cache.invalidateQueries({ queryKey: ["groups"] }),
+  });
+}
+
+export function useAssignTrainee() {
+  const cache = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, traineeId }: { groupId: string; traineeId: string }) =>
+      request<GroupInfo>(`/api/groups/${groupId}/trainees/${traineeId}`, { method: "PUT" }),
+    onSuccess: () => {
+      void cache.invalidateQueries({ queryKey: ["trainees"] });
+      void cache.invalidateQueries({ queryKey: ["group-analytics"] });
+    },
+  });
+}
+
+export const useGroupAnalytics = (groupId: string | null) =>
+  useQuery({
+    queryKey: ["group-analytics", groupId],
+    queryFn: () => request<GroupAnalytics>(`/api/groups/${groupId}/analytics`),
+    enabled: Boolean(groupId),
+    refetchInterval: 15_000,
+  });
 
 export const useProfile = (traineeId: string | null) =>
   useQuery({

@@ -9,7 +9,7 @@
 """
 
 import logging
-import re
+import math
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -44,7 +44,7 @@ from app.api.auth import audit, principal_of
 from app.domain.roles import Role
 from app.session.hub import hub
 from app.session.state import SessionState, now_utc
-from app.domain.kio import KIO, ResponseStatus
+from app.session.dds import prepare_card
 from app.voice.models import get_voice_models
 from app.voice.pipeline import FILLERS, prefetch
 
@@ -84,6 +84,23 @@ async def _start(session_id: UUID, event, who=None) -> None:
         )
         return
 
+    scenario_ids = event.scenario_ids or [event.scenario_id]
+    if event.exercise is Exercise.DDS:
+        if not scenario_ids or scenario_ids[0] != event.scenario_id or len(scenario_ids) > 10:
+            hub.to_observers(session_id, ErrorEvent(
+                code=ErrorKind.SCENARIO_INVALID,
+                message="Очередь ДДС должна начинаться с scenario_id и содержать не более 10 карточек",
+            ))
+            return
+        scenarios = [store.get(scenario_id) for scenario_id in scenario_ids]
+        if any(item is None for item in scenarios):
+            hub.to_observers(session_id, ErrorEvent(
+                code=ErrorKind.SCENARIO_INVALID, message="В очереди ДДС есть неизвестный сценарий",
+            ))
+            return
+    else:
+        scenarios = []
+
     attempt = 1
     recorded_trainee_id = event.trainee_id
     if hub.journal:
@@ -114,29 +131,8 @@ async def _start(session_id: UUID, event, who=None) -> None:
         state.persona = PersonaState(state.scenario.persona)
         state.caller = build_caller(scenario.id)
     elif event.exercise is Exercise.DDS:
-        # В ДДС поступает уже оформленная учебная карточка. Содержимое берётся
-        # из утверждённого сценария, а не из действий несуществующего оператора.
-        truth = scenario.ground_truth
-        address_fact = next((fact.value for fact in scenario.facts if "address" in fact.id), "")
-        floor = re.search(r"(\d+)[-‑–]?й?\s*этаж", address_fact, re.IGNORECASE)
-        service = truth.dds.value if truth.dds else None
-        fallback = {"01": "Служба 101", "02": "МВД", "03": "Скорая помощь", "04": "Аварийная служба"}
-        state.kio = KIO(
-            registered_at=now_utc(), caller_number="+7 (495) 000-00-00",
-            address=truth.address or address_fact or None,
-            floor=floor.group(1) if floor else None,
-            incident_type=truth.incident_type, incident_code=truth.incident_code,
-            dds=truth.dds, signs=list(scenario.signs),
-            notify=list(truth.notify) or ([fallback[service]] if service in fallback else []),
-            victims_count=truth.victims,
-            description="; ".join(fact.value for fact in scenario.facts[:3]) or scenario.first_line,
-        )
-        if service:
-            state.dispatch(service)
-        else:
-            state.kio.response_status = ResponseStatus.TRANSFERRED
-            state.dispatched_card = state.kio.model_copy(deep=True)
-            state.dispatched_at = now_utc()
+        state.dds_scenarios = [item.model_copy(deep=True) for item in scenarios]
+        prepare_card(state, state.dds_scenarios[0])
         state.started_at = state.dispatched_at
     else:
         state.started_at = now_utc()
@@ -151,8 +147,6 @@ async def _start(session_id: UUID, event, who=None) -> None:
         if models is not None:
             asyncio.create_task(prefetch(models, [scenario.first_line, *FILLERS.values()]))
         state.on_event("call.incoming")
-    elif event.exercise is Exercise.DDS:
-        state.on_event("dds.dispatch")
     hub.start_ticker(session_id)
     if who is not None:
         # Запуск занятия меняет чужой результат — значит попадает в журнал
@@ -265,15 +259,39 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                     if state is not None:
                         hub.to_observers(session_id, ReferenceStarted(scenario_id=state.scenario_id))
                 case "score.override":
+                    if event.session_id != session_id:
+                        hub.to_observers(session_id, ErrorEvent(
+                            code=ErrorKind.FORBIDDEN,
+                            message="Оценка относится к другому занятию",
+                        ))
+                        continue
                     state = hub.get(session_id)
                     if state is not None and state.score is not None:
+                        try:
+                            verdict = float(event.verdict)
+                        except ValueError:
+                            verdict = float("nan")
+                        if not math.isfinite(verdict) or not 0 <= verdict <= 100:
+                            hub.to_observers(session_id, ErrorEvent(
+                                code=ErrorKind.UNSUPPORTED_EVENT,
+                                message="Оценка должна быть числом от 0 до 100",
+                            ))
+                            continue
                         # Автооценка остаётся рядом: видно, что скорректировано и кем.
                         state.score = {
                             **state.score,
-                            "score_final": float(event.verdict) if event.verdict.replace(".", "", 1).isdigit() else state.score["score_auto"],
-                            "overridden_by": "преподаватель",
+                            "score_final": verdict,
+                            "overridden_by": who.login,
                             "override_comment": event.comment,
                         }
+                        if hub.journal:
+                            await hub.journal.score_override(
+                                session_id, verdict, who.login, event.comment
+                            )
+                        await audit(
+                            who.login, who.role.value, "score.override", str(session_id),
+                            f"{state.score.get('score_auto')} → {verdict}: {event.comment}",
+                        )
                         hub.to_observers(session_id, ScoreReady(session_id=session_id))
                 case "director.inject":
                     state = hub.get(session_id)

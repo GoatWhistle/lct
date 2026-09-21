@@ -11,6 +11,7 @@
 
 from datetime import datetime
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -134,6 +135,12 @@ class PhoneReportRecord(BaseModel):
     at: datetime
 
 
+class DdsCardSummary(BaseModel):
+    card_id: UUID
+    scenario_id: str
+    score_auto: float
+
+
 class StatusError(ValueError):
     """Переход запрещён автоматом или нет обязательного комментария."""
 
@@ -208,3 +215,8 @@ class StationSnapshot(BaseModel):
     crew_options: list[str] = []
     crew_selected: str | None = None
     phone_reports: list[PhoneReportRecord] = []
+    card_id: UUID | None = None
+    card_index: int = 1
+    card_total: int = 1
+    reply_text: str = ""
+    completed_cards: list[DdsCardSummary] = []

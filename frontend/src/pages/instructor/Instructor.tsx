@@ -28,6 +28,7 @@ const MODES: { value: SessionMode; label: string }[] = [
 export function Instructor() {
   const [sessionId, setSessionId] = useState<string | null>(sessionIdFromUrl());
   const [scenarioId, setScenarioId] = useState("");
+  const [extraScenarioIds, setExtraScenarioIds] = useState<string[]>([]);
   const [mode, setMode] = useState<SessionMode>("training");
   const [exercise, setExercise] = useState<"dds" | "call" | "card">("dds");
   const [trainee, setTrainee] = useState("");
@@ -62,8 +63,11 @@ export function Instructor() {
     if (!sessionId || control.status !== "open" || toStart.current !== sessionId) return;
     toStart.current = null;
     const selected = trainees.data?.find((item) => item.id === traineeId);
-    control.start(scenarioId, mode, selected?.name || trainee || "Демо-курсант", exercise, undefined, selected?.id);
-  }, [sessionId, control, scenarioId, mode, trainee, traineeId, trainees.data, exercise]);
+    const scenarioIds = exercise === "dds"
+      ? [scenarioId, ...extraScenarioIds.filter((id) => id !== scenarioId)] : undefined;
+    control.start(scenarioId, mode, selected?.name || trainee || "Демо-курсант", exercise,
+      undefined, selected?.id, scenarioIds && scenarioIds.length > 1 ? scenarioIds : undefined);
+  }, [sessionId, control, scenarioId, extraScenarioIds, mode, trainee, traineeId, trainees.data, exercise]);
 
   const links = sessionId
     ? {
@@ -87,13 +91,27 @@ export function Instructor() {
               <tr>
                 <th>Сценарий</th>
                 <td>
-                  <select value={scenarioId} onChange={(event) => setScenarioId(event.target.value)}>
+                  <select value={scenarioId} onChange={(event) => {
+                    setScenarioId(event.target.value);
+                    setExtraScenarioIds((previous) => previous.filter((id) => id !== event.target.value));
+                  }}>
                     {scenarios.data?.map((scenario) => (
                       <option key={scenario.id} value={scenario.id}>
                         {scenario.title} · {scenario.level}
                       </option>
                     ))}
                   </select>
+                  {exercise === "dds" && <details className="scenario-queue">
+                    <summary>Дополнительные карточки ({extraScenarioIds.length})</summary>
+                    <p className="ref">Карточки поступят последовательно после завершения текущей.</p>
+                    {scenarios.data?.filter((scenario) => scenario.id !== scenarioId).map((scenario) =>
+                      <label key={scenario.id} className="mode-choice">
+                        <input type="checkbox" checked={extraScenarioIds.includes(scenario.id)} onChange={() =>
+                          setExtraScenarioIds((previous) => previous.includes(scenario.id)
+                            ? previous.filter((id) => id !== scenario.id) : [...previous, scenario.id])} />
+                        {" "}{scenario.title} · {scenario.level}
+                      </label>)}
+                  </details>}
                 </td>
               </tr>
               <tr>
@@ -219,7 +237,7 @@ export function Instructor() {
 
         <section style={{ flex: "0 0 260px" }}>
           <h2>История группы</h2>
-          <p><a href="/profile">профили курсантов</a></p>
+          <p><a href="/profile">профили курсантов</a> · <a href="/groups">аналитика группы</a></p>
           <table className="grid">
             <tbody>
               {history.data?.slice(0, 15).map((item) => (

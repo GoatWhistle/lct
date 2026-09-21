@@ -5,8 +5,10 @@ import { Instructor } from "@/pages/instructor/Instructor";
 import { Dds } from "@/pages/dds/Dds";
 import { Admin } from "@/pages/admin/Admin";
 import { Profile } from "@/pages/profile/Profile";
+import { Groups } from "@/pages/groups/Groups";
 import { Wall } from "@/pages/wall/Wall";
 import { RequireAuth } from "@/features/auth/Login";
+import { DEMO_MODE } from "@/features/auth/useAuth";
 
 // Четыре интерфейса — одна SPA (docs/arch/FRONTEND.md).
 // session_id живёт в URL: /instructor?session=..., монитор открывают ссылкой.
@@ -18,11 +20,12 @@ const guarded = (screen: string, element: JSX.Element) => (
 );
 
 export const router = createBrowserRouter([
-  { path: "/", element: <Navigate to="/trainee" replace /> },
+  { path: "/", element: <Navigate to={DEMO_MODE ? "/instructor" : "/trainee"} replace /> },
   { path: "/trainee", element: guarded("/trainee", <Call />) },
   { path: "/instructor", element: guarded("/instructor", <Instructor />) },
   { path: "/wall", element: guarded("/wall", <Wall />) },
   { path: "/profile", element: guarded("/profile", <Profile />) },
+  { path: "/groups", element: guarded("/groups", <Groups />) },
   { path: "/dds", element: guarded("/dds", <Dds />) },
   { path: "/admin", element: guarded("/admin", <Admin />) },
 ]);

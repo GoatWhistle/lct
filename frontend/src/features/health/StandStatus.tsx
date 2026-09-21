@@ -11,6 +11,10 @@ export function StandStatus() {
   }
   if (!health.data) return null;
 
+  if (health.data.demo_no_db) {
+    return <div className="stand stand-warn">Локальная демка: карточки 112 и ДДС работают без БД и голоса; история занятий не сохраняется.</div>;
+  }
+
   const troubles: string[] = [];
   if (!health.data.models_ready) troubles.push("голосовой контур выключен: звонок будет без звука");
   if (!health.data.embeddings_ready) troubles.push("нет модели эмбеддингов: подсказки идут по порядку чек-листа");

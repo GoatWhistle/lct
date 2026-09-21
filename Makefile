@@ -8,6 +8,7 @@ UV ?= uv
 # молча ждёт блокировку. Один раз поставить оба набора:
 #   cd backend && uv sync --extra dev --extra voice
 COMPOSE ?= docker compose
+DEMO_PORT ?= 8112
 
 .DEFAULT_GOAL := help
 
@@ -86,4 +87,7 @@ pregen: ## Офлайн-таблицы реплик: make pregen [s=<сцена�
 demo: ## Поднять стенд для занятия: база, сценарии, бэкенд с голосом, фронт
 	./scripts/demo.sh
 
-.PHONY: help dev offline down back front types ekp users users-docker backup test test-voice typecheck test-llm lesson llm-check latency migrate revision models seed repl pregen demo
+demo-lite: ## Локальная демонстрация карточки/ДДС без Docker, БД, голоса и внешней сети
+	cd backend && UV_CACHE_DIR=/tmp/lct-uv-demo-cache OFFLINE=true VOICE_ENABLED=false DEV_AUTH_BYPASS=true DEMO_NO_DB=true $(UV) run --offline --no-sync uvicorn app.main:app --host 127.0.0.1 --port $(DEMO_PORT) --workers 1
+
+.PHONY: help dev offline down back front types ekp users users-docker backup test test-voice typecheck test-llm lesson llm-check latency migrate revision models seed repl pregen demo demo-lite

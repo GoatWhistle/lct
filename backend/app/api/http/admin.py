@@ -10,6 +10,7 @@
 """
 
 import logging
+import re
 from datetime import datetime
 from uuid import UUID
 
@@ -18,9 +19,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.admin import backup as backup_service
-from app.api.auth import audit, hash_password, require
+from app.api.auth import audit, hash_password, invalidate_login, require
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import AuditLog, Session as SessionRow, Trainee, User
@@ -122,6 +124,13 @@ async def patch_user(
 
     changed: list[str] = []
     if body.role is not None:
+        if user.login == who.login and body.role is not Role.ADMIN:
+            raise HTTPException(status_code=409, detail="cannot_demote_yourself")
+        if body.role is Role.TRAINEE and user.trainee_id is None:
+            trainee = Trainee(name=user.full_name)
+            db.add(trainee)
+            await db.flush()
+            user.trainee_id = trainee.id
         user.role = body.role.value
         changed.append(f"роль {body.role.value}")
     if body.service is not None:
@@ -137,7 +146,10 @@ async def patch_user(
         user.password_hash = hash_password(body.password)
         changed.append("пароль сброшен")
 
+    if not changed:
+        return _out(user)
     await db.commit()
+    invalidate_login(user.login)
     await audit(who.login, who.role.value, "user.update", user.login, ", ".join(changed))
     return _out(user)
 
@@ -162,7 +174,7 @@ async def audit_log(
     """Журнал действий. Администратор его читает, но не правит: точки удаления
     или изменения записи здесь нет — ТЗ требует хранения, а не управления."""
     require(request, Role.ADMIN)
-    query = select(AuditLog).order_by(AuditLog.at.desc()).limit(min(limit, 1000))
+    query = select(AuditLog).order_by(AuditLog.at.desc()).limit(max(1, min(limit, 1000)))
     if action:
         query = query.where(AuditLog.action == action)
     if actor:
@@ -261,7 +273,19 @@ class BackupOut(BaseModel):
 @router.get("/backups", response_model=list[BackupOut])
 async def backups(request: Request) -> list[BackupOut]:
     require(request, Role.ADMIN)
-    return [BackupOut(**item) for item in backup_service.listing()]
+    return [BackupOut(**item) for item in await run_in_threadpool(backup_service.listing)]
+
+
+def _safe_backup_error(exc: backup_service.BackupError) -> str:
+    """Never echo DATABASE_URL/its password from backup diagnostics to HTTP."""
+    message = str(exc)
+    dsn = get_settings().database_url
+    if dsn:
+        message = message.replace(dsn, "[DATABASE_URL скрыт]")
+        match = re.search(r"://[^:]+:([^@]+)@", dsn)
+        if match and match.group(1):
+            message = message.replace(match.group(1), "[пароль скрыт]")
+    return message
 
 
 @router.post("/backups", response_model=BackupOut, status_code=201)
@@ -270,8 +294,11 @@ async def make_backup(request: Request) -> BackupOut:
     кнопка нужна перед занятием, расписание — чтобы о нём не вспоминали."""
     who = require(request, Role.ADMIN)
     try:
-        created = backup_service.create()
+        # pg_dump may run for two minutes; never block the event loop for it.
+        created = await run_in_threadpool(backup_service.create)
     except backup_service.BackupError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        detail = _safe_backup_error(exc)
+        await audit(who.login, who.role.value, "backup.failed", detail=detail)
+        raise HTTPException(status_code=503, detail=detail) from exc
     await audit(who.login, who.role.value, "backup.create", created["name"])
     return BackupOut(**created)

@@ -139,3 +139,124 @@ def test_complete_dds_workflow_scores_without_call_penalties(client):
         assert all(metric["key"].startswith("dds_") for metric in score["metrics"])
     finally:
         control.__exit__(None, None, None)
+
+
+def test_sequential_dds_cards_keep_separate_state_and_scores(client):
+    session_id = uuid4()
+    control_ctx = client.websocket_connect(f"/ws/control/{session_id}")
+    control = control_ctx.__enter__()
+    control.send_json({
+        "type": "scenario.start", "scenario_id": "fire-apartment-l2",
+        "scenario_ids": ["fire-apartment-l2", "t20-2-stroke"],
+        "trainee": "Иванов", "mode": "training", "exercise": "dds",
+    })
+    wait_for(lambda: hub.get(session_id))
+    try:
+        with client.websocket_connect(f"/ws/station/{session_id}") as station:
+            first = read_until(station, "card.received")
+            first_card_id = first["card"]["card_id"]
+            assert (first["card_index"], first["card_total"]) == (1, 2)
+            snapshot = read_until(station, "station.state")["snapshot"]
+            service = snapshot["services"][0]
+            station.send_json({"type": "card.status", "service": service, "status": "accepted"})
+            read_until(station, "station.state")
+            station.send_json({"type": "card.reply", "card_id": first_card_id,
+                               "text": "Сообщение принято, дежурная бригада направлена на место."})
+            assert read_until(station, "station.state")["snapshot"]["reply_text"].startswith("Сообщение")
+            station.send_json({"type": "card.next", "card_id": first_card_id})
+            second = read_until(station, "card.received")
+            second_card_id = second["card"]["card_id"]
+            assert second_card_id != first_card_id
+            assert second["card"]["incident_type"] == "medical"
+            assert (second["card_index"], second["card_total"]) == (2, 2)
+            snapshot = read_until(station, "station.state")["snapshot"]
+            assert snapshot["reply_text"] == ""
+            assert snapshot["statuses"].get(service) == "added" or service not in snapshot["statuses"]
+            assert len(snapshot["completed_cards"]) == 1
+            assert snapshot["completed_cards"][0]["card_id"] == first_card_id
+            station.send_json({"type": "card.reply", "card_id": first_card_id,
+                               "text": "Запоздалый ответ к прошлой карточке"})
+            assert "не к текущей" in read_until(station, "error")["message"]
+            assert hub.get(session_id).reply_text == ""
+            station.send_json({"type": "card.next", "card_id": first_card_id})
+            assert "ID" in read_until(station, "error")["message"]
+            assert hub.get(session_id).dds_card_index == 1
+
+        with client.websocket_connect(f"/ws/station/{session_id}") as station:
+            assert read_until(station, "card.received")["card"]["card_id"] == second_card_id
+            assert read_until(station, "station.state")["snapshot"]["card_index"] == 2
+            station.send_json({"type": "card.reply", "card_id": second_card_id,
+                               "text": "Сообщение принято, бригада направлена на место происшествия."})
+            read_until(station, "station.state")
+            station.send_json({"type": "card.next", "card_id": second_card_id})
+            read_until(station, "score.ready")
+
+        state = hub.get(session_id)
+        assert state.ended and len(state.dds_completed) == 2
+        assert len(state.score["card_results"]) == 2
+        assert state.score["card_results"][0]["scenario_id"] == "fire-apartment-l2"
+        assert state.score["card_results"][1]["scenario_id"] == "t20-2-stroke"
+        assert {item["key"] for item in state.score["metrics"]} >= {"dds_reply", "dds_primary"}
+        assert all(item["code"].startswith("D") for item in state.score["findings"])
+        report = client.get(f"/api/sessions/{session_id}/report").json()
+        assert report["scenario_id"] == "fire-apartment-l2"
+        assert len(report["card_results"]) == 2
+        assert report["missed_checklist"] == [] and report["reference_questions"] == []
+        first_actions = report["card_results"][0]["actions"]
+        assert {item["type"] for item in first_actions} >= {"card.status", "card.reply"}
+        assert report["card_results"][0]["duration_ms"] >= 0
+    finally:
+        control_ctx.__exit__(None, None, None)
+
+
+def test_instructor_can_end_multi_card_early_without_grading_future_cards(client):
+    session_id = uuid4()
+    control_ctx = client.websocket_connect(f"/ws/control/{session_id}")
+    control = control_ctx.__enter__()
+    control.send_json({
+        "type": "scenario.start", "scenario_id": "fire-apartment-l2",
+        "scenario_ids": ["fire-apartment-l2", "t20-2-stroke"],
+        "trainee": "Иванов", "mode": "training", "exercise": "dds",
+    })
+    wait_for(lambda: hub.get(session_id))
+    try:
+        with client.websocket_connect(f"/ws/station/{session_id}") as station:
+            read_until(station, "card.received")
+            read_until(station, "station.state")
+            control.send_json({"type": "session.stop"})
+            read_until(station, "score.ready")
+        state = hub.get(session_id)
+        assert state.ended
+        assert len(state.score["card_results"]) == 1
+        assert state.score["card_results"][0]["scenario_id"] == "fire-apartment-l2"
+    finally:
+        control_ctx.__exit__(None, None, None)
+
+
+def test_each_dds_card_uses_its_own_scenario_weights():
+    from pathlib import Path
+
+    from app.domain.events import Exercise, SessionMode
+    from app.scenarios.loader import load_file
+    from app.session.dds import prepare_card
+    from app.session.finish import score_current_dds
+    from app.session.state import SessionState
+
+    root = Path(__file__).resolve().parents[2] / "scenarios"
+    base = load_file(root / "fire-apartment-l2.yaml", root)
+    first = base.model_copy(deep=True)
+    second = base.model_copy(deep=True)
+    first.score_weights = {"dds_reply": 7.0}
+    second.score_weights = {"dds_reply": 2.0}
+    state = SessionState(
+        session_id=uuid4(), scenario_id=base.id, scenario_title=base.title,
+        level=base.level.value, mode=SessionMode.TRAINING, exercise=Exercise.DDS,
+        dds_scenarios=[first, second],
+    )
+    prepare_card(state, first)
+    first_record = score_current_dds(state)
+    state.dds_card_index = 1
+    prepare_card(state, second)
+    second_record = score_current_dds(state)
+    assert next(item.weight for item in first_record.metrics if item.key == "dds_reply") == 7.0
+    assert next(item.weight for item in second_record.metrics if item.key == "dds_reply") == 2.0

@@ -6,7 +6,7 @@
 
 import type { DDSCode, IncidentType } from "@/shared/types/generated";
 
-export type FieldKind = "text" | "number" | "bool" | "select" | "signs" | "list";
+export type FieldKind = "text" | "textarea" | "number" | "bool" | "select" | "signs" | "list";
 
 export interface Field {
   /** Путь в карточке: «floor», «fire.floors» — так же, как в `kio.patch`. */
@@ -21,6 +21,9 @@ export interface Field {
 export interface FieldGroup {
   title: string;
   fields: Field[];
+  /** Рабочие зоны карточки 112: плотная шапка, адрес и описание слева,
+   * классификация и маршрутизация справа. */
+  area: "header" | "address" | "description" | "incident" | "dispatch" | "details";
   /** Группа показывается только для этой службы. */
   dds?: DDSCode;
 }
@@ -45,6 +48,7 @@ const DDS: { value: DDSCode; label: string }[] = [
 export const GROUPS: FieldGroup[] = [
   {
     title: "Служебное",
+    area: "header",
     fields: [
       { path: "registered_at", label: "Время регистрации", kind: "text", readOnly: true },
       { path: "response_status", label: "Статус реагирования", kind: "text", readOnly: true },
@@ -52,6 +56,7 @@ export const GROUPS: FieldGroup[] = [
   },
   {
     title: "Звонящий",
+    area: "header",
     fields: [
       { path: "caller_number", label: "Номер телефона", kind: "text", readOnly: true },
       { path: "caller_name", label: "ФИО", kind: "text" },
@@ -61,6 +66,7 @@ export const GROUPS: FieldGroup[] = [
   },
   {
     title: "Место",
+    area: "address",
     fields: [
       { path: "okato", label: "ОКАТО", kind: "text" },
       { path: "address", label: "Адрес", kind: "text" },
@@ -72,14 +78,21 @@ export const GROUPS: FieldGroup[] = [
     ],
   },
   {
+    title: "Описание со слов заявителя",
+    area: "description",
+    fields: [
+      { path: "description", label: "Описание", kind: "textarea" },
+    ],
+  },
+  {
     title: "Происшествие",
+    area: "incident",
     fields: [
       // Признаки по ЕКП — то, что оператор действительно проставляет.
       // Код и список оповещения считает сервер (docs/spec/DATASET.md).
       { path: "signs", label: "Признаки происшествия", kind: "signs" },
       { path: "incident_code", label: "Код ЕКП", kind: "text", readOnly: true },
       { path: "incident_type", label: "Тип происшествия", kind: "select", options: INCIDENT },
-      { path: "description", label: "Описание", kind: "text" },
       { path: "victims_count", label: "Пострадавших", kind: "number" },
       { path: "is_emergency", label: "Признак ЧС", kind: "bool" },
       { path: "life_threat", label: "Угроза жизни", kind: "bool" },
@@ -88,6 +101,7 @@ export const GROUPS: FieldGroup[] = [
   },
   {
     title: "Дежурно-диспетчерская служба",
+    area: "dispatch",
     fields: [
       // Список оповещения оператор не выбирает: он производен от признаков.
       { path: "notify", label: "Список оповещения", kind: "list", readOnly: true },
@@ -98,6 +112,7 @@ export const GROUPS: FieldGroup[] = [
   },
   {
     title: "Уточнения: пожар",
+    area: "details",
     dds: "01",
     fields: [
       { path: "fire.fire_nature", label: "Характер пожара", kind: "text" },
@@ -110,6 +125,7 @@ export const GROUPS: FieldGroup[] = [
   },
   {
     title: "Уточнения: полиция",
+    area: "details",
     dds: "02",
     fields: [
       { path: "police.offence_kind", label: "Вид правонарушения", kind: "text" },
@@ -120,6 +136,7 @@ export const GROUPS: FieldGroup[] = [
   },
   {
     title: "Уточнения: медицина",
+    area: "details",
     dds: "03",
     fields: [
       { path: "medical.reason", label: "Повод к вызову", kind: "text" },
@@ -131,6 +148,7 @@ export const GROUPS: FieldGroup[] = [
   },
   {
     title: "Уточнения: ЖКХ и прочие",
+    area: "details",
     dds: "gkh",
     fields: [
       { path: "utility.failure_kind", label: "Тип аварии", kind: "text" },

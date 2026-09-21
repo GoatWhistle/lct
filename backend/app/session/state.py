@@ -16,6 +16,7 @@ from app.domain.events import (
     Mood,
     SessionMode,
     SessionSnapshot,
+    Metric,
     Speaker,
     TranscriptEntry,
 )
@@ -29,6 +30,7 @@ from app.domain.statuses import (
     StationSnapshot,
     StatusEntry,
     PhoneReportRecord,
+    DdsCardSummary,
     card_status,
     check,
     current,
@@ -36,11 +38,29 @@ from app.domain.statuses import (
 from app.domain.timers import NORMATIVES, TimerCode
 from app.domain.kio import KIO, ResponseStatus, apply_patch
 from app.session.timers import SessionTimers
+from app.domain.taxonomy import Finding
 
 
 def now_utc() -> datetime:
     """Часы серверные. Метрика, посчитанная по часам браузера, недоказуема."""
     return datetime.now(timezone.utc)
+
+
+@dataclass
+class DdsCardRecord:
+    card_id: UUID
+    scenario_id: str
+    reply_text: str
+    metrics: list[Metric]
+    findings: list[Finding]
+    actions: list[dict[str, Any]]
+    duration_ms: int
+
+    @property
+    def score_auto(self) -> float:
+        total = sum(metric.weight for metric in self.metrics)
+        passed = sum(metric.weight for metric in self.metrics if metric.passed)
+        return round(100 * passed / total, 1) if total else 0.0
 
 
 @dataclass
@@ -102,6 +122,11 @@ class SessionState:
     crew_selected: str | None = None
     crew_assignments: dict[str, str] = field(default_factory=dict)
     phone_reports: list[PhoneReportRecord] = field(default_factory=list)
+    dds_scenarios: list[Scenario] = field(default_factory=list)
+    dds_card_index: int = 0
+    dds_completed: list[DdsCardRecord] = field(default_factory=list)
+    reply_text: str = ""
+    reply_log: list[tuple[datetime, str]] = field(default_factory=list)
     #: Чем курсант закрыл вызов, если не карточкой (lct-36).
     resolved_outcome: str | None = None
     resolve_comment: str = ""
@@ -180,6 +205,14 @@ class SessionState:
             crew_options=self.crew_options(),
             crew_selected=self.crew_selected,
             phone_reports=list(self.phone_reports),
+            card_id=self.dispatched_card.card_id if self.dispatched_card else None,
+            card_index=self.dds_card_index + 1,
+            card_total=len(self.dds_scenarios) or 1,
+            reply_text=self.reply_text,
+            completed_cards=[DdsCardSummary(card_id=item.card_id,
+                                            scenario_id=item.scenario_id,
+                                            score_auto=item.score_auto)
+                             for item in self.dds_completed],
         )
 
     def card_received_event(self):
@@ -191,6 +224,8 @@ class SessionState:
             from_operator=("учебный сценарий" if self.exercise is Exercise.DDS
                            else self.trainee_name or "оператор 112"),
             at=self.dispatched_at or now_utc(),
+            card_index=self.dds_card_index + 1,
+            card_total=len(self.dds_scenarios) or 1,
         )
 
     @property

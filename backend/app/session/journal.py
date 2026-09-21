@@ -93,6 +93,24 @@ class DbJournal:
 
         await self._write(lambda db: action(db))
 
+    async def score_override(
+        self, session_id: UUID, score_final: float, author: str, comment: str
+    ) -> None:
+        """Сохранить решение преподавателя рядом с неизменной автооценкой."""
+        async def action(db):
+            await db.execute(
+                update(Score)
+                .where(Score.session_id == session_id)
+                .values(
+                    score_final=score_final,
+                    overridden_by=author,
+                    override_comment=comment,
+                )
+            )
+            await db.commit()
+
+        await self._write(lambda db: action(db))
+
     async def session_started(self, session_id: UUID, at: datetime) -> None:
         async def action(db):
             await db.execute(update(Session).where(Session.id == session_id).values(started_at=at))

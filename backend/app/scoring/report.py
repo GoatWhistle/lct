@@ -9,6 +9,7 @@ from uuid import UUID
 
 from app.domain.events import (
     CompetencyScore,
+    DdsCardReport,
     HintShown,
     HintUsage,
     InstructorNoteShown,
@@ -68,23 +69,27 @@ def build(session_id: UUID, state, scenario: Scenario) -> SessionReport:
         step.checklist_id
         for step in reference.steps
         if step.required and revealed is not None and step.fact_id not in revealed
-    ] if state.exercise is not Exercise.CARD else []
+    ] if state.exercise is Exercise.CALL else []
 
     return SessionReport(
         session_id=session_id,
-        scenario_id=scenario.id,
+        scenario_id=(state.dds_scenarios[0].id
+                     if state.exercise is Exercise.DDS and state.dds_scenarios
+                     else scenario.id),
         mode=state.mode,
         attempt=state.attempt,
         transcript=list(state.transcript),
         findings=[Finding.model_validate(item) for item in score.get("findings", [])],
         metrics=[Metric.model_validate(item) for item in score.get("metrics", [])],
+        card_results=[DdsCardReport.model_validate(item)
+                      for item in score.get("card_results", [])],
         competencies=[CompetencyScore.model_validate(item) for item in score.get("competencies", [])],
         # Эталонные вопросы по шагам: по каждому пропущенному пункту видно,
         # какой вопрос был правильным.
         reference_questions=[
             HintShown(checklist_id=step.checklist_id, question=step.question)
             for step in reference.steps
-        ] if state.exercise is not Exercise.CARD else [],
+        ] if state.exercise is Exercise.CALL else [],
         missed_checklist=missed_checklist,
         hints_used=[
             HintUsage(checklist_id=checklist_id, question=questions.get(checklist_id, ""), at=at)

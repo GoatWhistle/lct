@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.classifiers import DDSCode, IncidentType, Level, Outcome
 from app.domain.events import Mood
+from app.scoring.taxonomy import METRIC_MAP
 
 
 class Strict(BaseModel):
@@ -157,6 +158,9 @@ class Scenario(Strict):
     facts: list[Fact] = []
     checklist: list[ChecklistItem] = []
     required_fields: list[str] = Field(default_factory=list)
+    # Учебные веса задаёт преподаватель в утверждаемом сценарии. Ноль
+    # отключает метрику из знаменателя; значения методики предварительные.
+    score_weights: dict[str, float] = Field(default_factory=dict)
     # Реплики оператора, которые вопросом не являются: «успокойтесь»,
     # «оставайтесь на линии». Общий список — checklists/common.yaml,
     # сценарий может дополнить своими.
@@ -164,6 +168,15 @@ class Scenario(Strict):
     ground_truth: GroundTruth = GroundTruth()
     era_glonass: EraGlonass | None = None
     tree: Tree = Tree()
+
+    @model_validator(mode="after")
+    def valid_score_weights(self):
+        unknown = self.score_weights.keys() - METRIC_MAP.keys()
+        if unknown:
+            raise ValueError(f"неизвестные метрики score_weights: {', '.join(sorted(unknown))}")
+        if any(not 0 <= weight <= 10 for weight in self.score_weights.values()):
+            raise ValueError("score_weights: каждый вес должен быть от 0 до 10")
+        return self
 
     @model_validator(mode="after")
     def ticket_needs_position(self):

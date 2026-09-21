@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -45,5 +46,7 @@ def reset() -> None:
 
 async def get_session() -> AsyncIterator[AsyncSession]:
     """Зависимость FastAPI: сессия на запрос, коммит явный."""
+    if get_settings().demo_no_db:
+        raise HTTPException(status_code=503, detail="database_disabled_demo")
     async with get_sessionmaker()() as session:
         yield session

@@ -47,30 +47,36 @@ export function Call() {
   }
 
   if (call.briefing) {
-    return <main className="page">
+    const services = display(call.card, "notify");
+    const notifiedServices = Array.isArray(services) ? services.map(String) : [];
+    return <main className="page arm-page">
       <ModeBanner mode={call.briefing.mode} />
-      <h1>АРМ оператора 112 · учебная карточка</h1>
-      <p className="ref">Текстовое упражнение: входящий голосовой вызов и микрофон не используются.</p>
-      <table className="grid"><tbody>
-        <tr><th>Канал</th><td className={call.status === "open" ? "state-ok" : "state-warn"}>{STATUS_LABEL[call.status]}</td></tr>
-        <tr><th>Сценарий</th><td>{call.briefing.scenario_id}</td></tr>
-        <tr><th>Состояние</th><td>{call.cardSubmitted ? "карточка отправлена на оценку" : "карточка заполняется"}</td></tr>
-      </tbody></table>
-      <section style={{ maxWidth: 900, marginTop: 16 }}>
-        <h2>Вводная о происшествии</h2>
-        <div style={{ background: "#fff", border: "1px solid var(--line)", padding: 16, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
-          {call.briefing.text}
-        </div>
-        <p className="ref">Извлеките сведения из вводной, заполните поля карточки и проверьте предлагаемый список оповещения.</p>
-        <h2>Карточка информационного обмена</h2>
-        <KioCard state={call.card} required={call.briefing.required_fields}
-          readOnly={call.cardSubmitted || call.status !== "open"} onChange={call.patchKio} />
-        {!call.cardSubmitted && <p><button type="button" className="start" disabled={call.status !== "open"}
-          onClick={call.submitCard}>Отправить карточку на проверку</button></p>}
-        {call.error && <p className="state-violated" role="alert">{call.error}</p>}
-        {call.cardSubmitted && !call.report && !call.reportError && <p>Карточка отправлена. Ожидаем итоговую оценку…</p>}
-        {call.reportError && <p className="state-violated" role="alert">{call.reportError}</p>}
+      <header className="arm-topbar arm-topbar-text">
+        <div className="arm-topbar-mark">112</div>
+        <div className="arm-topbar-title"><strong>Карточка информационного обмена</strong><span>Текстовое упражнение · сценарий {call.briefing.scenario_id}</span></div>
+        <div className="arm-topbar-state"><span className={call.status === "open" ? "state-ok" : "state-warn"}>● {call.status === "open" ? "АРМ подключён" : STATUS_LABEL[call.status]}</span><small>{call.cardSubmitted ? "Карточка отправлена" : "Карточка заполняется"}</small></div>
+      </header>
+      <section className="arm-briefing">
+        <div className="arm-briefing-label"><strong>Учебная вводная</strong><span>Текстовый режим · без входящего звонка</span></div>
+        <div className="arm-briefing-text">{call.briefing.text}</div>
       </section>
+      <div className="arm-card-wrap">
+        <KioCard state={call.card} required={call.briefing.required_fields}
+          readOnly={call.cardSubmitted || call.status !== "open"} referenceArm onChange={call.patchKio} />
+      </div>
+      <footer className="arm-footer">
+        <span className="arm-footer-services">Службы:
+          {notifiedServices.length
+            ? notifiedServices.map((service) => <b key={service}>{service}</b>)
+            : <em>появятся после выбора признаков</em>}
+        </span>
+        {!call.cardSubmitted && <button type="button" className="arm-primary" disabled={call.status !== "open"}
+          onClick={call.submitCard}>Сохранить и проверить</button>}
+        {call.cardSubmitted && <strong>Карточка отправлена</strong>}
+      </footer>
+      {call.error && <p className="state-violated arm-message" role="alert">{call.error}</p>}
+      {call.cardSubmitted && !call.report && !call.reportError && <p className="arm-message">Карточка отправлена. Ожидаем итоговую оценку…</p>}
+      {call.reportError && <p className="state-violated arm-message" role="alert">{call.reportError}</p>}
       {call.report && <Debrief report={call.report} />}
     </main>;
   }
@@ -80,59 +86,53 @@ export function Call() {
   const autoRoute = Boolean(display(call.card, "incident_code")) && Array.isArray(notify) && notify.length > 0;
 
   return (
-    <main className="page">
+    <main className="page arm-page">
       <StandStatus />
       <ModeBanner mode={call.incoming?.mode} />
-      <h1>АРМ оператора 112</h1>
-      <InterviewTimer timers={call.timers} />
-      <table className="grid">
-        <tbody>
-          <tr><th>Канал</th><td className={call.status === "open" ? "" : "warn"}>{STATUS_LABEL[call.status]}</td></tr>
-          <tr><th>Вызов</th><td>{call.incoming ? `${call.incoming.caller_number} · сценарий ${call.incoming.scenario_id} · режим ${call.incoming.mode}` : "ожидание"}</td></tr>
-          <tr><th>Гарнитура</th><td>{call.micOn ? "микрофон включён" : "выключен"}</td></tr>
-          <tr><th>Звонящий</th><td>{call.callerSpeaking ? "говорит" : "молчит"}</td></tr>
-        </tbody>
-      </table>
+      <header className="arm-topbar">
+        <div className="arm-topbar-mark">112</div>
+        <div className="arm-phone-cell"><small>Канал связи</small><strong className={call.status === "open" ? "state-ok" : "state-warn"}>{STATUS_LABEL[call.status]}</strong><span>{call.micOn ? "● Микрофон включён" : "Микрофон выключен"}</span></div>
+        <div className="arm-phone-cell arm-phone-main"><small>Входящий вызов</small><strong>{call.incoming?.caller_number || "Ожидание вызова"}</strong><span>{call.incoming ? `Сценарий ${call.incoming.scenario_id} · ${call.callerSpeaking ? "заявитель говорит" : "заявитель молчит"}` : "Карточка не назначена"}</span></div>
+        <div className="arm-topbar-title"><strong>АРМ оператора 112</strong><span>Карточка информационного обмена</span></div>
+        <div className="arm-topbar-clock"><InterviewTimer timers={call.timers} /></div>
+      </header>
 
-      <p>
-        {call.phase === "incoming" && !call.micOn && (
-          <button type="button" onClick={() => void call.answer()}>Ответить</button>
-        )}
-        {call.micOn && <button type="button" onClick={call.hangup}>Завершить вызов</button>}{" "}
-        {call.micOn && hintsAllowed(call.incoming?.mode) && (
-          <button type="button" onClick={call.hint}>Подсказка</button>
-        )}
-      </p>
+      <div className="arm-call-actions">
+        {call.phase === "incoming" && !call.micOn && <button type="button" className="arm-answer" onClick={() => void call.answer()}>☎ Ответить на вызов</button>}
+        {call.micOn && <span className="arm-live">● Разговор идёт</span>}
+        {call.micOn && hintsAllowed(call.incoming?.mode) && <button type="button" onClick={call.hint}>Подсказка</button>}
+        <span className="arm-call-actions-note">{call.phase === "ended" ? "Вызов завершён" : "Заполните адрес и признаки происшествия со слов заявителя"}</span>
+      </div>
 
-      {call.error && <p className="violated">{call.error}</p>}
+      {call.error && <p className="violated arm-message" role="alert">{call.error}</p>}
 
-      {call.phase === "ended" && !call.selfAssessed && call.checklist.length > 0 && (
-        <SelfAssessment checklist={call.checklist} onSubmit={call.submitSelfAssessment} />
-      )}
-      {call.selfAssessed && !call.report && <p>Самооценка принята, оценка считается…</p>}
-      {call.report && <Debrief report={call.report} />}
-
-      <div className="columns">
-        <section>
-          <h2>Карточка информационного обмена</h2>
+      <div className="arm-card-wrap">
           <KioCard
             state={call.card}
             required={call.incoming?.required_fields ?? []}
             readOnly={!call.micOn}
+            referenceArm
             onChange={call.patchKio}
           />
-          <p>
+      </div>
+      <footer className="arm-footer">
+        <span>Службы · список оповещения рассчитывается по признакам</span>
+        <div className="arm-footer-actions">
             <button
               type="button"
+              className="arm-primary"
               disabled={!call.micOn || (!service && !autoRoute)}
               onClick={() => call.dispatch(service)}
             >
               Передать в ДДС
             </button>
-          </p>
+            {call.micOn && <button type="button" onClick={call.hangup}>Завершить вызов</button>}
+        </div>
+      </footer>
+      <div className="arm-secondary">
           {/* Не каждый вызов заканчивается карточкой: справка и чужой регион —
               отдельные исходы, и курсант выбирает их сам (docs/spec/TICKETS.md). */}
-          <details>
+          <details className="arm-resolve">
             <summary>Закрыть вызов без карточки</summary>
             <p>
               <input
@@ -166,12 +166,10 @@ export function Call() {
             </p>
             {resolved && <p className="warn">Вызов закрыт: {RESOLVE_LABELS[resolved]}</p>}
           </details>
-        </section>
-        <section>
-          <h2>Нормативы</h2>
+        <section className="arm-support">
+          <h2>Нормативы и разговор</h2>
           <Timers timers={call.timers} />
-      <h2>Разговор</h2>
-      <table className="grid">
+          <table className="grid">
         <tbody>
           {call.lines.map((line, index) => (
             <tr key={index}>
@@ -184,6 +182,11 @@ export function Call() {
       </table>
         </section>
       </div>
+      {call.phase === "ended" && !call.selfAssessed && call.checklist.length > 0 && (
+        <SelfAssessment checklist={call.checklist} onSubmit={call.submitSelfAssessment} />
+      )}
+      {call.selfAssessed && !call.report && <p className="arm-message">Самооценка принята, оценка считается…</p>}
+      {call.report && <Debrief report={call.report} />}
     </main>
   );
 }

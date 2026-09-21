@@ -13,6 +13,7 @@ from pathlib import Path
 from app.api import auth
 from app.api.http import admin as admin_api
 from app.api.http import ekp as ekp_api
+from app.api.http import groups as groups_api
 from app.api.http import scenarios as scenarios_api
 from app.api.http import sessions
 from app.api.http import trainees
@@ -41,6 +42,9 @@ logging.getLogger("app").setLevel(logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings = get_settings()
+    if settings.demo_no_db and not settings.dev_auth_bypass:
+        raise RuntimeError("DEMO_NO_DB требует DEV_AUTH_BYPASS=true для локального входа")
     # Библиотека проверяется на старте целиком: сломанный сценарий, найденный
     # посреди занятия, — сценарий, которого не должно случиться.
     try:
@@ -51,22 +55,27 @@ async def lifespan(app: FastAPI):
 
     # Утверждённые преподавателем сценарии хранятся в БД и должны переживать
     # перезапуск процесса. При недоступной БД остаётся базовая YAML-библиотека.
-    try:
-        # БД может ещё подниматься или отсутствовать в unit-тесте. Не задерживаем
-        # старт АРМ на минуту ради необязательной пользовательской библиотеки.
-        async with asyncio.timeout(1):
-            async with get_sessionmaker()() as db:
-                app.state.scenarios_loaded += await store.restore_published(db)
-    except (SQLAlchemyError, OSError, TimeoutError) as exc:
+    if not settings.demo_no_db:
+        try:
+            # БД может ещё подниматься или отсутствовать в unit-тесте. Не задерживаем
+            # старт АРМ на минуту ради необязательной пользовательской библиотеки.
+            async with asyncio.timeout(1):
+                async with get_sessionmaker()() as db:
+                    app.state.scenarios_loaded += await store.restore_published(db)
+        except (SQLAlchemyError, OSError, TimeoutError) as exc:
+            logging.getLogger(__name__).warning(
+                "не удалось восстановить утверждённые сценарии из БД: %s", exc
+            )
+    else:
         logging.getLogger(__name__).warning(
-            "не удалось восстановить утверждённые сценарии из БД: %s", exc
+            "DEMO_NO_DB: занятия и оценки живут только до перезапуска; журнал БД выключен"
         )
 
     # Журнал: всё, что не записано, для оценки не существует.
-    hub.journal = DbJournal(get_sessionmaker())
+    hub.journal = None if settings.demo_no_db else DbJournal(get_sessionmaker())
 
     # Эмбеддинги для слот-автомата — грузятся один раз, до первого занятия.
-    app.state.embeddings_ready = get_embedder() is not None
+    app.state.embeddings_ready = not settings.demo_no_db and get_embedder() is not None
 
     # Модели речи: ~5 секунд на старте стенда вместо паузы на первом звонке.
     app.state.models_ready = get_voice_models() is not None
@@ -92,6 +101,7 @@ app.include_router(auth.router)
 app.include_router(sessions.router)
 app.include_router(scenarios_api.router)
 app.include_router(ekp_api.router)
+app.include_router(groups_api.router)
 app.include_router(admin_api.router)
 app.include_router(trainees.router)
 app.include_router(call_ws.router)
@@ -110,4 +120,5 @@ async def health() -> dict:
         "scenarios_loaded": getattr(app.state, "scenarios_loaded", 0),
         "embeddings_ready": getattr(app.state, "embeddings_ready", False),
         "offline": settings.offline,
+        "demo_no_db": settings.demo_no_db,
     }

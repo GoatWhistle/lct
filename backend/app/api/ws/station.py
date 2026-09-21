@@ -25,6 +25,8 @@ from app.domain.roles import Role
 from app.session.hub import hub
 from app.session.state import now_utc
 from app.session.finish import finish
+from app.session.finish import score_current_dds
+from app.session.dds import prepare_card
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -48,6 +50,18 @@ REPORT_FOR_STATUS = {
 
 def _error(session_id: UUID, message: str) -> None:
     hub.to_station(session_id, ErrorEvent(code=ErrorKind.UNSUPPORTED_EVENT, message=message))
+
+
+async def _finish_dds(session_id: UUID, state) -> None:
+    state.ended_at = now_utc()
+    state.end_reason = CallEndReason.COMPLETE
+    hub.stop_ticker(session_id)
+    hub.to_station(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
+    hub.to_observers(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
+    if hub.journal:
+        await hub.journal.session_ended(session_id, state.ended_at, CallEndReason.COMPLETE.value)
+    await finish(session_id, state)
+    hub.to_station(session_id, ScoreReady(session_id=session_id))
 
 
 async def _handle(session_id: UUID, state, event) -> None:
@@ -104,6 +118,7 @@ async def _handle(session_id: UUID, state, event) -> None:
                 return
             state.crew_selected = event.crew
             state.crew_assignments[service] = event.crew
+            state.dds_log.append(("crew.select", now_utc(), event.crew))
         case "phone.dial":
             crew = state.crew_selected
             service = state.crew_service(crew) if crew else None
@@ -126,20 +141,37 @@ async def _handle(session_id: UUID, state, event) -> None:
                 text=REPORT_TEXT[phase], at=now_utc(),
             )
             state.phone_reports.append(report)
+            state.dds_log.append(("phone.dial", now_utc(), crew))
             hub.to_station(session_id, PhoneReport(**report.model_dump()))
+        case "card.reply":
+            if state.exercise is not Exercise.DDS or not state.dispatched_card or (
+                event.card_id != state.dispatched_card.card_id
+            ):
+                _error(session_id, "Ответ относится не к текущей карточке")
+                return
+            state.reply_text = event.text
+            state.reply_log.append((now_utc(), event.text))
+        case "card.next":
+            if state.exercise is not Exercise.DDS or not state.dispatched_card or (
+                event.card_id != state.dispatched_card.card_id
+            ):
+                _error(session_id, "Следующая карточка недоступна: ID текущей не совпадает")
+                return
+            if any(item.card_id == event.card_id for item in state.dds_completed):
+                _error(session_id, "Эта карточка уже завершена")
+                return
+            state.dds_completed.append(score_current_dds(state))
+            if state.dds_card_index + 1 < len(state.dds_scenarios):
+                state.dds_card_index += 1
+                prepare_card(state, state.dds_scenarios[state.dds_card_index])
+                hub.to_station(session_id, state.card_received_event())
+            else:
+                await _finish_dds(session_id, state)
         case "station.finish":
             if state.exercise is not Exercise.DDS:
                 _error(session_id, "Операторское занятие завершается после звонка 112")
                 return
-            state.ended_at = now_utc()
-            state.end_reason = CallEndReason.COMPLETE
-            hub.stop_ticker(session_id)
-            hub.to_station(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
-            hub.to_observers(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
-            if hub.journal:
-                await hub.journal.session_ended(session_id, state.ended_at, CallEndReason.COMPLETE.value)
-            await finish(session_id, state)
-            hub.to_station(session_id, ScoreReady(session_id=session_id))
+            await _finish_dds(session_id, state)
         case "card.bounce":
             # Карточка вернулась: в разборе это E6 с конкретной причиной.
             state.bounced_fields = list(event.missing_fields)

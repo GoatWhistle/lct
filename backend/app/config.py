@@ -13,6 +13,9 @@ class Settings(BaseSettings):
 
     # Данные
     database_url: str = "postgresql+asyncpg://lct:lct@localhost:5432/lct"
+    # Только локальная демонстрация: живые занятия и отчёты в памяти, без
+    # Postgres и без долговременного журнала. Не включать на учебном стенде.
+    demo_no_db: bool = False
 
     # Голосовой контур
     models_dir: str = "models"

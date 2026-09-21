@@ -87,12 +87,25 @@ export interface CardBriefing {
   card?: KIO | null;
 }
 
+export interface CardNext {
+  type: "card.next";
+  card_id: string;
+}
+
 /** Снимок КИО. После передачи не меняется — оператор не дописывает задним числом. */
 export interface CardReceived {
   type: "card.received";
   card: KIO;
   from_operator: string;
   at: string;
+  card_index?: number;
+  card_total?: number;
+}
+
+export interface CardReply {
+  type: "card.reply";
+  card_id: string;
+  text: string;
 }
 
 /** Статус карточки целиком — считается из статусов служб, руками не ставится. */
@@ -133,6 +146,23 @@ export interface CrewSelect {
 
 /** Дежурно-диспетчерская служба, в которую уходит карточка. */
 export type DDSCode = "01" | "02" | "03" | "04" | "gkh";
+
+export interface DdsCardReport {
+  card_id: string;
+  scenario_id: string;
+  score_auto: number;
+  reply_text: string;
+  metrics: Array<Metric>;
+  findings: Array<Finding>;
+  actions?: Array<Record<string, unknown>>;
+  duration_ms?: number;
+}
+
+export interface DdsCardSummary {
+  card_id: string;
+  scenario_id: string;
+  score_auto: number;
+}
 
 /** Передача в ДДС. При маршрутизации по ЕКП служба уже есть в notify. */
 export interface DdsDispatch {
@@ -387,6 +417,7 @@ export interface ScenarioPublish {
 export interface ScenarioStart {
   type: "scenario.start";
   scenario_id: string;
+  scenario_ids?: Array<string> | null;
   trainee: string;
   trainee_id?: string | null;
   group_id?: string | null;
@@ -455,6 +486,7 @@ export interface SessionReport {
   transcript: Array<TranscriptEntry>;
   findings: Array<Finding>;
   metrics: Array<Metric>;
+  card_results?: Array<DdsCardReport>;
   competencies: Array<CompetencyScore>;
   reference_questions: Array<HintShown>;
   missed_checklist: Array<string>;
@@ -507,6 +539,11 @@ export interface StationSnapshot {
   crew_options?: Array<string>;
   crew_selected?: string | null;
   phone_reports?: Array<PhoneReportRecord>;
+  card_id?: string | null;
+  card_index?: number;
+  card_total?: number;
+  reply_text?: string;
+  completed_cards?: Array<DdsCardSummary>;
 }
 
 /** Состояние АРМ ДДС после каждой отметки: что стоит и что доступно дальше. */
@@ -614,7 +651,7 @@ export type InstructorToServer = ScenarioStart | DirectorInject | ReferencePlay 
 
 export type ServerToStation = CardReceived | StationState | PhoneReport | TimerTick | SessionEnded | ScoreReady | ErrorEvent;
 
-export type StationToServer = CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | StationFinish | ZoneDecision | CrewDispatched | CrewArrived;
+export type StationToServer = CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | StationFinish | CardReply | CardNext | ZoneDecision | CrewDispatched | CrewArrived;
 
 export type EventName =
   "bg.start"
@@ -630,7 +667,9 @@ export type EventName =
   | "card.ack"
   | "card.bounce"
   | "card.briefing"
+  | "card.next"
   | "card.received"
+  | "card.reply"
   | "card.status"
   | "card.submit"
   | "crew.arrived"

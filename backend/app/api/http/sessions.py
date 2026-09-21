@@ -8,7 +8,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import audit, require
@@ -117,9 +117,8 @@ async def checklist(session_id: UUID, request: Request) -> list[ChecklistItemOut
 class ScoreOverride(BaseModel):
     """Коррекция оценки преподавателем. Автооценка сохраняется рядом."""
 
-    score_final: float
+    score_final: float = Field(ge=0, le=100)
     comment: str = ""
-    author: str = "преподаватель"
 
 
 def _live(session_id: UUID):
@@ -188,9 +187,13 @@ async def override(session_id: UUID, body: ScoreOverride, request: Request) -> S
     state.score = {
         **state.score,
         "score_final": body.score_final,
-        "overridden_by": body.author,
+        "overridden_by": who.login,
         "override_comment": body.comment,
     }
+    if hub.journal:
+        await hub.journal.score_override(
+            session_id, body.score_final, who.login, body.comment
+        )
     await audit(
         who.login, who.role.value, "score.override", str(session_id),
         f"{state.score.get('score_auto')} → {body.score_final}: {body.comment}",

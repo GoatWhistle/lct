@@ -13,9 +13,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import require
+from app.api.auth import DEMO_TRAINEE_ID, require
+from app.config import get_settings
 from app.domain.roles import Role
-from app.db.base import get_session
+from app.db.base import get_session, get_sessionmaker
 from app.db.models import Group, Score, Session, Trainee
 
 router = APIRouter(prefix="/api/trainees", tags=["trainees"])
@@ -61,14 +62,17 @@ class ProfileOut(BaseModel):
 
 
 @router.get("", response_model=list[TraineeOut])
-async def listing(request: Request, db: AsyncSession = Depends(get_session)) -> list[TraineeOut]:
+async def listing(request: Request) -> list[TraineeOut]:
     """Список курсантов — преподавателю и администратору: обучающемуся он
     не нужен, а чужие фамилии из него видны."""
     require(request, Role.INSTRUCTOR, Role.ADMIN)
-    rows = await db.execute(
-        select(Trainee, Group.name).join(Group, Group.id == Trainee.group_id, isouter=True)
-    )
-    return [TraineeOut(id=trainee.id, name=trainee.name, group=group) for trainee, group in rows]
+    if get_settings().demo_no_db:
+        return [TraineeOut(id=DEMO_TRAINEE_ID, name="Демо-курсант")]
+    async with get_sessionmaker()() as db:
+        rows = await db.execute(
+            select(Trainee, Group.name).join(Group, Group.id == Trainee.group_id, isouter=True)
+        )
+        return [TraineeOut(id=trainee.id, name=trainee.name, group=group) for trainee, group in rows]
 
 
 @router.get("/{trainee_id}/profile", response_model=ProfileOut)
