@@ -1,9 +1,11 @@
 """Сборка приложения. Роутеры подключаются по мере готовности — см. tasks/."""
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.sessions import SessionMiddleware
 
 from pathlib import Path
@@ -46,6 +48,19 @@ async def lifespan(app: FastAPI):
     except ScenarioError as exc:
         raise RuntimeError(f"библиотека сценариев не прошла проверку: {exc}") from exc
     app.state.scenarios_loaded = len(loaded)
+
+    # Утверждённые преподавателем сценарии хранятся в БД и должны переживать
+    # перезапуск процесса. При недоступной БД остаётся базовая YAML-библиотека.
+    try:
+        # БД может ещё подниматься или отсутствовать в unit-тесте. Не задерживаем
+        # старт АРМ на минуту ради необязательной пользовательской библиотеки.
+        async with asyncio.timeout(1):
+            async with get_sessionmaker()() as db:
+                app.state.scenarios_loaded += await store.restore_published(db)
+    except (SQLAlchemyError, OSError, TimeoutError) as exc:
+        logging.getLogger(__name__).warning(
+            "не удалось восстановить утверждённые сценарии из БД: %s", exc
+        )
 
     # Журнал: всё, что не записано, для оценки не существует.
     hub.journal = DbJournal(get_sessionmaker())

@@ -31,9 +31,10 @@ class DbJournal:
             log.exception("журнал: запись не удалась")
 
     async def start_lesson(
-        self, session_id: UUID, scenario_id: str, mode: str, trainee_name: str | None
-    ) -> int:
-        """Завести сессию в журнале и вернуть номер попытки.
+        self, session_id: UUID, scenario_id: str, mode: str, trainee_name: str | None,
+        trainee_id: UUID | None = None,
+    ) -> tuple[int, UUID | None]:
+        """Завести сессию в журнале и вернуть номер попытки и ID курсанта.
 
         Если база недоступна, занятие всё равно идёт: номер попытки
         деградирует до первого, и это видно в логе.
@@ -46,11 +47,12 @@ class DbJournal:
                     scenario_id=scenario_id,
                     mode=mode,
                     trainee_name=trainee_name,
+                    trainee_id=trainee_id,
                 )
-                return row.attempt
+                return row.attempt, row.trainee_id
         except Exception:  # noqa: BLE001 — журнал не должен ронять живую сессию
             log.exception("журнал: сессию завести не удалось")
-            return 1
+            return 1, trainee_id
 
     async def utterance(self, session_id: UUID, entry) -> None:
         await self._write(

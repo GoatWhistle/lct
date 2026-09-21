@@ -193,10 +193,10 @@ def derive_incident(card: KIO) -> KIO:
     keys = modifiers(card)
     data = card.model_dump()
     data["incident_code"] = found.code if found else None
-    computed = ekp.notify_list(found.code, keys) if found else []
-    # Добавленную вручную службу не теряем: удалить её оператор не может.
-    manual = [name for name in card.notify if name not in ekp.notify_list(data["incident_code"] or "", keys)]
-    data["notify"] = computed + manual
+    # `notify` недоступен оператору для записи (READ_ONLY_FIELDS), поэтому
+    # хранить прошлый авторасчёт как «добавленные вручную службы» нельзя:
+    # при снятии признака газа МОСГАЗ должен исчезнуть из нового расчёта.
+    data["notify"] = ekp.notify_list(found.code, keys) if found else []
     return KIO.model_validate(data)
 
 

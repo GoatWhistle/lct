@@ -10,13 +10,114 @@
 `hint.shown` из живой сессии, эталонные вопросы — только в разборе.
 """
 
-from fastapi import APIRouter, HTTPException
+from typing import Any
 
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.auth import audit, require
+from app.db.base import get_session
+from app.domain.roles import Role
 from app.scenarios import store
+from app.scenarios.editor import validate
+from app.scenarios.loader import ScenarioError
 
 router = APIRouter(prefix="/api/scenarios", tags=["scenarios"])
 
 HIDDEN_FROM_TRAINEE = {"facts", "ground_truth", "tree", "checklist"}
+
+
+class TemplateDraftIn(BaseModel):
+    source_id: str = Field(min_length=1)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+def _draft_out(row) -> dict:
+    return {
+        "id": row.id,
+        "status": row.status,
+        "generation": "template_copy",
+        "body": row.body,
+    }
+
+
+@router.post("/drafts/from-template", status_code=201)
+async def create_template_draft(
+    body: TemplateDraftIn, request: Request, db: AsyncSession = Depends(get_session)
+) -> dict:
+    who = require(request, Role.INSTRUCTOR)
+    source = store.get(body.source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="published_source_not_found")
+    row = await store.create_draft(db, source=source, title=body.title)
+    await audit(who.login, who.role.value, "scenario.draft.create", row.id, f"template:{source.id}")
+    return _draft_out(row)
+
+
+@router.get("/drafts/{scenario_id}")
+async def read_draft(
+    scenario_id: str, request: Request, db: AsyncSession = Depends(get_session)
+) -> dict:
+    require(request, Role.INSTRUCTOR)
+    row = await store.draft(db, scenario_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="draft_not_found")
+    return _draft_out(row)
+
+
+@router.patch("/drafts/{scenario_id}")
+async def patch_draft(
+    scenario_id: str,
+    body: dict[str, Any],
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    who = require(request, Role.INSTRUCTOR)
+    row = await store.draft(db, scenario_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="draft_not_found")
+    try:
+        row = await store.update_draft(db, row, body)
+    except ScenarioError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await audit(who.login, who.role.value, "scenario.draft.update", row.id)
+    return _draft_out(row)
+
+
+@router.post("/drafts/{scenario_id}/validate")
+async def validate_draft(
+    scenario_id: str, request: Request, db: AsyncSession = Depends(get_session)
+) -> dict:
+    require(request, Role.INSTRUCTOR)
+    row = await store.draft(db, scenario_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="draft_not_found")
+    try:
+        scenario = validate(row.body)
+    except ScenarioError as exc:
+        return {"valid": False, "errors": [str(exc)]}
+    return {
+        "valid": True,
+        "errors": [],
+        "ground_truth": scenario.ground_truth.model_dump(mode="json"),
+    }
+
+
+@router.post("/drafts/{scenario_id}/approve")
+async def approve_draft(
+    scenario_id: str, request: Request, db: AsyncSession = Depends(get_session)
+) -> dict:
+    who = require(request, Role.INSTRUCTOR)
+    row = await store.draft(db, scenario_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="draft_not_found")
+    try:
+        scenario = await store.approve_draft(db, row)
+    except ScenarioError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await audit(who.login, who.role.value, "scenario.approve", scenario.id)
+    return {"id": scenario.id, "status": "published", "title": scenario.title}
 
 
 @router.get("")

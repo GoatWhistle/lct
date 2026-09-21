@@ -95,6 +95,21 @@ button:disabled { opacity: 0.5; cursor: default; }
 .director-buttons .danger { border-color: var(--violated); color: var(--violated); font-weight: 600; }
 .director input[type="text"] { width: 60%; }
 
+/* Преподаватель редактирует копию шаблона до публикации. */
+.scenario-editor { margin-top: 24px; padding: 12px 16px 16px; background: var(--panel); border: 1px solid var(--line); }
+.scenario-editor h2 { margin-top: 0; }
+.scenario-editor-create, .scenario-editor-open, .scenario-editor-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 12px; margin: 12px 0; }
+.scenario-editor-create label, .scenario-editor-open label { display: grid; gap: 4px; min-width: 220px; font-size: 13px; }
+.scenario-editor-create select, .scenario-editor-create input, .scenario-editor-open input { box-sizing: border-box; width: 100%; min-height: 34px; padding: 4px 6px; border: 1px solid var(--line); font: inherit; background: var(--panel); }
+.scenario-editor-create label:first-child { flex: 1 1 350px; }
+.scenario-editor-open label { flex: 1 1 350px; }
+.scenario-editor-json { display: grid; gap: 6px; font-weight: 600; }
+.scenario-editor-json textarea { box-sizing: border-box; width: 100%; min-height: 320px; padding: 10px; border: 1px solid var(--line); font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; }
+.scenario-editor-result { padding: 10px 12px; border: 1px solid var(--ok); background: #e7f4e9; }
+.scenario-editor-result.violated { border-color: var(--violated); background: #fde8e8; }
+.scenario-editor-result pre { margin: 8px 0 0; overflow-x: auto; white-space: pre-wrap; font-size: 12px; }
+.scenario-editor-result ul { margin: 8px 0 0; }
+
 /* Возврат карточки: список полей в две колонки, чтобы диспетчер не скроллил. */
 .bounce-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; margin: 8px 0; }
 
@@ -102,3 +117,57 @@ button:disabled { opacity: 0.5; cursor: default; }
 .stand { padding: 6px 24px; margin: -16px -24px 12px; font-weight: 600; }
 .stand-warn { background: #fff4d6; border-bottom: 1px solid var(--warn); }
 .stand-bad { background: #fde8e8; border-bottom: 1px solid var(--violated); color: var(--violated); }
+
+/* АРМ ДДС: реестр остаётся плотной таблицей, карточка и связь — рядом. */
+.dds-workspace { max-width: 1800px; margin: 0 auto; }
+.dds-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 8px 0 16px; }
+.dds-header h1 { margin: 2px 0 0; }
+.dds-header h1 span { color: #576273; font-size: 15px; font-weight: 400; }
+.dds-eyebrow { color: #576273; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.dds-connection { white-space: nowrap; font-size: 13px; }
+.dds-panel { background: var(--panel); border: 1px solid var(--line); margin-bottom: 14px; min-width: 0; }
+.dds-panel-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 12px; background: #e8ebef; border-bottom: 1px solid var(--line); }
+.dds-panel-title h2 { margin: 0; font-size: 15px; }
+.dds-panel-title span { font-size: 12px; color: #576273; }
+.dds-main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; gap: 14px; margin-top: 14px; }
+.dds-left, .dds-right { min-width: 0; }
+.dds-table-wrap { width: 100%; overflow-x: auto; }
+.dds-registry { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dds-registry th, .dds-registry td { padding: 8px 10px; border-right: 1px solid #d4d8dd; border-bottom: 1px solid #d4d8dd; text-align: left; vertical-align: top; }
+.dds-registry th { background: #f1f3f5; white-space: nowrap; font-weight: 600; }
+.dds-registry .dds-selected { background: #e8f0fb; box-shadow: inset 3px 0 #316798; }
+.dds-registry td:last-child, .dds-registry th:last-child { border-right: 0; }
+.dds-empty { padding: 20px !important; color: #66717b; }
+.dds-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
+.dds-summary > div { display: grid; gap: 3px; padding: 12px; border-right: 1px solid #e0e3e6; border-bottom: 1px solid #e0e3e6; }
+.dds-summary small { color: #66717b; }
+.dds-summary strong { font-weight: 500; overflow-wrap: anywhere; }
+.dds-details { padding: 10px 12px; }
+.dds-details summary { cursor: pointer; color: #23577e; font-weight: 600; }
+.dds-details .kio { padding-top: 12px; }
+.dds-deadline { padding: 10px 12px; font-weight: 600; border-bottom: 1px solid #e0e3e6; }
+.dds-hint { margin: 10px 12px; color: #56616c; font-size: 12px; line-height: 1.4; }
+.dds-status-action { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.dds-status-action select { max-width: 190px; }
+.dds-status-action input { min-width: 180px; flex: 1; }
+.dds-status-action button { padding: 4px 8px; }
+.dds-alert { padding: 10px 12px; margin: 0 0 12px; color: var(--violated); background: #fde8e8; border: 1px solid var(--violated); }
+.dds-done { color: var(--ok); background: #e7f4e9; border-color: var(--ok); }
+.dds-phone > label { display: block; margin: 14px 12px 5px; font-size: 13px; font-weight: 600; }
+.dds-phone > select { display: block; width: calc(100% - 24px); margin: 0 12px; padding: 7px; box-sizing: border-box; }
+.dds-dial { display: block; margin: 12px; width: calc(100% - 24px); text-align: center; background: #23577e; border-color: #23577e; color: white; font-weight: 600; }
+.dds-dial:disabled { background: #70869a; }
+.dds-report { margin: 12px; padding: 12px; border: 1px solid #8eafc8; background: #edf5fb; }
+.dds-report small, .dds-report strong, .dds-report span { display: block; }
+.dds-report small, .dds-report span { color: #56616c; font-size: 12px; }
+.dds-report strong { margin-top: 4px; }
+.dds-report p { line-height: 1.45; }
+.dds-phone-idle { margin: 12px; padding: 18px 12px; border: 1px dashed #aab4bf; color: #66717b; text-align: center; font-size: 13px; }
+.dds-reports { margin: 10px 0; padding-left: 22px; font-size: 12px; }
+.dds-reports li { padding: 5px 0; border-bottom: 1px solid #e0e3e6; }
+.dds-zone { padding: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; font-size: 13px; }
+.dds-secondary .bounce-fields { max-height: 200px; overflow-y: auto; font-size: 12px; }
+.dds-secondary input[type="text"] { max-width: 100%; margin: 4px 0; }
+.dds-finish { display: block; margin: 12px; }
+@media (max-width: 900px) { .dds-main { grid-template-columns: 1fr; } .dds-right { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; } }
+@media (max-width: 640px) { .dds-right, .dds-summary { display: block; } .dds-header { align-items: flex-start; flex-direction: column; } }

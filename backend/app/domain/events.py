@@ -34,6 +34,12 @@ class SessionMode(StrEnum):
     SELF = "self"
 
 
+class Exercise(StrEnum):
+    CALL = "call"
+    DDS = "dds"
+    CARD = "card"
+
+
 class Speaker(StrEnum):
     CALLER = "caller"
     OPERATOR = "operator"
@@ -53,6 +59,7 @@ class CallEndReason(StrEnum):
     HANGUP = "hangup"
     DROPPED = "dropped"
     INSTRUCTOR = "instructor"
+    COMPLETE = "complete"
 
 
 class PatchSource(StrEnum):
@@ -110,6 +117,17 @@ class CallIncoming(BaseModel):
     level: Level
     mode: SessionMode
     required_fields: list[str] = []
+
+
+class CardBriefing(BaseModel):
+    """Текстовая вводная упражнения 112; эталонные значения сюда не входят."""
+
+    type: Literal["card.briefing"] = "card.briefing"
+    scenario_id: str
+    mode: SessionMode
+    text: str
+    required_fields: list[str]
+    card: KIO | None = None
 
 
 class CallStarted(BaseModel):
@@ -215,6 +233,7 @@ class ErrorEvent(BaseModel):
 
 ServerToTrainee = Annotated[
     CallIncoming
+    | CardBriefing
     | CallStarted
     | SttPartial
     | SttFinal
@@ -244,6 +263,10 @@ class CallAnswer(BaseModel):
     type: Literal["call.answer"] = "call.answer"
 
 
+class CardSubmit(BaseModel):
+    type: Literal["card.submit"] = "card.submit"
+
+
 class KioPatchIn(BaseModel):
     """Правка карточки. Дебаунс 300 мс, шлётся только дельта."""
 
@@ -266,10 +289,10 @@ class SelfAssessmentSubmit(BaseModel):
 
 
 class DdsDispatch(BaseModel):
-    """Передача в ДДС. Замораживает карточку снимком и останавливает опрос (`interview`)."""
+    """Передача в ДДС. При маршрутизации по ЕКП служба уже есть в notify."""
 
     type: Literal["dds.dispatch"] = "dds.dispatch"
-    service: DDSCode
+    service: DDSCode | None = None
 
 
 class CallHangup(BaseModel):
@@ -297,6 +320,7 @@ class CallResolve(BaseModel):
 
 TraineeToServer = Annotated[
     CallAnswer
+    | CardSubmit
     | KioPatchIn
     | HintRequest
     | SelfAssessmentSubmit
@@ -320,6 +344,7 @@ class SessionSnapshot(BaseModel):
     scenario_title: str
     level: Level
     mode: SessionMode
+    exercise: Exercise = Exercise.CALL
     trainee_name: str | None = None
     started_at: datetime | None = None
     kio: KIO
@@ -394,8 +419,10 @@ class ScenarioStart(BaseModel):
     type: Literal["scenario.start"] = "scenario.start"
     scenario_id: str
     trainee: str
+    trainee_id: UUID | None = None
     group_id: str | None = None
     mode: SessionMode
+    exercise: Exercise = Exercise.CALL
 
 
 class DirectorInject(BaseModel):
@@ -486,6 +513,28 @@ class ServiceStatusSet(BaseModel):
     comment: str = ""
 
 
+class CrewSelect(BaseModel):
+    type: Literal["crew.select"] = "crew.select"
+    crew: str
+
+
+class PhoneDial(BaseModel):
+    type: Literal["phone.dial"] = "phone.dial"
+
+
+class PhoneReport(BaseModel):
+    type: Literal["phone.report"] = "phone.report"
+    service: str
+    crew: str
+    phase: Literal["dispatched", "arrived", "working", "completed"]
+    text: str
+    at: datetime
+
+
+class StationFinish(BaseModel):
+    type: Literal["station.finish"] = "station.finish"
+
+
 class StationState(BaseModel):
     """Состояние АРМ ДДС после каждой отметки: что стоит и что доступно дальше."""
 
@@ -509,12 +558,13 @@ class CrewArrived(BaseModel):
 
 
 ServerToStation = Annotated[
-    CardReceived | StationState | TimerTick | SessionEnded | ErrorEvent,
+    CardReceived | StationState | PhoneReport | TimerTick | SessionEnded | ScoreReady | ErrorEvent,
     Field(discriminator="type"),
 ]
 
 StationToServer = Annotated[
-    CardAck | CardBounce | ServiceStatusSet | ZoneDecision | CrewDispatched | CrewArrived,
+    CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | StationFinish
+    | ZoneDecision | CrewDispatched | CrewArrived,
     Field(discriminator="type"),
 ]
 

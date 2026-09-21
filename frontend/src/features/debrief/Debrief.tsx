@@ -23,6 +23,10 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
         Разбор · оценка {report.score_final.toFixed(0)} из 100
         {report.overridden_by && ` · скорректировано (${report.overridden_by}), автооценка ${report.score_auto.toFixed(0)}`}
       </h2>
+      <p className="ref">
+        Скачать отчёт: <a href={`/api/sessions/${report.session_id}/report.csv`}>CSV</a>
+        {" · "}<a href={`/api/sessions/${report.session_id}/report.pdf`}>PDF</a>
+      </p>
 
       <div className="columns">
         <section>

@@ -12,6 +12,7 @@ from uuid import UUID
 
 from app.domain.events import (
     CallEndReason,
+    Exercise,
     Mood,
     SessionMode,
     SessionSnapshot,
@@ -27,12 +28,13 @@ from app.domain.statuses import (
     ServiceStatus,
     StationSnapshot,
     StatusEntry,
+    PhoneReportRecord,
     card_status,
     check,
     current,
 )
 from app.domain.timers import NORMATIVES, TimerCode
-from app.domain.kio import KIO, apply_patch
+from app.domain.kio import KIO, ResponseStatus, apply_patch
 from app.session.timers import SessionTimers
 
 
@@ -48,6 +50,7 @@ class SessionState:
     scenario_title: str
     level: str
     mode: SessionMode
+    exercise: Exercise = Exercise.CALL
     required_fields: list[str] = field(default_factory=list)
     trainee_name: str | None = None
     #: Чьё это занятие. Проставляется при запуске, когда курсант известен
@@ -96,6 +99,9 @@ class SessionState:
     dds_log: list[tuple[str, datetime, str | None]] = field(default_factory=list)
     #: Отметки служб по списку оповещения — предмет второго режима занятия.
     status_log: list[StatusEntry] = field(default_factory=list)
+    crew_selected: str | None = None
+    crew_assignments: dict[str, str] = field(default_factory=dict)
+    phone_reports: list[PhoneReportRecord] = field(default_factory=list)
     #: Чем курсант закрыл вызов, если не карточкой (lct-36).
     resolved_outcome: str | None = None
     resolve_comment: str = ""
@@ -119,10 +125,12 @@ class SessionState:
         self.kio = apply_patch(self.kio, fields)
         return self.kio
 
-    def dispatch(self, service: str) -> KIO:
+    def dispatch(self, service: str | None = None) -> KIO:
         """Карточка замораживается снимком: оператор не должен иметь
         возможности дописать задним числом поле, которое забыл."""
-        self.kio = apply_patch(self.kio, {"dds": service, "response_status": "transferred"})
+        if service is not None:
+            self.kio = apply_patch(self.kio, {"dds": service})
+        self.kio.response_status = ResponseStatus.TRANSFERRED
         self.dispatched_card = self.kio.model_copy(deep=True)
         self.dispatched_at = now_utc()
         return self.dispatched_card
@@ -132,6 +140,14 @@ class SessionState:
         отмечаться диспетчеру пока не по чему."""
         card = self.dispatched_card or self.kio
         return list(card.notify)
+
+    def crew_options(self) -> list[str]:
+        return [f"{service} — бригада №{number}"
+                for service in self.notified_services() for number in (1, 2)]
+
+    def crew_service(self, crew: str) -> str | None:
+        return next((service for service in self.notified_services()
+                     if crew in (f"{service} — бригада №1", f"{service} — бригада №2")), None)
 
     def set_service_status(
         self, service: str, status: ServiceStatus, comment: str = "", author: str = ""
@@ -161,6 +177,9 @@ class SessionState:
             available={service: list(NEXT[status]) for service, status in statuses.items()},
             card=card_status(self.status_log, services, notify_deadline_passed=overdue),
             log=list(self.status_log),
+            crew_options=self.crew_options(),
+            crew_selected=self.crew_selected,
+            phone_reports=list(self.phone_reports),
         )
 
     def card_received_event(self):
@@ -169,7 +188,8 @@ class SessionState:
 
         return CardReceived(
             card=self.dispatched_card,
-            from_operator=self.trainee_name or "оператор 112",
+            from_operator=("учебный сценарий" if self.exercise is Exercise.DDS
+                           else self.trainee_name or "оператор 112"),
             at=self.dispatched_at or now_utc(),
         )
 
@@ -186,6 +206,7 @@ class SessionState:
             scenario_title=self.scenario_title,
             level=self.level,
             mode=self.mode,
+            exercise=self.exercise,
             trainee_name=self.trainee_name,
             started_at=self.started_at,
             kio=self.kio,

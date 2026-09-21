@@ -120,3 +120,14 @@ def test_gasified_object_brings_mosgaz():
         KIO(signs=["жилой дом", "балкон", "открытое пламя"], fire=FireDetails(gasified=True))
     )
     assert "МОСГАЗ" in card.notify
+
+
+def test_removed_modifier_recalculates_notify_without_stale_service():
+    from app.domain.kio import KIO, FireDetails, apply_patch, derive_incident
+
+    card = derive_incident(
+        KIO(signs=["жилой дом", "балкон", "открытое пламя"], fire=FireDetails(gasified=True))
+    )
+    assert "МОСГАЗ" in card.notify
+    updated = apply_patch(card, {"fire.gasified": False})
+    assert "МОСГАЗ" not in updated.notify

@@ -117,6 +117,62 @@ def test_interview_timer_starts_on_answer_and_stops_on_dispatch(client):
     assert state.dispatched_card is not None, "карточка не заморожена снимком"
 
 
+def test_ekp_dispatch_needs_no_manual_dds_and_reaches_station(client):
+    with lesson(client) as (session_id, _):
+        state = hub.get(session_id)
+        with client.websocket_connect(f"/ws/station/{session_id}") as station:
+            with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+                read_until(trainee, "call.incoming")
+                trainee.send_json({"type": "call.answer"})
+                trainee.send_json({"type": "kio.patch", "fields": {
+                    "signs": ["жилой дом", "балкон", "открытое пламя"]
+                }})
+                auto = next(
+                    event for event in (trainee.receive_json() for _ in range(8))
+                    if event["type"] == "kio.patch" and event["source"] == "auto"
+                )
+                assert auto["fields"]["incident_code"]
+                assert auto["fields"]["notify"]
+                trainee.send_json({"type": "dds.dispatch"})
+                received = read_until(station, "card.received")
+                assert received["card"]["notify"]
+                assert received["card"]["dds"] is None
+                assert received["card"]["response_status"] == "transferred"
+        assert state.dispatched_card is not None
+
+
+def test_legacy_dispatch_without_routing_needs_manual_dds(client):
+    with lesson(client) as (session_id, _):
+        state = hub.get(session_id)
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            read_until(trainee, "call.incoming")
+            trainee.send_json({"type": "dds.dispatch"})
+            error = read_until(trainee, "error")
+            assert "ДДС" in error["message"]
+            assert state.dispatched_card is None
+            trainee.send_json({"type": "dds.dispatch", "service": "01"})
+            wait_for(lambda: state.dispatched_card)
+            assert state.kio.dds.value == "01"
+
+
+def test_late_call_join_replays_incoming_and_current_kio(client):
+    with lesson(client) as (session_id, _):
+        with client.websocket_connect(f"/ws/call/{session_id}") as first:
+            read_until(first, "call.incoming")
+            first.send_json({"type": "kio.patch", "fields": {
+                "address": "улица Ленина, 14",
+                "signs": ["жилой дом", "балкон", "открытое пламя"],
+            }})
+            wait_for(lambda: hub.get(session_id).kio.incident_code)
+        with client.websocket_connect(f"/ws/call/{session_id}") as late:
+            incoming = read_until(late, "call.incoming")
+            assert incoming["scenario_id"] == "fire-apartment-l2"
+            assert "dds" not in incoming["required_fields"]
+            card = read_until(late, "kio.patch")
+            assert card["fields"]["address"] == "улица Ленина, 14"
+            assert card["fields"]["notify"]
+
+
 def test_card_edit_reaches_observer(client):
     with lesson(client) as (session_id, _):
         with client.websocket_connect(f"/ws/observe/{session_id}") as observer:

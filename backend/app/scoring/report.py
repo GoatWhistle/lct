@@ -16,6 +16,8 @@ from app.domain.events import (
     SelfAssessment,
     SelfAssessmentDiff,
     SessionReport,
+    Speaker,
+    Exercise,
 )
 from app.domain.taxonomy import Finding
 from app.scenarios.schema import Scenario
@@ -43,7 +45,12 @@ def assess_difference(
 
 def build(session_id: UUID, state, scenario: Scenario) -> SessionReport:
     score = state.score or {}
-    revealed = [fact.id for fact in state.slots.revealed_facts()] if state.slots else None
+    # Без модели эмбеддингов распознать *какие* факты прозвучали нельзя.
+    # Но если оператор не произнёс ни слова, все обязательные вопросы точно
+    # пропущены — это доказуемый частный случай и он нужен офлайн-разбору.
+    revealed = ([fact.id for fact in state.slots.revealed_facts()] if state.slots else
+                [] if not any(entry.speaker is Speaker.OPERATOR for entry in state.transcript)
+                else None)
     reference = build_reference(scenario)
 
     self_assessment = None
@@ -61,7 +68,7 @@ def build(session_id: UUID, state, scenario: Scenario) -> SessionReport:
         step.checklist_id
         for step in reference.steps
         if step.required and revealed is not None and step.fact_id not in revealed
-    ]
+    ] if state.exercise is not Exercise.CARD else []
 
     return SessionReport(
         session_id=session_id,
@@ -77,7 +84,7 @@ def build(session_id: UUID, state, scenario: Scenario) -> SessionReport:
         reference_questions=[
             HintShown(checklist_id=step.checklist_id, question=step.question)
             for step in reference.steps
-        ],
+        ] if state.exercise is not Exercise.CARD else [],
         missed_checklist=missed_checklist,
         hints_used=[
             HintUsage(checklist_id=checklist_id, question=questions.get(checklist_id, ""), at=at)

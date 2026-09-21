@@ -10,11 +10,12 @@ import { Ambience } from "@/shared/audio/ambience";
 import { type Capture, startCapture } from "@/shared/audio/capture";
 import { EnergyGate } from "@/shared/audio/levels";
 import { CALLER_RATE, Playback } from "@/shared/audio/playback";
-import { type CardState, applyPatch, edit, empty as emptyCard } from "@/features/kio-card/merge";
+import { type CardState, applyPatch, applyState, edit, empty as emptyCard } from "@/features/kio-card/merge";
 import type { ChecklistItem } from "@/features/self-assessment/SelfAssessment";
 import type {
   Outcome,
   CallIncoming,
+  CardBriefing,
   DDSCode,
   ServerToTrainee,
   SessionReport,
@@ -36,6 +37,8 @@ export function useCall(sessionId: string | null) {
   const [status, setStatus] = useState<ChannelStatus>("connecting");
   const [phase, setPhase] = useState<CallPhase>("waiting");
   const [incoming, setIncoming] = useState<CallIncoming | null>(null);
+  const [briefing, setBriefing] = useState<CardBriefing | null>(null);
+  const [cardSubmitted, setCardSubmitted] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
   const [timers, setTimers] = useState<TimerSnapshot[]>([]);
   const [callerSpeaking, setCallerSpeaking] = useState(false);
@@ -45,6 +48,7 @@ export function useCall(sessionId: string | null) {
   const [selfAssessed, setSelfAssessed] = useState(false);
   const [scoreReady, setScoreReady] = useState(false);
   const [report, setReport] = useState<SessionReport | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const channel = useRef<ReturnType<typeof callChannel> | null>(null);
@@ -53,6 +57,7 @@ export function useCall(sessionId: string | null) {
   const gate = useRef(new EnergyGate());
   const outbox = useRef<Record<string, unknown>>({});
   const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textMode = useRef(false);
 
   const append = useCallback((line: Line) => {
     setLines((prev) => {
@@ -67,6 +72,16 @@ export function useCall(sessionId: string | null) {
       onStatus: setStatus,
       onBinary: (frame) => audio.current?.playback.enqueue(frame),
       onEvent: (event: ServerToTrainee) => {
+        if (event.type === "card.briefing") {
+          const briefing = event;
+          textMode.current = true;
+          setBriefing(briefing);
+          setIncoming(null);
+          setCard(applyState(emptyCard, { ...briefing.card }));
+          setCardSubmitted(false);
+          setError(null);
+          return;
+        }
         switch (event.type) {
           case "call.incoming":
             setIncoming(event);
@@ -110,6 +125,7 @@ export function useCall(sessionId: string | null) {
           case "call.ended":
             setPhase("ended");
             audio.current?.ambience.stop();
+            if (textMode.current) { setCardSubmitted(true); break; }
             // Чек-лист открывается только после звонка: во время него это
             // содержимое подсказок.
             void fetch(`/api/sessions/${sessionId}/checklist`)
@@ -119,10 +135,16 @@ export function useCall(sessionId: string | null) {
             break;
           case "score.ready":
             setScoreReady(true);
+            setReportError(null);
             void fetch(`/api/sessions/${sessionId}/report`)
-              .then((response) => (response.ok ? response.json() : null))
+              .then((response) => {
+                if (response.status === 403) throw new Error("Отчёт недоступен: занятие привязано к другому обучающемуся.");
+                if (response.status === 409) throw new Error("Оценка ещё не готова. Обновите страницу позже.");
+                if (!response.ok) throw new Error(`Не удалось загрузить отчёт (HTTP ${response.status}).`);
+                return response.json();
+              })
               .then(setReport)
-              .catch(() => setReport(null));
+              .catch((cause: unknown) => setReportError(cause instanceof Error ? cause.message : "Не удалось загрузить отчёт."));
             break;
           case "error":
             setError(event.message);
@@ -183,8 +205,25 @@ export function useCall(sessionId: string | null) {
     }, PATCH_DEBOUNCE_MS);
   }, []);
 
-  const dispatch = useCallback((service: DDSCode) => {
-    channel.current?.send({ type: "dds.dispatch", service });
+  const dispatch = useCallback((service?: DDSCode) => {
+    channel.current?.send(service ? { type: "dds.dispatch", service } : { type: "dds.dispatch" });
+  }, []);
+
+  const submitCard = useCallback(() => {
+    if (patchTimer.current) clearTimeout(patchTimer.current);
+    patchTimer.current = null;
+    const fields = outbox.current;
+    outbox.current = {};
+    if (Object.keys(fields).length && !channel.current?.send({ type: "kio.patch", fields })) {
+      setError("Канал отключён: карточка не отправлена.");
+      return;
+    }
+    if (channel.current?.send({ type: "card.submit" })) {
+      setCardSubmitted(true);
+      setError(null);
+    } else {
+      setError("Канал отключён: карточка не отправлена.");
+    }
   }, []);
 
   /** Закрыть вызов не карточкой: справкой или передачей в другой регион.
@@ -201,8 +240,8 @@ export function useCall(sessionId: string | null) {
 
   return {
     resolve,
-    status, phase, incoming, lines, timers, callerSpeaking, micOn, error, card,
-    checklist, selfAssessed, scoreReady, report,
-    answer, hangup, hint, patchKio, dispatch, submitSelfAssessment,
+    status, phase, incoming, briefing, cardSubmitted, lines, timers, callerSpeaking, micOn, error, card,
+    checklist, selfAssessed, scoreReady, report, reportError,
+    answer, hangup, hint, patchKio, dispatch, submitCard, submitSelfAssessment,
   };
 }

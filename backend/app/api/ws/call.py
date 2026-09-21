@@ -14,13 +14,18 @@ from pydantic import TypeAdapter, ValidationError
 
 from app.domain.events import (
     StationState,
+    CallIncoming,
     CallEnded,
     CallEndReason,
     CallStarted,
     ErrorEvent,
     ErrorKind,
+    Exercise,
     HintShown,
     KioState,
+    KioPatchOut,
+    PatchSource,
+    ScoreReady,
     SessionEnded,
     SessionMode,
     TimerTick,
@@ -33,6 +38,7 @@ from app.api.auth import principal_of
 from app.domain.roles import Role
 from app.session.hub import hub
 from app.session.state import now_utc
+from app.domain.kio import ResponseStatus
 from app.voice.models import get_voice_models
 from app.voice.pipeline import VoiceSession
 
@@ -82,7 +88,37 @@ def _next_hint(state) -> tuple[str, str] | None:
 
 
 async def _handle(session_id: UUID, state, event) -> None:
+    if state.ended and event.type != "self_assessment.submit":
+        hub.to_trainee(session_id, ErrorEvent(
+            code=ErrorKind.UNSUPPORTED_EVENT, message="Занятие уже завершено",
+        ))
+        return
+    if state.exercise is Exercise.DDS or (
+        state.exercise is Exercise.CARD and event.type not in {"kio.patch", "card.submit"}
+    ) or (state.exercise is Exercise.CALL and event.type == "card.submit"):
+        hub.to_trainee(session_id, ErrorEvent(
+            code=ErrorKind.UNSUPPORTED_EVENT, message="Действие недоступно в этом упражнении",
+        ))
+        return
     match event.type:
+        case "card.submit":
+            state.kio.registered_at = state.started_at or now_utc()
+            state.kio.response_status = ResponseStatus.TRANSFERRED
+            state.dispatched_card = state.kio.model_copy(deep=True)
+            state.dispatched_at = now_utc()
+            state.ended_at = state.dispatched_at
+            state.end_reason = CallEndReason.COMPLETE
+            hub.stop_ticker(session_id)
+            hub.to_station(session_id, state.card_received_event())
+            hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
+            hub.to_observers(session_id, KioState(kio=state.kio))
+            hub.to_trainee(session_id, CallEnded(reason=CallEndReason.COMPLETE))
+            hub.to_observers(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
+            if hub.journal:
+                await hub.journal.session_ended(
+                    session_id, state.ended_at, CallEndReason.COMPLETE.value
+                )
+            await finish(session_id, state)
         case "call.answer":
             state.on_event("call.answer")
             state.started_at = now_utc()
@@ -93,7 +129,17 @@ async def _handle(session_id: UUID, state, event) -> None:
             _start_voice(session_id, state)
 
         case "kio.patch":
+            old_code, old_notify = state.kio.incident_code, list(state.kio.notify)
             state.patch_kio(event.fields)
+            hub.to_trainee(session_id, KioPatchOut(
+                fields=event.fields, source=PatchSource.OPERATOR,
+            ))
+            if (state.kio.incident_code, state.kio.notify) != (old_code, old_notify):
+                hub.to_trainee(session_id, KioPatchOut(
+                    fields={"incident_code": state.kio.incident_code,
+                            "notify": list(state.kio.notify)},
+                    source=PatchSource.AUTO,
+                ))
             # Наблюдателю уходит карточка целиком: рассинхрон на внешнем мониторе
             # посреди занятия дороже лишних килобайт.
             hub.to_observers(session_id, KioState(kio=state.kio))
@@ -121,8 +167,19 @@ async def _handle(session_id: UUID, state, event) -> None:
                 await hub.journal.hint(session_id, checklist_id, question, now_utc())
 
         case "dds.dispatch":
+            if event.service is None and not (state.kio.incident_code or state.kio.notify):
+                hub.to_trainee(session_id, ErrorEvent(
+                    code=ErrorKind.UNSUPPORTED_EVENT,
+                    message="Укажите ДДС или проставьте признаки для маршрутизации по ЕКП",
+                ))
+                return
             state.on_event("dds.dispatch")
-            state.dispatch(event.service.value)
+            state.dispatch(event.service.value if event.service else None)
+            hub.to_trainee(session_id, KioPatchOut(
+                fields={"response_status": state.kio.response_status.value,
+                        "dds": state.kio.dds.value if state.kio.dds else None},
+                source=PatchSource.AUTO,
+            ))
             # Карточка замораживается снимком и уходит диспетчеру: оператор
             # не должен иметь возможности дописать поле задним числом.
             hub.to_station(session_id, state.card_received_event())
@@ -227,8 +284,40 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
         )
         await ws.close()
         return
+    if who.role is Role.TRAINEE and (
+        state.trainee_id is None or state.trainee_id != who.trainee_id
+    ):
+        await _reject(ws, "Занятие не назначено этому обучающемуся")
+        return
 
     with hub.trainee(session_id) as queue:
+        if state.exercise is Exercise.CARD:
+            from app.api.ws.control import card_briefing
+
+            hub.to_trainee(session_id, card_briefing(state))
+            if state.ended:
+                hub.to_trainee(session_id, CallEnded(reason=state.end_reason or CallEndReason.COMPLETE))
+            if state.score is not None:
+                hub.to_trainee(session_id, ScoreReady(session_id=session_id))
+        elif state.exercise is Exercise.CALL:
+            scenario = state.scenario or store.get(state.scenario_id)
+            required = ([field for field in state.required_fields if field != "dds"]
+                        if scenario and scenario.ground_truth.incident_code
+                        else list(state.required_fields))
+            hub.to_trainee(session_id, CallIncoming(
+                scenario_id=state.scenario_id, caller_number="+7 (495) 000-00-00",
+                level=state.level, mode=state.mode, required_fields=required,
+            ))
+            hub.to_trainee(session_id, KioPatchOut(
+                fields=state.kio.model_dump(mode="json"), source=PatchSource.OPERATOR,
+            ))
+            if state.started_at is not None:
+                hub.to_trainee(session_id, CallStarted(started_at=state.started_at))
+            if state.ended:
+                hub.to_trainee(session_id, CallEnded(reason=state.end_reason or CallEndReason.HANGUP))
+            if state.score is not None and state.self_assessed:
+                hub.to_trainee(session_id, ScoreReady(session_id=session_id))
+            hub.to_trainee(session_id, TimerTick(timers=state.timers.snapshot()))
         writer = asyncio.create_task(_pump(ws, queue))
         try:
             while True:
@@ -238,7 +327,13 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
                 # Бинарные кадры — аудио, текстовые — события. Направление определяется
                 # каналом, обёртки JSON вокруг звука нет (docs/arch/CONTRACT.md).
                 if message.get("bytes") is not None:
-                    _on_audio(session_id, state, message["bytes"])
+                    if state.exercise is Exercise.CALL:
+                        _on_audio(session_id, state, message["bytes"])
+                    else:
+                        hub.to_trainee(session_id, ErrorEvent(
+                            code=ErrorKind.UNSUPPORTED_EVENT,
+                            message="Аудио не используется в этом упражнении",
+                        ))
                     continue
                 try:
                     payload = json.loads(message.get("text") or "")

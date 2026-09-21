@@ -5,6 +5,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 
+# Экспорт PDF требует локальный TTF с кириллицей; базовый slim-образ его не
+# гарантирует. Шрифт запекается в образ при подготовке офлайн-комплекта.
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 # Зависимости — из pyproject.toml, а не отдельным списком: ручной список разошёлся
 # с проектом, и бэкенд в контейнере упал на первом же новом пакете (num2words).
 # Голосовой контур (группа voice: torch, onnx-asr) в образ не входит: под WSL

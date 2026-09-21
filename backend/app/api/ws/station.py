@@ -1,7 +1,7 @@
 """Сокет диспетчера ДДС.
 
-**Только JSON: аудио здесь нет вообще** — значит, нет ни VAD, ни распознавания,
-ни синтеза. Голосовой контур станция не трогает (docs/arch/CONTRACT.md).
+Учебный исходящий звонок бригаде имитируется событиями JSON. Для целевого
+локального прототипа не нужна внешняя телефония или аудиомодель.
 
 Самая ценная механика цепочки — `card.bounce`: диспетчер видит, что не указан
 этаж, и отбивает карточку обратно. Неполнота КИО перестаёт быть процентом
@@ -15,20 +15,45 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from app.domain.events import ErrorEvent, ErrorKind, StationState, StationToServer
-from app.domain.statuses import PRIMARY, ServiceStatus, StatusError
+from app.domain.events import (
+    CallEndReason, ErrorEvent, ErrorKind, Exercise, PhoneReport, ScoreReady,
+    SessionEnded, StationState, StationToServer,
+)
+from app.domain.statuses import PRIMARY, PhoneReportRecord, ServiceStatus, StatusError, current
 from app.api.auth import principal_of
 from app.domain.roles import Role
 from app.session.hub import hub
 from app.session.state import now_utc
+from app.session.finish import finish
 
 log = logging.getLogger(__name__)
 router = APIRouter()
 
 _adapter = TypeAdapter(StationToServer)
 
+REPORT_PHASES = ("dispatched", "arrived", "working", "completed")
+REPORT_TEXT = {
+    "dispatched": "Бригада выехала к месту происшествия.",
+    "arrived": "Бригада прибыла на место происшествия.",
+    "working": "Бригада приступила к проведению работ.",
+    "completed": "Работы завершены, бригада освобождена.",
+}
+REPORT_FOR_STATUS = {
+    ServiceStatus.RESPONDING: "dispatched",
+    ServiceStatus.ARRIVED: "arrived",
+    ServiceStatus.WORKING: "working",
+    ServiceStatus.COMPLETED: "completed",
+}
+
+
+def _error(session_id: UUID, message: str) -> None:
+    hub.to_station(session_id, ErrorEvent(code=ErrorKind.UNSUPPORTED_EVENT, message=message))
+
 
 async def _handle(session_id: UUID, state, event) -> None:
+    if state.ended:
+        _error(session_id, "Занятие уже завершено")
+        return
     match event.type:
         case "card.ack":
             # Подтверждение приёма — это статус «Принята» у главной службы.
@@ -43,6 +68,16 @@ async def _handle(session_id: UUID, state, event) -> None:
                 except StatusError:
                     pass  # статус уже стоит: повторное нажатие ничего не меняет
         case "card.status":
+            if event.service not in state.notified_services():
+                _error(session_id, "Служба отсутствует в списке оповещения карточки")
+                return
+            phase = REPORT_FOR_STATUS.get(event.status)
+            if state.exercise is Exercise.DDS and phase is not None and not any(
+                report.service == event.service and report.phase == phase
+                for report in state.phone_reports
+            ):
+                _error(session_id, f"Статус «{event.status.value}» требует доклада бригады")
+                return
             try:
                 state.set_service_status(
                     event.service, event.status, event.comment, author="диспетчер"
@@ -56,6 +91,55 @@ async def _handle(session_id: UUID, state, event) -> None:
             # Первичный статус останавливает норматив 30 секунд.
             if event.status in PRIMARY:
                 state.on_event("card.ack")
+        case "crew.select":
+            if event.crew not in state.crew_options():
+                _error(session_id, "Выберите бригаду из списка доступных")
+                return
+            service = state.crew_service(event.crew)
+            assigned = state.crew_assignments.get(service)
+            if assigned and assigned != event.crew and any(
+                report.service == service for report in state.phone_reports
+            ):
+                _error(session_id, "После первого доклада бригаду этой службы менять нельзя")
+                return
+            state.crew_selected = event.crew
+            state.crew_assignments[service] = event.crew
+        case "phone.dial":
+            crew = state.crew_selected
+            service = state.crew_service(crew) if crew else None
+            if service is None:
+                _error(session_id, "Сначала выберите бригаду")
+                return
+            if current(state.status_log, service) not in {
+                ServiceStatus.ACCEPTED, ServiceStatus.RESPONDING,
+                ServiceStatus.ARRIVED, ServiceStatus.WORKING,
+            }:
+                _error(session_id, "Сначала примите карточку этой службы")
+                return
+            previous = [report for report in state.phone_reports if report.service == service]
+            if len(previous) >= len(REPORT_PHASES):
+                _error(session_id, "Все доклады этой бригады уже получены")
+                return
+            phase = REPORT_PHASES[len(previous)]
+            report = PhoneReportRecord(
+                service=service, crew=crew, phase=phase,
+                text=REPORT_TEXT[phase], at=now_utc(),
+            )
+            state.phone_reports.append(report)
+            hub.to_station(session_id, PhoneReport(**report.model_dump()))
+        case "station.finish":
+            if state.exercise is not Exercise.DDS:
+                _error(session_id, "Операторское занятие завершается после звонка 112")
+                return
+            state.ended_at = now_utc()
+            state.end_reason = CallEndReason.COMPLETE
+            hub.stop_ticker(session_id)
+            hub.to_station(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
+            hub.to_observers(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
+            if hub.journal:
+                await hub.journal.session_ended(session_id, state.ended_at, CallEndReason.COMPLETE.value)
+            await finish(session_id, state)
+            hub.to_station(session_id, ScoreReady(session_id=session_id))
         case "card.bounce":
             # Карточка вернулась: в разборе это E6 с конкретной причиной.
             state.bounced_fields = list(event.missing_fields)
@@ -104,6 +188,11 @@ async def station(ws: WebSocket, session_id: UUID, role: str = "dds") -> None:
             ErrorEvent(code=ErrorKind.SESSION_NOT_FOUND, message="Занятие не запущено").model_dump_json()
         )
         await ws.close()
+        return
+    if who.role is Role.TRAINEE and (
+        state.trainee_id is None or state.trainee_id != who.trainee_id
+    ):
+        await _reject(ws, "Занятие не назначено этому обучающемуся")
         return
 
     with hub.station(session_id) as queue:

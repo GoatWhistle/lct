@@ -18,6 +18,8 @@ from app.domain.statuses import (
     current,
 )
 from app.domain.taxonomy import Competency, ErrorCode, Finding, FindingSource
+from app.domain.events import Metric
+from app.domain.timers import GOST_REF
 
 #: Статусы, означающие, что реагирование действительно шло.
 PROGRESS = (ServiceStatus.RESPONDING, ServiceStatus.ARRIVED, ServiceStatus.WORKING)
@@ -123,3 +125,61 @@ def evaluate_dispatcher(
             )
 
     return findings
+
+
+def dispatcher_metrics(state, deadline_ms: int) -> list[Metric]:
+    """Числовая часть оценки ДДС; каждый проверяемый шаг имеет факт и норму.
+
+    Веса предварительные — до утверждения методистом. Неподтверждённые
+    телефонные действия нельзя засчитывать по одной кнопке статуса.
+    """
+    metrics: list[Metric] = []
+    for service in state.notified_services():
+        marks = [mark for mark in state.status_log if mark.service == service]
+        statuses = {mark.status for mark in marks}
+        reports = {report.phase for report in state.phone_reports if report.service == service}
+        selected_crew = state.crew_assignments.get(service)
+        selected = selected_crew is not None
+
+        def add(key: str, title: str, passed: bool, fact: str, norm: str, weight: float = 1.0):
+            metrics.append(Metric(
+                key=key, title=f"{service}: {title}", fact=fact, norm=norm,
+                ref=GOST_REF if key == "dds_ack" else "памятка «Работа на АРМ-112», статусы реагирования",
+                passed=passed, weight=weight,
+            ))
+
+        primary = next((mark for mark in marks if mark.status in PRIMARY), None)
+        elapsed = (int((primary.at - state.dispatched_at).total_seconds() * 1000)
+                   if primary and state.dispatched_at else None)
+        add("dds_primary", "решение по карточке", primary is not None,
+            primary.status.value if primary else "решение отсутствует", "Принята или Не принята", 2.0)
+        add("dds_ack", "первичная отметка за 30 с",
+            elapsed is not None and elapsed <= deadline_ms,
+            f"{elapsed / 1000:.1f} с" if elapsed is not None else "не отмечено",
+            f"≤ {deadline_ms // 1000} с")
+        if primary is None:
+            continue
+        add("dds_decision", "профильное реагирование",
+            primary.status is ServiceStatus.ACCEPTED,
+            primary.status.value, "профильную заявку принять", 2.0)
+        if primary.status is ServiceStatus.DECLINED:
+            continue
+        add("dds_crew", "ручной выбор бригады", selected,
+            selected_crew or "бригада не выбрана", "выбрать конкретную бригаду", 1.5)
+        add("dds_contact", "связь с бригадой", bool(reports),
+            ", ".join(sorted(reports)) or "докладов нет", "получить доклад о выезде", 1.5)
+        expected = {
+            "dispatched": ServiceStatus.RESPONDING,
+            "arrived": ServiceStatus.ARRIVED,
+            "working": ServiceStatus.WORKING,
+        }
+        aligned = all(status in statuses for phase, status in expected.items() if phase in reports)
+        all_progress = all(phase in reports and status in statuses for phase, status in expected.items())
+        add("dds_progress", "статусы по докладам", aligned and all_progress,
+            ", ".join(status.value for status in statuses) or "статусов нет",
+            "выезд, прибытие и работы отмечены после докладов", 2.0)
+        add("dds_completion", "закрытие работ по докладу",
+            "completed" in reports and ServiceStatus.COMPLETED in statuses,
+            "завершено" if ServiceStatus.COMPLETED in statuses else "не завершено",
+            "доклад о завершении и статус «Работы завершены»")
+    return metrics

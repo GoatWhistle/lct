@@ -25,14 +25,18 @@ export function useControl(sessionId: string | null) {
   }, [sessionId]);
 
   const start = useCallback(
-    (scenarioId: string, mode: SessionMode, trainee: string, group?: string) =>
-      channel.current?.send({
+    (scenarioId: string, mode: SessionMode, trainee: string, exercise: "dds" | "call" | "card" = "dds", group?: string, traineeId?: string) => {
+      const message = {
         type: "scenario.start",
         scenario_id: scenarioId,
         mode,
         trainee,
         group_id: group || null,
-      }),
+        trainee_id: traineeId || null,
+        exercise,
+      } as const;
+      channel.current?.send(message);
+    },
     [],
   );
 

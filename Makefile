@@ -17,6 +17,9 @@ help:                     ## Список целей
 dev: ## Поднять стенд: postgres + backend --reload + frontend
 	$(COMPOSE) up --build
 
+offline: ## Поднять карточки/ДДС из заранее собранных локальных образов, без скачивания
+	$(COMPOSE) up --pull never --no-build
+
 down: ## Погасить стенд
 	$(COMPOSE) down
 
@@ -50,6 +53,9 @@ backup: ## Резервная копия базы в backend/backups/ (для cr
 users: ## Завести учётные записи ролей и напечатать пароли: make users force=1
 	cd backend && $(UV) run python scripts/users.py
 
+users-docker: ## Завести учётные записи внутри локального контейнера (после make offline)
+	$(COMPOSE) exec backend python scripts/users.py
+
 seed: ## Залить сценарии из /scenarios в БД
 	cd backend && $(UV) run python scripts/seed.py
 
@@ -80,4 +86,4 @@ pregen: ## Офлайн-таблицы реплик: make pregen [s=<сцена�
 demo: ## Поднять стенд для занятия: база, сценарии, бэкенд с голосом, фронт
 	./scripts/demo.sh
 
-.PHONY: help dev down back front types ekp users backup test test-voice typecheck test-llm lesson llm-check latency migrate revision models seed repl pregen demo
+.PHONY: help dev offline down back front types ekp users users-docker backup test test-voice typecheck test-llm lesson llm-check latency migrate revision models seed repl pregen demo

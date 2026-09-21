@@ -52,6 +52,7 @@ async def ensure_session(
     scenario_id: str,
     mode: str,
     trainee_name: str | None = None,
+    trainee_id: UUID | None = None,
     group_name: str | None = None,
 ) -> Session:
     """Занятие, запущенное с пульта, должно иметь строку в журнале.
@@ -64,7 +65,11 @@ async def ensure_session(
         return existing
 
     group = await ensure_group(db, group_name) if group_name else None
-    trainee = await ensure_trainee(db, trainee_name, group) if trainee_name else None
+    trainee = await db.get(Trainee, trainee_id) if trainee_id else None
+    if trainee_id and trainee is None:
+        raise ValueError(f"курсант {trainee_id} не найден")
+    if trainee is None and trainee_name:
+        trainee = await ensure_trainee(db, trainee_name, group)
     return await create_session(
         db,
         scenario_id=scenario_id,

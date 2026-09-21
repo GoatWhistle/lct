@@ -9,6 +9,7 @@
 """
 
 import logging
+import re
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -21,8 +22,9 @@ from app.domain.events import (
     ErrorKind,
     ScoreReady,
     CallIncoming,
-    ErrorEvent,
-    ErrorKind,
+    CardBriefing,
+    Exercise,
+    StationState,
     InstructorToServer,
     InstructorNoteShown,
     ModeSet,
@@ -42,6 +44,7 @@ from app.api.auth import audit, principal_of
 from app.domain.roles import Role
 from app.session.hub import hub
 from app.session.state import SessionState, now_utc
+from app.domain.kio import KIO, ResponseStatus
 from app.voice.models import get_voice_models
 from app.voice.pipeline import FILLERS, prefetch
 
@@ -49,6 +52,27 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 _adapter = TypeAdapter(InstructorToServer)
+
+
+def card_briefing(state: SessionState) -> CardBriefing:
+    """Учебная текстовая вводная — исходные реплики, а не эталон карточки.
+
+    В отсутствие диалога факты раскрываются сразу. Если факт уточняется,
+    показываем и уточнение: иначе правильно заполнить карточку невозможно.
+    """
+    scenario = state.scenario
+    lines = ["Учебная текстовая вводная: сведения заявителя приведены ниже.",
+             scenario.first_line]
+    for fact in scenario.facts:
+        lines.append(f"• {fact.value}")
+        if fact.refined:
+            lines.append(f"  Уточнено: {fact.refined}")
+    return CardBriefing(
+        scenario_id=scenario.id, mode=state.mode, text="\n".join(lines),
+        required_fields=([field for field in state.required_fields if field != "dds"]
+                         if scenario.ground_truth.incident_code else list(state.required_fields)),
+        card=state.kio,
+    )
 
 
 async def _start(session_id: UUID, event, who=None) -> None:
@@ -61,9 +85,10 @@ async def _start(session_id: UUID, event, who=None) -> None:
         return
 
     attempt = 1
+    recorded_trainee_id = event.trainee_id
     if hub.journal:
-        attempt = await hub.journal.start_lesson(
-            session_id, scenario.id, event.mode.value, event.trainee
+        attempt, recorded_trainee_id = await hub.journal.start_lesson(
+            session_id, scenario.id, event.mode.value, event.trainee, event.trainee_id
         )
 
     # Занятие собирается целиком и только потом регистрируется: иначе
@@ -75,25 +100,59 @@ async def _start(session_id: UUID, event, who=None) -> None:
         scenario_title=scenario.title,
         level=scenario.level.value,
         mode=event.mode,
+        exercise=event.exercise,
         scenario=scenario.model_copy(deep=True),
         required_fields=scenario.required_fields,
         trainee_name=event.trainee,
-        trainee_id=getattr(event, "trainee_id", None),
+        trainee_id=recorded_trainee_id,
         attempt=attempt,
     )
-    embedder = get_embedder()
-    if embedder is not None:
-        state.slots = SlotMachine(state.scenario, embedder)
-    state.persona = PersonaState(state.scenario.persona)
-    state.caller = build_caller(scenario.id)
+    if event.exercise is Exercise.CALL:
+        embedder = get_embedder()
+        if embedder is not None:
+            state.slots = SlotMachine(state.scenario, embedder)
+        state.persona = PersonaState(state.scenario.persona)
+        state.caller = build_caller(scenario.id)
+    elif event.exercise is Exercise.DDS:
+        # В ДДС поступает уже оформленная учебная карточка. Содержимое берётся
+        # из утверждённого сценария, а не из действий несуществующего оператора.
+        truth = scenario.ground_truth
+        address_fact = next((fact.value for fact in scenario.facts if "address" in fact.id), "")
+        floor = re.search(r"(\d+)[-‑–]?й?\s*этаж", address_fact, re.IGNORECASE)
+        service = truth.dds.value if truth.dds else None
+        fallback = {"01": "Служба 101", "02": "МВД", "03": "Скорая помощь", "04": "Аварийная служба"}
+        state.kio = KIO(
+            registered_at=now_utc(), caller_number="+7 (495) 000-00-00",
+            address=truth.address or address_fact or None,
+            floor=floor.group(1) if floor else None,
+            incident_type=truth.incident_type, incident_code=truth.incident_code,
+            dds=truth.dds, signs=list(scenario.signs),
+            notify=list(truth.notify) or ([fallback[service]] if service in fallback else []),
+            victims_count=truth.victims,
+            description="; ".join(fact.value for fact in scenario.facts[:3]) or scenario.first_line,
+        )
+        if service:
+            state.dispatch(service)
+        else:
+            state.kio.response_status = ResponseStatus.TRANSFERRED
+            state.dispatched_card = state.kio.model_copy(deep=True)
+            state.dispatched_at = now_utc()
+        state.started_at = state.dispatched_at
+    else:
+        state.started_at = now_utc()
     hub.register(state)
+    if event.exercise is not Exercise.CALL and hub.journal and state.started_at is not None:
+        await hub.journal.session_started(session_id, state.started_at)
 
     # Первая реплика и филлеры синтезируются, пока курсант не снял трубку:
     # «Алло! Помогите!» должно прозвучать мгновенно (docs/arch/BACKEND.md).
-    models = get_voice_models()
-    if models is not None:
-        asyncio.create_task(prefetch(models, [scenario.first_line, *FILLERS.values()]))
-    state.on_event("call.incoming")
+    if event.exercise is Exercise.CALL:
+        models = get_voice_models()
+        if models is not None:
+            asyncio.create_task(prefetch(models, [scenario.first_line, *FILLERS.values()]))
+        state.on_event("call.incoming")
+    elif event.exercise is Exercise.DDS:
+        state.on_event("dds.dispatch")
     hub.start_ticker(session_id)
     if who is not None:
         # Запуск занятия меняет чужой результат — значит попадает в журнал
@@ -103,29 +162,45 @@ async def _start(session_id: UUID, event, who=None) -> None:
                   f"{scenario.id}, режим {event.mode.value}, курсант {event.trainee}")
         )
 
-    hub.to_trainee(
-        session_id,
-        CallIncoming(
-            scenario_id=scenario.id,
-            caller_number="+7 (495) 000-00-00",
-            level=scenario.level,
-            mode=event.mode,
-            scenario=scenario.model_copy(deep=True),
-            required_fields=scenario.required_fields,
-        ),
-    )
+    if event.exercise is Exercise.CALL:
+        hub.to_trainee(
+            session_id,
+            CallIncoming(
+                scenario_id=scenario.id,
+                caller_number="+7 (495) 000-00-00",
+                level=scenario.level,
+                mode=event.mode,
+                required_fields=[field for field in scenario.required_fields
+                                 if field != "dds" or not scenario.ground_truth.incident_code],
+            ),
+        )
+    elif event.exercise is Exercise.DDS:
+        hub.to_station(session_id, state.card_received_event())
+        hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
+    else:
+        hub.to_trainee(session_id, card_briefing(state))
     hub.to_observers(session_id, ModeSet(mode=event.mode))
     hub.to_observers(session_id, state.snapshot())
 
 
 async def _stop(session_id: UUID) -> None:
     state = hub.get(session_id)
-    if state is None:
+    if state is None or state.ended:
         return
     state.ended_at = now_utc()
     state.end_reason = CallEndReason.INSTRUCTOR
     hub.stop_ticker(session_id)
     hub.to_observers(session_id, SessionEnded(reason=CallEndReason.INSTRUCTOR))
+    if state.exercise in {Exercise.DDS, Exercise.CARD}:
+        from app.session.finish import finish
+
+        if state.exercise is Exercise.DDS:
+            hub.to_station(session_id, SessionEnded(reason=CallEndReason.INSTRUCTOR))
+        else:
+            hub.to_trainee(session_id, CallEnded(reason=CallEndReason.INSTRUCTOR))
+        await finish(session_id, state)
+        if state.exercise is Exercise.DDS:
+            hub.to_station(session_id, ScoreReady(session_id=session_id))
     if hub.journal:
         await hub.journal.session_ended(session_id, state.ended_at, CallEndReason.INSTRUCTOR.value)
 
@@ -203,6 +278,12 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                 case "director.inject":
                     state = hub.get(session_id)
                     if state is None:
+                        continue
+                    if state.exercise is not Exercise.CALL:
+                        hub.to_observers(session_id, ErrorEvent(
+                            code=ErrorKind.UNSUPPORTED_EVENT,
+                            message="Директивы звонящему доступны только в голосовом упражнении",
+                        ))
                         continue
                     result = apply_directive(state, event.directive)
                     if result.needs_network:

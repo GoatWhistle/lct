@@ -12,6 +12,7 @@ import { InterviewTimer, Timers } from "@/features/timers/Timers";
 import { display } from "@/features/kio-card/merge";
 import { useCall } from "@/features/call/useCall";
 import { sessionIdFromUrl } from "@/shared/api/session";
+import type { DDSCode } from "@/shared/types/generated";
 
 const STATUS_LABEL: Record<string, string> = {
   connecting: "подключение",
@@ -24,6 +25,11 @@ const RESOLVE_LABELS = {
   consultation: "справочно-консультационная помощь",
   transfer_region: "передан в систему-112 другого региона",
 } as const;
+
+function ddsCode(value: unknown): DDSCode | undefined {
+  return value === "01" || value === "02" || value === "03" || value === "04" || value === "gkh"
+    ? value : undefined;
+}
 
 export function Call() {
   const [resolveComment, setResolveComment] = useState("");
@@ -39,6 +45,39 @@ export function Call() {
       </main>
     );
   }
+
+  if (call.briefing) {
+    return <main className="page">
+      <ModeBanner mode={call.briefing.mode} />
+      <h1>АРМ оператора 112 · учебная карточка</h1>
+      <p className="ref">Текстовое упражнение: входящий голосовой вызов и микрофон не используются.</p>
+      <table className="grid"><tbody>
+        <tr><th>Канал</th><td className={call.status === "open" ? "state-ok" : "state-warn"}>{STATUS_LABEL[call.status]}</td></tr>
+        <tr><th>Сценарий</th><td>{call.briefing.scenario_id}</td></tr>
+        <tr><th>Состояние</th><td>{call.cardSubmitted ? "карточка отправлена на оценку" : "карточка заполняется"}</td></tr>
+      </tbody></table>
+      <section style={{ maxWidth: 900, marginTop: 16 }}>
+        <h2>Вводная о происшествии</h2>
+        <div style={{ background: "#fff", border: "1px solid var(--line)", padding: 16, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+          {call.briefing.text}
+        </div>
+        <p className="ref">Извлеките сведения из вводной, заполните поля карточки и проверьте предлагаемый список оповещения.</p>
+        <h2>Карточка информационного обмена</h2>
+        <KioCard state={call.card} required={call.briefing.required_fields}
+          readOnly={call.cardSubmitted || call.status !== "open"} onChange={call.patchKio} />
+        {!call.cardSubmitted && <p><button type="button" className="start" disabled={call.status !== "open"}
+          onClick={call.submitCard}>Отправить карточку на проверку</button></p>}
+        {call.error && <p className="state-violated" role="alert">{call.error}</p>}
+        {call.cardSubmitted && !call.report && !call.reportError && <p>Карточка отправлена. Ожидаем итоговую оценку…</p>}
+        {call.reportError && <p className="state-violated" role="alert">{call.reportError}</p>}
+      </section>
+      {call.report && <Debrief report={call.report} />}
+    </main>;
+  }
+
+  const service = ddsCode(display(call.card, "dds"));
+  const notify = display(call.card, "notify");
+  const autoRoute = Boolean(display(call.card, "incident_code")) && Array.isArray(notify) && notify.length > 0;
 
   return (
     <main className="page">
@@ -85,8 +124,8 @@ export function Call() {
           <p>
             <button
               type="button"
-              disabled={!call.micOn || !display(call.card, "dds")}
-              onClick={() => call.dispatch(display(call.card, "dds") as never)}
+              disabled={!call.micOn || (!service && !autoRoute)}
+              onClick={() => call.dispatch(service)}
             >
               Передать в ДДС
             </button>

@@ -21,6 +21,13 @@ METRIC_MAP: dict[str, tuple[ErrorCode, Competency]] = {
     "address": (ErrorCode.E5, Competency.CARD),
     "victims_count": (ErrorCode.E5, Competency.CARD),
     "required_fields": (ErrorCode.E5, Competency.CARD),
+    "dds_primary": (ErrorCode.D1, Competency.CARD),
+    "dds_ack": (ErrorCode.D1, Competency.NORMS),
+    "dds_decision": (ErrorCode.D3, Competency.ROUTING),
+    "dds_crew": (ErrorCode.D2, Competency.ROUTING),
+    "dds_contact": (ErrorCode.D6, Competency.COMMUNICATION),
+    "dds_progress": (ErrorCode.D6, Competency.CARD),
+    "dds_completion": (ErrorCode.D6, Competency.CARD),
 }
 
 #: Вес метрики в детерминированной оценке.

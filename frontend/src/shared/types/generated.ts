@@ -19,7 +19,7 @@ export interface CallAnswer {
   type: "call.answer";
 }
 
-export type CallEndReason = "hangup" | "dropped" | "instructor";
+export type CallEndReason = "hangup" | "dropped" | "instructor" | "complete";
 
 export interface CallEnded {
   type: "call.ended";
@@ -77,6 +77,16 @@ export interface CardBounce {
   comment?: string;
 }
 
+/** Текстовая вводная упражнения 112; эталонные значения сюда не входят. */
+export interface CardBriefing {
+  type: "card.briefing";
+  scenario_id: string;
+  mode: SessionMode;
+  text: string;
+  required_fields: Array<string>;
+  card?: KIO | null;
+}
+
 /** Снимок КИО. После передачи не меняется — оператор не дописывает задним числом. */
 export interface CardReceived {
   type: "card.received";
@@ -87,6 +97,10 @@ export interface CardReceived {
 
 /** Статус карточки целиком — считается из статусов служб, руками не ставится. */
 export type CardStatus = "registered" | "processed" | "checked" | "not_notified" | "refused" | "not_completed" | "completed";
+
+export interface CardSubmit {
+  type: "card.submit";
+}
 
 /** Шесть осей радара. Проекция уже посчитанных метрик, без пересчёта весов. */
 export type Competency = "intake" | "interview" | "card" | "routing" | "norms" | "communication";
@@ -112,13 +126,18 @@ export interface CrewDispatched {
   at: string;
 }
 
+export interface CrewSelect {
+  type: "crew.select";
+  crew: string;
+}
+
 /** Дежурно-диспетчерская служба, в которую уходит карточка. */
 export type DDSCode = "01" | "02" | "03" | "04" | "gkh";
 
-/** Передача в ДДС. Замораживает карточку снимком и останавливает опрос (`interview`). */
+/** Передача в ДДС. При маршрутизации по ЕКП служба уже есть в notify. */
 export interface DdsDispatch {
   type: "dds.dispatch";
-  service: DDSCode;
+  service?: DDSCode | null;
 }
 
 /** `immediate` — только для обрыва связи: рвёт TTS на полуслове. */
@@ -151,6 +170,8 @@ export interface ErrorEvent {
 
 /** Коды канала `error`. Фронт разбирает код, а не текст сообщения: текст — для человека, код — для поведения интерфейса. */
 export type ErrorKind = "session_not_found" | "call_not_started" | "hint_denied_in_exam" | "models_warming_up" | "directive_needs_network" | "scenario_invalid" | "unsupported_event" | "forbidden" | "internal";
+
+export type Exercise = "call" | "dds" | "card";
 
 /** Отметка в разборе. `fact` и `norm` — то самое обоснование. */
 export interface Finding {
@@ -306,6 +327,27 @@ export type Outcome = "card" | "consultation" | "transfer_region";
 /** `auto` — сервер распознал факт из речи, `operator` — эхо правки курсанта. */
 export type PatchSource = "auto" | "operator";
 
+export interface PhoneDial {
+  type: "phone.dial";
+}
+
+export interface PhoneReport {
+  type: "phone.report";
+  service: string;
+  crew: string;
+  phase: "dispatched" | "arrived" | "working" | "completed";
+  text: string;
+  at: string;
+}
+
+export interface PhoneReportRecord {
+  service: string;
+  crew: string;
+  phase: string;
+  text: string;
+  at: string;
+}
+
 /** Уточняющие поля 02 — полиция. */
 export interface PoliceDetails {
   offence_kind?: string | null;
@@ -346,8 +388,10 @@ export interface ScenarioStart {
   type: "scenario.start";
   scenario_id: string;
   trainee: string;
+  trainee_id?: string | null;
   group_id?: string | null;
   mode: SessionMode;
+  exercise?: Exercise;
 }
 
 /** Коррекция оценки. Автооценка сохраняется рядом. */
@@ -432,6 +476,7 @@ export interface SessionSnapshot {
   scenario_title: string;
   level: Level;
   mode: SessionMode;
+  exercise?: Exercise;
   trainee_name?: string | null;
   started_at?: string | null;
   kio: KIO;
@@ -448,6 +493,10 @@ export interface SessionStop {
 
 export type Speaker = "caller" | "operator";
 
+export interface StationFinish {
+  type: "station.finish";
+}
+
 /** Что видит диспетчер: службы, их статусы и что доступно дальше. Все поля обязательные, хотя списки и могут быть пустыми: снимок всегда собирается целиком, а необязательное поле уезжает в TypeScript как `| undefined` и заставляет фронт проверять то, чего не бывает. */
 export interface StationSnapshot {
   services: Array<string>;
@@ -455,6 +504,9 @@ export interface StationSnapshot {
   available: Record<string, Array<ServiceStatus>>;
   card: CardStatus;
   log: Array<StatusEntry>;
+  crew_options?: Array<string>;
+  crew_selected?: string | null;
+  phone_reports?: Array<PhoneReportRecord>;
 }
 
 /** Состояние АРМ ДДС после каждой отметки: что стоит и что доступно дальше. */
@@ -552,17 +604,17 @@ export interface ZoneDecision {
 
 // Союзы по каналам — смотри docs/arch/CONTRACT.md#каналы
 
-export type ServerToTrainee = CallIncoming | CallStarted | SttPartial | SttFinal | CallerUtterance | TtsBegin | TtsEnd | TtsCancel | BgStart | BgStop | EraData | KioPatchOut | HintShown | TimerTick | CallEnded | ScoreReady | ErrorEvent;
+export type ServerToTrainee = CallIncoming | CardBriefing | CallStarted | SttPartial | SttFinal | CallerUtterance | TtsBegin | TtsEnd | TtsCancel | BgStart | BgStop | EraData | KioPatchOut | HintShown | TimerTick | CallEnded | ScoreReady | ErrorEvent;
 
-export type TraineeToServer = CallAnswer | KioPatchIn | HintRequest | SelfAssessmentSubmit | DdsDispatch | CallResolve | CallHangup | CallbackDial;
+export type TraineeToServer = CallAnswer | CardSubmit | KioPatchIn | HintRequest | SelfAssessmentSubmit | DdsDispatch | CallResolve | CallHangup | CallbackDial;
 
 export type ServerToObserver = SessionSnapshot | TranscriptAppend | KioState | TimerTick | ModeSet | HintShown | BgStart | BgStop | CallerUtterance | SessionEnded | ScoreReady | InstructorNoteShown | ReferenceStarted | ErrorEvent;
 
 export type InstructorToServer = ScenarioStart | DirectorInject | ReferencePlay | InstructorNoteAdd | ScoreOverride | ScenarioPublish | SessionStop;
 
-export type ServerToStation = CardReceived | StationState | TimerTick | SessionEnded | ErrorEvent;
+export type ServerToStation = CardReceived | StationState | PhoneReport | TimerTick | SessionEnded | ScoreReady | ErrorEvent;
 
-export type StationToServer = CardAck | CardBounce | ServiceStatusSet | ZoneDecision | CrewDispatched | CrewArrived;
+export type StationToServer = CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | StationFinish | ZoneDecision | CrewDispatched | CrewArrived;
 
 export type EventName =
   "bg.start"
@@ -577,10 +629,13 @@ export type EventName =
   | "caller.utterance"
   | "card.ack"
   | "card.bounce"
+  | "card.briefing"
   | "card.received"
   | "card.status"
+  | "card.submit"
   | "crew.arrived"
   | "crew.dispatched"
+  | "crew.select"
   | "dds.dispatch"
   | "director.inject"
   | "era.data"
@@ -592,6 +647,8 @@ export type EventName =
   | "kio.patch"
   | "kio.state"
   | "mode.set"
+  | "phone.dial"
+  | "phone.report"
   | "reference.play"
   | "reference.started"
   | "scenario.publish"
@@ -602,6 +659,7 @@ export type EventName =
   | "session.ended"
   | "session.snapshot"
   | "session.stop"
+  | "station.finish"
   | "station.state"
   | "stt.final"
   | "stt.partial"

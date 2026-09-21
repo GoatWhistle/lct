@@ -60,5 +60,5 @@ export function useLogout() {
 export const SCREENS: Record<Role, string[]> = {
   admin: ["/admin", "/profile"],
   instructor: ["/instructor", "/wall", "/profile", "/dds"],
-  trainee: ["/trainee", "/profile"],
+  trainee: ["/trainee", "/dds", "/profile"],
 };

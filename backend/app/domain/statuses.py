@@ -126,6 +126,14 @@ class StatusEntry(BaseModel):
     author: str = ""
 
 
+class PhoneReportRecord(BaseModel):
+    service: str
+    crew: str
+    phase: str
+    text: str
+    at: datetime
+
+
 class StatusError(ValueError):
     """Переход запрещён автоматом или нет обязательного комментария."""
 
@@ -168,7 +176,8 @@ def card_status(
 
     latest = {service: current(entries, service) for service in services}
     silent = [
-        service for service, status in latest.items() if status not in PRIMARY | TERMINAL
+        service for service, status in latest.items()
+        if status in {ServiceStatus.ADDED, ServiceStatus.RECEIVED}
     ]
     if silent and notify_deadline_passed:
         return CardStatus.NOT_NOTIFIED
@@ -196,3 +205,6 @@ class StationSnapshot(BaseModel):
     available: dict[str, list[ServiceStatus]]
     card: CardStatus
     log: list[StatusEntry]
+    crew_options: list[str] = []
+    crew_selected: str | None = None
+    phone_reports: list[PhoneReportRecord] = []

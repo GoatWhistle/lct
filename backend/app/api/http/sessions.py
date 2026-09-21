@@ -7,16 +7,17 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import audit, require
 from app.db import repo
 from app.db.base import get_session
-from app.domain.events import SessionMode, SessionReport
+from app.domain.events import Exercise, SessionMode, SessionReport
 from app.scenarios import store
 from app.scoring.report import build as build_report
+from app.scoring.export import to_csv, to_pdf
 from app.domain.roles import Role
 from app.session.hub import hub
 
@@ -57,7 +58,8 @@ def _out(session) -> SessionOut:
 
 
 @router.post("", response_model=SessionOut, status_code=201)
-async def create(body: SessionCreate, db: AsyncSession = Depends(get_session)) -> SessionOut:
+async def create(body: SessionCreate, request: Request, db: AsyncSession = Depends(get_session)) -> SessionOut:
+    require(request, Role.INSTRUCTOR)
     group = await repo.ensure_group(db, body.group) if body.group else None
     trainee = await repo.ensure_trainee(db, body.trainee, group) if body.trainee else None
     session = await repo.create_session(
@@ -71,10 +73,13 @@ async def create(body: SessionCreate, db: AsyncSession = Depends(get_session)) -
 
 
 @router.get("/{session_id}", response_model=SessionOut)
-async def read(session_id: UUID, db: AsyncSession = Depends(get_session)) -> SessionOut:
+async def read(session_id: UUID, request: Request, db: AsyncSession = Depends(get_session)) -> SessionOut:
+    who = require(request)
     session = await repo.get_session(db, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="session_not_found")
+    if who.role is Role.TRAINEE and session.trainee_id != who.trainee_id:
+        raise HTTPException(status_code=403, detail="not_your_session")
     return _out(session)
 
 
@@ -84,16 +89,19 @@ class ChecklistItemOut(BaseModel):
 
 
 @router.get("/{session_id}/checklist", response_model=list[ChecklistItemOut])
-async def checklist(session_id: UUID) -> list[ChecklistItemOut]:
+async def checklist(session_id: UUID, request: Request) -> list[ChecklistItemOut]:
     """Чек-лист для самооценки — **только после конца звонка**.
 
     Во время звонка это содержимое подсказок: отдать его значит выдать
     в контрольном режиме то, чего там быть не должно. После звонка курсант
     по нему отмечает, что, по его мнению, пропустил.
     """
+    who = require(request)
     state = hub.get(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="session_not_found")
+    if who.role is Role.TRAINEE and state.trainee_id != who.trainee_id:
+        raise HTTPException(status_code=403, detail="not_your_session")
     if not state.ended:
         raise HTTPException(status_code=409, detail="call_not_ended")
     scenario = state.scenario or store.get(state.scenario_id)
@@ -136,9 +144,35 @@ async def report(session_id: UUID, request: Request) -> SessionReport:
     state, scenario = _live(session_id)
     if who.role is Role.TRAINEE and state.trainee_id != who.trainee_id:
         raise HTTPException(status_code=403, detail="not_your_session")
+    if who.role is Role.TRAINEE and state.exercise is Exercise.CALL and not state.self_assessed:
+        raise HTTPException(status_code=409, detail="self_assessment_required")
     if state.score is None:
         raise HTTPException(status_code=409, detail="score_not_ready")
     return build_report(session_id, state, scenario)
+
+
+@router.get("/{session_id}/report.csv")
+async def report_csv(session_id: UUID, request: Request) -> Response:
+    """Те же права и готовность оценки, что у JSON-разбора."""
+    data = await report(session_id, request)
+    return Response(
+        content=to_csv(data), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="session-{session_id}-report.csv"'},
+    )
+
+
+@router.get("/{session_id}/report.pdf")
+async def report_pdf(session_id: UUID, request: Request) -> Response:
+    """Печатный разбор; генерация полностью локальна."""
+    data = await report(session_id, request)
+    try:
+        content = to_pdf(data)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(
+        content=content, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="session-{session_id}-report.pdf"'},
+    )
 
 
 @router.patch("/{session_id}/report", response_model=SessionReport)
@@ -177,6 +211,8 @@ async def listing(
     who = require(request)
     # Обучающийся видит только свою историю, что бы он ни передал в фильтре.
     if who.role is Role.TRAINEE:
+        if who.trainee_id is None:
+            raise HTTPException(status_code=403, detail="trainee_profile_required")
         trainee = who.trainee_id
     rows = await repo.history(
         db,
