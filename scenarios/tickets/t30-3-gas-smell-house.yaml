@@ -28,10 +28,10 @@ facts:
     value: "запах газа от трубы на вводе в дом, слышен шум в трубе, газ магистральный"
     reveal_on: { question: q_what_happened }
   - id: f_scale
-    value: "запах по всему дому, окна открыли"
+    value: "масштаб запаха и действия жильцов не указаны"
     reveal_on: { question: q_scale }
   - id: f_threat
-    value: "пострадавших нет, скорая не требуется"
+    value: "03 не требуется; сведения о пострадавших не указаны"
     reveal_on: { question: q_threat }
   - id: f_caller
     value: "Соколова Вера Ивановна, телефон 916-320-12-83"
@@ -48,7 +48,7 @@ required_fields: [address, incident_type, description]
 
 ground_truth:
   address: "НАО, поселение Вороновское, посёлок ЛМС, микрорайон Солнечный, дом 20"
-  victims: 0
+  victims: null
 
 tree:
   pregenerated: false

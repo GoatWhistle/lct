@@ -23,7 +23,9 @@ ROLE_LABELS: dict[Role, str] = {
 #: настройки, администратор не вмешивается в оценки, обучающийся не видит
 #: чужих результатов.
 SCREENS: dict[Role, tuple[str, ...]] = {
-    Role.ADMIN: ("/admin", "/profile"),
-    Role.INSTRUCTOR: ("/instructor", "/wall", "/profile", "/dds"),
-    Role.TRAINEE: ("/trainee", "/profile"),
+    Role.ADMIN: ("/admin", "/profile", "/groups", "/materials"),
+    Role.INSTRUCTOR: (
+        "/instructor", "/wall", "/profile", "/dds", "/phone", "/groups", "/materials",
+    ),
+    Role.TRAINEE: ("/trainee", "/dds", "/phone", "/profile", "/materials"),
 }

@@ -74,7 +74,8 @@ function Row({
         {referenceArm && field.path === "incident_type" ? "Что случилось?"
           : referenceArm && field.path === "caller_number" ? "АОН"
             : referenceArm && field.path === "caller_contact" ? "Предоставленный"
-              : referenceArm && field.path === "caller_name" ? "Фамилия и имя заявителя"
+              : referenceArm && field.path === "phone_on_scene" ? "Телефон на место"
+                : referenceArm && field.path === "caller_name" ? "Фамилия и имя заявителя"
                 : field.label}
         {required && <span title="обязательное поле" className="required"> ·</span>}
       </div>

@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Волгоградский проспект, остановка «Завод Спецэлектрод»"
+  address: "Волгоградский проспект в сторону области, остановка «Завод Спецэлектрод»"
   victims: 3
 
 tree:

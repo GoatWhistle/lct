@@ -18,12 +18,12 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "На обочине мужчина лежит, весь в крови."
+first_line: "На обочине лежит мужчина в крови."
 
 facts:
   - id: f_address
     value: "МКАД, внутренняя сторона, поворот на Гольяново"
-    refined: "МКАД, 103 километр, внутренняя сторона"
+    refined: "МКАД, внутренняя сторона, поворот на Гольяново, 103 километр"
     reveal_on: { question: q_address }
     refine_on: q_address_check
   - id: f_what_happened
@@ -46,7 +46,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "МКАД, 103 километр, внутренняя сторона"
+  address: "МКАД, внутренняя сторона, поворот на Гольяново, 103 километр"
   victims: 1
 
 tree:

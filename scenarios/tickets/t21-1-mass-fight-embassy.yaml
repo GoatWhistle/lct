@@ -18,12 +18,12 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "Человек пятнадцать дерутся, прутами машут!"
+first_line: "Человек десять-пятнадцать дерутся, палками и железными прутами машут!"
 
 facts:
   - id: f_address
     value: "рядом с посольством Азербайджана, на тротуаре"
-    refined: "Леонтьевский переулок, дом 16, строение 1"
+    refined: "рядом с посольством Азербайджана, на тротуаре; Леонтьевский переулок, дом 16, строение 1"
     reveal_on: { question: q_address }
     refine_on: q_address_check
   - id: f_what_happened

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { useAssignTrainee, useCreateGroup, useGroupAnalytics, useGroups, useTrainees } from "@/shared/api/http";
+import { useAssignTrainee, useCreateGroup, useGroupAnalytics, useGroupInsight, useGroups, useTrainees } from "@/shared/api/http";
 
 export function Groups() {
   const groups = useGroups();
@@ -11,6 +11,7 @@ export function Groups() {
   const [groupName, setGroupName] = useState("");
   const [traineeId, setTraineeId] = useState("");
   const report = useGroupAnalytics(groupId);
+  const insight = useGroupInsight();
 
   useEffect(() => {
     if (!groupId && groups.data?.length) setGroupId(groups.data[0].id);
@@ -69,9 +70,22 @@ export function Groups() {
           </p>
           <p className="ref">
             Доли ошибок считаются среди курсантов с оценёнными попытками; повторные попытки
-            одного человека не увеличивают долю. Рекомендации сформированы по правилам,
-            не нейросетью.
+            одного человека не увеличивают долю. Табличные рекомендации всегда формируются
+            воспроизводимыми правилами.
           </p>
+          <section className="group-insight">
+            <button type="button" disabled={!report.data.scored_attempts || insight.isPending}
+              onClick={() => groupId && insight.mutate(groupId)}>
+              {insight.isPending ? "Qwen анализирует агрегаты…" : "Сформировать локальный ИИ-инсайт"}
+            </button>
+            <span className="ref">В модель передаются только агрегаты без ФИО и попыток отдельных курсантов.</span>
+            {insight.data && <div>
+              <strong>Вывод Qwen</strong>
+              <p>{insight.data.summary}</p>
+              <ol>{insight.data.priorities.map((item) => <li key={item}>{item}</li>)}</ol>
+            </div>}
+            {insight.isError && <p className="warn">ИИ-инсайт не сформирован; табличная аналитика остаётся доступна.</p>}
+          </section>
           <table className="grid">
             <thead><tr><th>Типичная ошибка</th><th>Курсанты</th><th>Рекомендация</th></tr></thead>
             <tbody>

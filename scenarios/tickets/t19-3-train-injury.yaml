@@ -43,7 +43,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: платформа Лианозово
+  address: "платформа Лианозово, железнодорожный переход со стороны Лианозовского рынка"
   victims: 1
 
 tree:

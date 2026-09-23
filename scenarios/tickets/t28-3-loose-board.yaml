@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: calm }
     - { stage: interview, mood: calm }
 
-first_line: "На вокзале табло висит на честном слове, под ним палатка торговая."
+first_line: "На табло с расписанием пригородных поездов не хватает одного крепления, есть угроза падения на торговую палатку."
 
 facts:
   - id: f_address
@@ -28,10 +28,10 @@ facts:
     value: "нет одного крепления на табло с расписанием пригородных поездов, есть угроза падения на торговую палатку"
     reveal_on: { question: q_what_happened }
   - id: f_scale
-    value: "табло одно, держится на оставшихся креплениях"
+    value: "одно табло, отсутствует одно крепление"
     reveal_on: { question: q_scale }
   - id: f_threat
-    value: "пострадавших нет, под табло проходят люди"
+    value: "пострадавших нет; табло может упасть на торговую палатку"
     reveal_on: { question: q_threat }
   - id: f_caller
     value: "Орлова Инна Сергеевна, телефон 903-226-13-83"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "Комсомольская площадь, дом 5, Ярославский вокзал"
+  address: "Комсомольская площадь, дом 5, платформа пригородного направления № 3, Ярославский вокзал"
   victims: 0
 
 tree:

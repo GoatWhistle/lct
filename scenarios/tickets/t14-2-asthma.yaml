@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: panic }
     - { stage: interview, mood: worried }
 
-first_line: "Брат задыхается, у него астма! Ингалятор не помогает!"
+first_line: "Брат задыхается, у него астма!"
 
 facts:
   - id: f_address
@@ -31,7 +31,7 @@ facts:
     value: "Ковалев Иван Сергеевич, 12 лет"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: "в сознании, дышит тяжело"
+    value: "у подростка приступ астмы и затруднённое дыхание; сведения о сознании не указаны"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: "вызывает брат, ему 19 лет, телефон 916 897 5623"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description]
 
 ground_truth:
-  address: "Ленинградское шоссе, дом 112, корпус 4, квартира 385"
+  address: "Ленинградское шоссе, дом 112, корпус 4, квартира 385, подъезд 29, этаж 3, код домофона 385В"
   victims: 1
 
 tree:

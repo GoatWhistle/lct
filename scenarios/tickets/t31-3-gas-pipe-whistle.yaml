@@ -28,10 +28,10 @@ facts:
     value: "свист от газовой трубы в квартире, на кухне"
     reveal_on: { question: q_what_happened }
   - id: f_scale
-    value: "свистит одна труба, запаха газа нет"
+    value: "количество труб и наличие запаха газа не указаны"
     reveal_on: { question: q_scale }
   - id: f_threat
-    value: "пострадавших нет, скорая не требуется"
+    value: "03 не требуется; сведения о пострадавших не указаны"
     reveal_on: { question: q_threat }
   - id: f_caller
     value: "Трунов Олег Егорович, телефон 916-320-12-83"
@@ -47,8 +47,8 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description]
 
 ground_truth:
-  address: "улица Вавилова, дом 81, корпус 1, квартира 5"
-  victims: 0
+  address: "улица Вавилова, дом 81, корпус 1, квартира 5, подъезд 1, этаж 2, код домофона 5В"
+  victims: null
 
 tree:
   pregenerated: false

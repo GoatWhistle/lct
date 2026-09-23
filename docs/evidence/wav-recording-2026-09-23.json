@@ -1,0 +1,12 @@
+{
+  "backend": "http://127.0.0.1:8115",
+  "session_id": "34d2e349-0f13-4b0a-89e1-a081429fe0e0",
+  "content_type": "audio/wav",
+  "bytes": 35182,
+  "channels": 1,
+  "sample_rate": 16000,
+  "frames": 17569,
+  "duration_seconds": 1.0980625,
+  "pass_wav_recording": true,
+  "scope": "synthetic 440-Hz operator audio; VOICE_ENABLED=false, therefore no TTS track"
+}

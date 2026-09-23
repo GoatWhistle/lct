@@ -52,7 +52,7 @@ required_fields: [address, floor, incident_type, description]
 
 ground_truth:
   address: "улица Грина, дом 11"
-  victims: 0
+  victims: null
 
 tree:
   pregenerated: false

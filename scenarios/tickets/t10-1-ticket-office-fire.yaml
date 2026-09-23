@@ -44,7 +44,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: железнодорожная станция Текстильщики
+  address: "железнодорожная станция Текстильщики, платформа в сторону области, подъезд для служб со стороны улицы Люблинской"
   victims: 1
 
 tree:

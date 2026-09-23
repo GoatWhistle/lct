@@ -43,8 +43,8 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Домодедовская, дом 34, корпус 1"
-  victims: 1
+  address: "улица Домодедовская, дом 34, корпус 1, двор у третьего подъезда"
+  victims: null
 
 tree:
   pregenerated: false

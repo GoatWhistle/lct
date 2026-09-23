@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "Женщине плохо, на парковке лежит, сознание потеряла!"
+first_line: "Женщине плохо на автомобильной парковке, сознание потеряла!"
 
 facts:
   - id: f_address
@@ -31,7 +31,7 @@ facts:
     value: "женщина на вид сорока лет, имени не знаю"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: "без сознания, дышит"
+    value: "без сознания"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: "Иванова Ирина Петровна, телефон 916 897 5623"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Московская область, Балашиха, Мирской проезд, дом 16"
+  address: "Московская область, Балашиха, Мирской проезд, дом 16, со стороны мусорной площадки"
   victims: 1
 
 tree:

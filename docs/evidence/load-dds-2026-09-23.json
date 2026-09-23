@@ -1,0 +1,26 @@
+{
+  "measured_at": "2026-09-23",
+  "target": "http://127.0.0.1:8114",
+  "backend_mode": "demo_no_db",
+  "scenario": "fire-apartment-l2",
+  "sessions_started": 20,
+  "clients_connected": 100,
+  "stations": 20,
+  "observers": 80,
+  "rounds_per_session": 10,
+  "actions_completed": 200,
+  "observer_state_events": 800,
+  "observer_state_expected": 800,
+  "round_trip_ms": {
+    "min": 1.5774579987919424,
+    "median": 3.7742710028396687,
+    "p95": 4.879708001681138,
+    "max": 5.733500001952052
+  },
+  "actions_per_second": 688.1085109093078,
+  "setup_seconds": 0.10395862499717623,
+  "load_seconds": 0.29065183300190256,
+  "errors": [],
+  "pass_backend_event_2s": true,
+  "scope": "backend WS event RTT and fan-out only; not browser UI, VoIP, DB TPS or 100 distinct accounts"
+}

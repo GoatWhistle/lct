@@ -18,6 +18,10 @@ from app.session.hub import hub
 
 @pytest.fixture
 def client():
+    # Each TestClient represents a fresh backend process.  In particular,
+    # revocations exercised by a previous test must not leak into the next
+    # process' in-memory cache.
+    auth.prime_generations({})
     with TestClient(app) as test_client:
         hub.journal = None
         yield test_client
@@ -49,6 +53,12 @@ def test_cookie_from_previous_process_is_rejected(client, monkeypatch):
     assert client.get("/api/auth/me").status_code == 401
 
 
+def test_cookie_survives_generation_cache_reload_when_account_is_unchanged(client):
+    assert client.post("/api/auth/dev-token").status_code == 200
+    auth.prime_generations({"dev": 0})
+    assert client.get("/api/auth/me").status_code == 200
+
+
 class FakeDb:
     def __init__(self, user):
         self.user = user
@@ -74,7 +84,7 @@ def fake_user(login="victim", role="instructor"):
     return SimpleNamespace(
         id=uuid4(), login=login, full_name="Проверка", role=role,
         service=None, trainee_id=None, blocked=False,
-        password_hash="old", created_at=datetime.now(timezone.utc),
+        password_hash="old", auth_version=0, created_at=datetime.now(timezone.utc),
     )
 
 
@@ -86,7 +96,10 @@ async def test_admin_patch_revokes_cookie_after_commit(monkeypatch):
     monkeypatch.setattr(admin, "require", lambda _request, *_roles: auth.Principal(
         login="admin", full_name="Администратор", role=Role.ADMIN,
     ))
-    monkeypatch.setattr(admin, "invalidate_login", lambda login: calls.append((login, db.commits)))
+    monkeypatch.setattr(
+        admin, "invalidate_login",
+        lambda login, version=None: calls.append((login, version, db.commits)),
+    )
 
     async def no_audit(*_args, **_kwargs):
         return None
@@ -94,7 +107,7 @@ async def test_admin_patch_revokes_cookie_after_commit(monkeypatch):
     monkeypatch.setattr(admin, "audit", no_audit)
     await admin.patch_user(user.id, admin.UserPatch(blocked=True), object(), db)
     assert user.blocked is True
-    assert calls == [("victim", 1)]
+    assert calls == [("victim", 1, 1)]
 
 
 @pytest.mark.asyncio

@@ -61,6 +61,7 @@ export const GROUPS: FieldGroup[] = [
       { path: "caller_number", label: "Номер телефона", kind: "text", readOnly: true },
       { path: "caller_name", label: "ФИО", kind: "text" },
       { path: "caller_contact", label: "Контактный телефон", kind: "text" },
+      { path: "phone_on_scene", label: "Телефон на место", kind: "text" },
       { path: "language", label: "Язык общения", kind: "text" },
     ],
   },

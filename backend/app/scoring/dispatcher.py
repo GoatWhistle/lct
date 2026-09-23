@@ -130,16 +130,13 @@ def evaluate_dispatcher(
 def dispatcher_metrics(state, deadline_ms: int) -> list[Metric]:
     """Числовая часть оценки ДДС; каждый проверяемый шаг имеет факт и норму.
 
-    Веса предварительные — до утверждения методистом. Неподтверждённые
-    телефонные действия нельзя засчитывать по одной кнопке статуса.
+    Веса предварительные — до утверждения методистом. Телефон — возможный
+    источник информации, но не обязательный шлюз статуса.
     """
     metrics: list[Metric] = []
-    for service in state.notified_services():
+    for service in state.managed_services():
         marks = [mark for mark in state.status_log if mark.service == service]
         statuses = {mark.status for mark in marks}
-        reports = {report.phase for report in state.phone_reports if report.service == service}
-        selected_crew = state.crew_assignments.get(service)
-        selected = selected_crew is not None
 
         def add(key: str, title: str, passed: bool, fact: str, norm: str, weight: float = 1.0):
             metrics.append(Metric(
@@ -153,7 +150,7 @@ def dispatcher_metrics(state, deadline_ms: int) -> list[Metric]:
                    if primary and state.dispatched_at else None)
         add("dds_primary", "решение по карточке", primary is not None,
             primary.status.value if primary else "решение отсутствует", "Принята или Не принята", 2.0)
-        add("dds_ack", "первичная отметка за 30 с",
+        add("dds_ack", f"первичная отметка за {deadline_ms // 1000} с",
             elapsed is not None and elapsed <= deadline_ms,
             f"{elapsed / 1000:.1f} с" if elapsed is not None else "не отмечено",
             f"≤ {deadline_ms // 1000} с")
@@ -164,22 +161,14 @@ def dispatcher_metrics(state, deadline_ms: int) -> list[Metric]:
             primary.status.value, "профильную заявку принять", 2.0)
         if primary.status is ServiceStatus.DECLINED:
             continue
-        add("dds_crew", "ручной выбор бригады", selected,
-            selected_crew or "бригада не выбрана", "выбрать конкретную бригаду", 1.5)
-        add("dds_contact", "связь с бригадой", bool(reports),
-            ", ".join(sorted(reports)) or "докладов нет", "получить доклад о выезде", 1.5)
         expected = {
-            "dispatched": ServiceStatus.RESPONDING,
-            "arrived": ServiceStatus.ARRIVED,
-            "working": ServiceStatus.WORKING,
+            ServiceStatus.RESPONDING, ServiceStatus.ARRIVED, ServiceStatus.WORKING,
         }
-        aligned = all(status in statuses for phase, status in expected.items() if phase in reports)
-        all_progress = all(phase in reports and status in statuses for phase, status in expected.items())
-        add("dds_progress", "статусы по докладам", aligned and all_progress,
+        add("dds_progress", "ведение хода реагирования", expected <= statuses,
             ", ".join(status.value for status in statuses) or "статусов нет",
-            "выезд, прибытие и работы отмечены после докладов", 2.0)
-        add("dds_completion", "закрытие работ по докладу",
-            "completed" in reports and ServiceStatus.COMPLETED in statuses,
+            "начало реагирования, прибытие и работы отмечены по полученной информации", 2.0)
+        add("dds_completion", "закрытие работ",
+            ServiceStatus.COMPLETED in statuses,
             "завершено" if ServiceStatus.COMPLETED in statuses else "не завершено",
-            "доклад о завершении и статус «Работы завершены»")
+            "по факту поставить статус «Работы завершены»")
     return metrics

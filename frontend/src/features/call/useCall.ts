@@ -69,7 +69,20 @@ export function useCall(sessionId: string | null) {
   useEffect(() => {
     if (!sessionId) return;
     const ch = callChannel(sessionId, {
-      onStatus: setStatus,
+      onStatus: (next) => {
+        setStatus(next);
+        if (next === "open") {
+          // Браузер не подтверждает доставку WebSocket-кадра. Всё, что ещё
+          // отмечено pending и не пришло эхом от сервера, повторяем после
+          // reconnect: kio.patch идемпотентен и не создаёт двойных действий.
+          queueMicrotask(() => setCard((current) => {
+            if (Object.keys(current.pending).length) {
+              channel.current?.send({ type: "kio.patch", fields: current.pending });
+            }
+            return current;
+          }));
+        }
+      },
       onBinary: (frame) => audio.current?.playback.enqueue(frame),
       onEvent: (event: ServerToTrainee) => {
         if (event.type === "card.briefing") {

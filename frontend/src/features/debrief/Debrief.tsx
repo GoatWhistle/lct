@@ -27,6 +27,16 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
         Скачать отчёт: <a href={`/api/sessions/${report.session_id}/report.csv`}>CSV</a>
         {" · "}<a href={`/api/sessions/${report.session_id}/report.pdf`}>PDF</a>
       </p>
+      <p className={report.passed ? "state-ok" : "state-violated"}>
+        {report.passed ? "Зачёт" : "Не зачтено"}: нарушено {report.failed_metrics} метрик,
+        допустимо {report.criteria.allowed_errors}. Лимит решения ДДС —
+        {` ${report.criteria.decision_time_limit_seconds} с`}; грамматика
+        {report.criteria.require_correct_grammar ? " входит" : " не входит"} в оценку.
+      </p>
+      {Object.keys(report.criteria.score_weights ?? {}).length > 0 && <p className="ref">
+        Преподаватель переопределил веса: {Object.entries(report.criteria.score_weights ?? {})
+          .map(([key, weight]) => `${key} — ${weight}`).join("; ")}.
+      </p>}
 
       <div className="columns">
         <section>
@@ -38,6 +48,7 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
                   <th>{metric.title}</th>
                   <td className={metric.passed ? "state-ok" : "state-violated"}>
                     {metric.fact} · норматив {metric.norm}
+                    {` · вес ${metric.weight ?? 1}`}
                     {metric.ref && <span className="ref"> ({metric.ref})</span>}
                   </td>
                 </tr>

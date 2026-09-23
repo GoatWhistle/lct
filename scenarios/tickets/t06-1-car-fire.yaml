@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: calm }
     - { stage: interview, mood: calm }
 
-first_line: "На МКАД машина горит, я мимо еду."
+first_line: "На МКАД горит машина!"
 
 facts:
   - id: f_address
@@ -30,7 +30,7 @@ facts:
     value: "горит фольксваген красного цвета, номер Х 863 МН 199"
     reveal_on: { question: q_what_burns }
   - id: f_people
-    value: "пострадавших нет, из машины все вышли"
+    value: "пострадавших нет"
     reveal_on: { question: q_people }
   - id: f_caller
     value: "Попов Виктор Дмитриевич, очевидец, телефон 916-123-98-78"

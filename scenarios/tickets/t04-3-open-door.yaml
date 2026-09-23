@@ -18,14 +18,14 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "Сосед третий день не открывает, он пожилой, инвалид, живёт один."
+first_line: "Пожилой одинокий инвалид третий день не открывает дверь в квартиру."
 
 facts:
   - id: f_address
     value: "Зеленоград, 9-й микрорайон, корпус 902, квартира 45, подъезд 1, этаж 3, код 45В"
     reveal_on: { question: q_address }
   - id: f_what_happened
-    value: "не открывает дверь третий день, на звонки не отвечает"
+    value: "не открывает дверь третий день"
     reveal_on: { question: q_what_happened }
   - id: f_who
     value: "пожилой инвалид, живёт один"
@@ -43,8 +43,8 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description]
 
 ground_truth:
-  address: "Зеленоград, 9-й микрорайон, корпус 902, квартира 45"
-  victims: 1
+  address: "Зеленоград, 9-й микрорайон, корпус 902, квартира 45, подъезд 1, этаж 3, код домофона 45В"
+  victims: null
 
 tree:
   pregenerated: false

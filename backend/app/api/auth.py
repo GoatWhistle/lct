@@ -16,6 +16,7 @@
 """
 
 import asyncio
+import hashlib
 import logging
 import secrets
 import weakref
@@ -24,7 +25,7 @@ from uuid import UUID
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import APIRouter, HTTPException, Request, WebSocket
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.config import get_settings
@@ -37,10 +38,12 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 DEMO_TRAINEE_ID = UUID("00000000-0000-4000-8000-000000000112")
 
 _hasher = PasswordHasher()
-# Cookie is signed, but carries a role snapshot. A changed account must not
-# keep its old privileges for the full 12-hour cookie lifetime. Compose runs
-# one worker; the process marker also invalidates all cookies after restart.
-_INSTANCE = secrets.token_urlsafe(32)
+# Cookie is signed and may safely survive a backend restart. Marker changes
+# only together with SESSION_SECRET; account edits are revoked independently
+# through the persistent auth_version loaded below.
+_INSTANCE = hashlib.sha256(
+    f"lct-auth-instance:{get_settings().session_secret}".encode()
+).hexdigest()
 _generations: dict[str, int] = {}
 _active_sockets: dict[str, weakref.WeakKeyDictionary] = {}
 
@@ -53,9 +56,21 @@ async def _close_revoked(ws: WebSocket) -> None:
         pass
 
 
-def invalidate_login(login: str) -> None:
+def prime_generations(values: dict[str, int]) -> None:
+    """Загрузить версии полномочий из БД при старте нового процесса."""
+    _generations.clear()
+    _generations.update(values)
+
+
+async def load_generations() -> None:
+    async with get_sessionmaker()() as db:
+        rows = (await db.execute(select(User.login, User.auth_version))).all()
+    prime_generations({login: version for login, version in rows})
+
+
+def invalidate_login(login: str, version: int | None = None) -> None:
     """Revoke previously issued cookies after account/role/password changes."""
-    _generations[login] = _generations.get(login, 0) + 1
+    _generations[login] = version if version is not None else _generations.get(login, 0) + 1
     for ws, loop in list(_active_sockets.get(login, {}).items()):
         try:
             if not loop.is_closed():
@@ -117,8 +132,8 @@ class Principal(BaseModel):
 
 
 class LoginIn(BaseModel):
-    login: str
-    password: str
+    login: str = Field(min_length=3, max_length=80)
+    password: str = Field(min_length=1, max_length=1024)
 
 
 def _demo_local(request: Request) -> None:
@@ -199,9 +214,16 @@ async def login(payload: LoginIn, request: Request) -> dict:
     # Одинаковый ответ на неизвестный логин и неверный пароль: иначе форма
     # входа превращается в список действующих учётных записей.
     if user is None or not verify_password(user.password_hash, payload.password):
+        # Не записываем пароль, IP либо факт существования учётной записи.
+        # Логин нужен администратору для расследования перебора; ограничиваем
+        # длину до размера поля AuditLog.actor.
+        await audit(payload.login[:80], "unknown", "login.failed")
         raise HTTPException(status_code=401, detail="bad_credentials")
     if user.blocked:
+        await audit(user.login, user.role, "login.blocked")
         raise HTTPException(status_code=403, detail="blocked")
+
+    _generations[user.login] = user.auth_version
 
     who = Principal(
         login=user.login,

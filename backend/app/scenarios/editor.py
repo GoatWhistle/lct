@@ -5,6 +5,7 @@
 """
 
 from copy import deepcopy
+import re
 
 from pydantic import ValidationError
 
@@ -12,6 +13,31 @@ from app.scenarios.loader import ScenarioError, _derive_ground_truth
 from app.scenarios.schema import Scenario
 
 DERIVED_TRUTH = {"incident_type", "dds", "incident_code", "notify", "required_facts"}
+PLACEHOLDER = re.compile(r"\{\{?\s*[a-zA-Z_][\w.-]*\s*\}?\}")
+
+
+def classifier_sign_gaps(signs: list[str], narrative: list[str]) -> list[str]:
+    """Найти признаки ЕКП, которые не подтверждены текстом сценария.
+
+    Сравниваются трёхбуквенные основы, поэтому русские окончания
+    (``жилой дом`` / ``жилого дома``) не создают ложного расхождения. Это
+    намеренно строгая, детерминированная граница: модель не может заявить
+    один объект, а в карточку незаметно положить код другого.
+    """
+    def stems(value: str) -> set[str]:
+        return {
+            word[:3]
+            for word in re.findall(r"[0-9a-zа-яё]+", value.casefold())
+            if len(word) >= 3
+        }
+
+    present = stems(" ".join(narrative))
+    gaps: list[str] = []
+    for sign in signs:
+        required = stems(sign)
+        if required and not required <= present:
+            gaps.append(sign)
+    return gaps
 
 
 def template_copy(source: Scenario, draft_id: str, title: str | None = None) -> dict:
@@ -92,9 +118,26 @@ def validate(body: dict) -> Scenario:
         if item.fact and item.fact not in known:
             raise ScenarioError(f"пункт {item.id} ссылается на факт {item.fact}, которого нет")
     for fact in scenario.facts:
+        if PLACEHOLDER.search(fact.value) or (fact.refined and PLACEHOLDER.search(fact.refined)):
+            raise ScenarioError(
+                f"факт {fact.id}: остался плейсхолдер вместо конкретного ответа заявителя"
+            )
         question_id = fact.reveal_on.question if fact.reveal_on else None
         if question_id and question_id not in question_ids:
             raise ScenarioError(f"факт {fact.id} раскрывается несуществующим вопросом {question_id}")
         if fact.refine_on and fact.refine_on not in question_ids:
             raise ScenarioError(f"факт {fact.id} уточняется несуществующим вопросом {fact.refine_on}")
+    # Для старых карточек и безопасных вариаций классификатор уже утверждён
+    # заказчиком. Новый свободный сюжет обязан доказать свой путь ЕКП текстом.
+    if scenario.id.startswith("ai-full-"):
+        gaps = classifier_sign_gaps(
+            scenario.signs,
+            [scenario.title, scenario.first_line]
+            + [fact.value for fact in scenario.facts]
+            + [fact.refined for fact in scenario.facts if fact.refined],
+        )
+        if gaps:
+            raise ScenarioError(
+                "signs: сюжет не подтверждает путь ЕКП: " + ", ".join(gaps)
+            )
     return _derive_ground_truth(scenario)

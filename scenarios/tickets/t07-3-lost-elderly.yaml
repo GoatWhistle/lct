@@ -43,8 +43,8 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Маршала Соколовского, дом 1, квартира 5"
-  victims: 1
+  address: "улица Маршала Соколовского, дом 1, квартира 5, подъезд 1, этаж 2, код домофона 5В"
+  victims: null
 
 tree:
   pregenerated: false

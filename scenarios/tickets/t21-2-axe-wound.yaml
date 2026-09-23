@@ -31,10 +31,10 @@ facts:
     value: "Перова Ирина Ивановна, дата рождения 10.02.1956, вызывает себе"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: в сознании
+    value: "состояние сознания в исходной карточке не указано"
     reveal_on: { question: q_conscious }
   - id: f_caller
-    value: телефон 916 896 3254
+    value: "Перова Ирина Ивановна, вызывает себе, телефон 916 896 3254"
     reveal_on: { question: q_caller }
 
 checklist:
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "дорога от Клина в сторону Лотошино, у церкви"
+  address: "дорога от Клина в сторону Лотошино, не доезжая Теряевских прудов, поворот к церкви, дом напротив остановки"
   victims: 1
 
 tree:

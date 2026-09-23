@@ -8,43 +8,43 @@
 преподавателю, уходит на его же сокет `observe`.
 """
 
+import asyncio
 import logging
 import math
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from app.domain.events import (
-    CallEndReason,
-    CallEnded,
-    ErrorEvent,
-    ErrorKind,
-    ScoreReady,
-    CallIncoming,
-    CardBriefing,
-    Exercise,
-    StationState,
-    InstructorToServer,
-    InstructorNoteShown,
-    ModeSet,
-    ReferenceStarted,
-    SessionEnded,
-)
-import asyncio
-
-from app.dialog.factory import build_caller
+from app.api.auth import audit, principal_of
 from app.dialog.director import apply as apply_directive
 from app.dialog.director import mood_of
+from app.dialog.factory import build_caller
 from app.dialog.persona import PersonaState
 from app.dialog.runtime import get_embedder
 from app.dialog.slots import SlotMachine
-from app.scenarios import store
-from app.api.auth import audit, principal_of
+from app.domain.events import (
+    CallEnded,
+    CallEndReason,
+    CallIncoming,
+    CardBriefing,
+    ErrorEvent,
+    ErrorKind,
+    Exercise,
+    InstructorNoteShown,
+    InstructorToServer,
+    ModeSet,
+    ReferenceStarted,
+    ScoreReady,
+    SessionEnded,
+    StationState,
+)
 from app.domain.roles import Role
+from app.domain.timers import TimerCode
+from app.scenarios import store
+from app.session.dds import prepare_queue
 from app.session.hub import hub
 from app.session.state import SessionState, now_utc
-from app.session.dds import prepare_card
 from app.voice.models import get_voice_models
 from app.voice.pipeline import FILLERS, prefetch
 
@@ -93,10 +93,10 @@ async def _start(session_id: UUID, event, who=None) -> None:
 
     scenario_ids = event.scenario_ids or [event.scenario_id]
     if event.exercise is Exercise.DDS:
-        if not scenario_ids or scenario_ids[0] != event.scenario_id or len(scenario_ids) > 10:
+        if not scenario_ids or scenario_ids[0] != event.scenario_id or len(scenario_ids) > 96:
             hub.to_observers(session_id, ErrorEvent(
                 code=ErrorKind.SCENARIO_INVALID,
-                message="Очередь ДДС должна начинаться с scenario_id и содержать не более 10 карточек",
+                message="Очередь ДДС должна начинаться с scenario_id и содержать не более 96 карточек",
             ))
             return
         scenarios = [store.get(scenario_id) for scenario_id in scenario_ids]
@@ -110,10 +110,19 @@ async def _start(session_id: UUID, event, who=None) -> None:
 
     attempt = 1
     recorded_trainee_id = event.trainee_id
+    recorded_service = None
     if hub.journal:
-        attempt, recorded_trainee_id = await hub.journal.start_lesson(
-            session_id, scenario.id, event.mode.value, event.trainee, event.trainee_id
-        )
+        try:
+            attempt, recorded_trainee_id, recorded_service = await hub.journal.start_lesson(
+                session_id, scenario.id, event.mode.value, event.trainee, event.trainee_id,
+                owner_login=who.login if who is not None else None,
+            )
+        except PermissionError:
+            hub.to_observers(session_id, ErrorEvent(
+                code=ErrorKind.FORBIDDEN,
+                message="Занятие создано другим преподавателем",
+            ))
+            return
 
     # Занятие собирается целиком и только потом регистрируется: иначе
     # наблюдатель, подключившийся в эту щель, увидит полусобранное состояние
@@ -124,23 +133,35 @@ async def _start(session_id: UUID, event, who=None) -> None:
         scenario_title=scenario.title,
         level=scenario.level.value,
         mode=event.mode,
+        owner_login=who.login if who is not None else None,
         exercise=event.exercise,
         handoff_to_dds=event.handoff_to_dds,
         scenario=scenario.model_copy(deep=True),
         required_fields=scenario.required_fields,
         trainee_name=event.trainee,
         trainee_id=recorded_trainee_id,
+        dds_service=recorded_service or event.dds_service,
         attempt=attempt,
+        criteria=event.criteria,
     )
+    state.timers.limits[TimerCode.DDS_ACK] = event.criteria.decision_time_limit_seconds * 1000
     if event.exercise is Exercise.CALL:
         embedder = get_embedder()
         if embedder is not None:
             state.slots = SlotMachine(state.scenario, embedder)
         state.persona = PersonaState(state.scenario.persona)
-        state.caller = build_caller(scenario.id)
+        state.caller = build_caller(
+            scenario.id,
+            use_pregenerated=scenario.tree.pregenerated,
+        )
     elif event.exercise is Exercise.DDS:
         state.dds_scenarios = [item.model_copy(deep=True) for item in scenarios]
-        prepare_card(state, state.dds_scenarios[0])
+        prepare_queue(
+            state,
+            state.dds_scenarios,
+            arrival_interval_seconds=event.dds_arrival_interval_seconds,
+            max_waiting=event.dds_max_waiting,
+        )
         state.started_at = state.dispatched_at
     else:
         state.started_at = now_utc()
@@ -155,13 +176,19 @@ async def _start(session_id: UUID, event, who=None) -> None:
         if models is not None:
             asyncio.create_task(prefetch(models, [scenario.first_line, *FILLERS.values()]))
         state.on_event("call.incoming")
+    await hub.checkpoint(session_id)
     hub.start_ticker(session_id)
     if who is not None:
         # Запуск занятия меняет чужой результат — значит попадает в журнал
         # аудита (ТЗ, хранение не менее шести месяцев).
-        asyncio.create_task(
-            audit(who.login, who.role.value, "lesson.start", str(session_id),
-                  f"{scenario.id}, режим {event.mode.value}, курсант {event.trainee}")
+        # Сохраняем до продолжения сценария, чтобы завершение процесса не
+        # потеряло событие. ФИО курсанта в долгоживущий журнал не дублируем.
+        await audit(
+            who.login,
+            who.role.value,
+            "lesson.start",
+            str(session_id),
+            f"{scenario.id}, режим {event.mode.value}",
         )
 
     if event.exercise is Exercise.CALL:
@@ -191,18 +218,22 @@ async def _stop(session_id: UUID) -> None:
         return
     state.ended_at = now_utc()
     state.end_reason = CallEndReason.INSTRUCTOR
+    if state.voice is not None:
+        await state.voice.close()
     hub.stop_ticker(session_id)
     hub.to_observers(session_id, SessionEnded(reason=CallEndReason.INSTRUCTOR))
-    if state.exercise in {Exercise.DDS, Exercise.CARD}:
-        from app.session.finish import finish
+    from app.session.finish import finish
 
+    if state.exercise in {Exercise.DDS, Exercise.CARD}:
         if state.exercise is Exercise.DDS or state.handoff_to_dds and state.dispatched_card is not None:
             hub.to_station(session_id, SessionEnded(reason=CallEndReason.INSTRUCTOR))
         else:
             hub.to_trainee(session_id, CallEnded(reason=CallEndReason.INSTRUCTOR))
-        await finish(session_id, state)
         if state.exercise is Exercise.DDS or state.handoff_to_dds and state.dispatched_card is not None:
             hub.to_station(session_id, ScoreReady(session_id=session_id))
+    else:
+        hub.to_trainee(session_id, CallEnded(reason=CallEndReason.INSTRUCTOR))
+    await finish(session_id, state)
     if hub.journal:
         await hub.journal.session_ended(session_id, state.ended_at, CallEndReason.INSTRUCTOR.value)
 
@@ -234,6 +265,21 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                     session_id,
                     ErrorEvent(code=ErrorKind.UNSUPPORTED_EVENT, message=str(payload)[:200]),
                 )
+                continue
+
+            existing_state = hub.get(session_id)
+            if event.type == "scenario.start":
+                if existing_state is not None:
+                    hub.to_observers(session_id, ErrorEvent(
+                        code=ErrorKind.FORBIDDEN,
+                        message="Для нового занятия создайте новый номер сессии",
+                    ))
+                    continue
+            elif existing_state is None or existing_state.owner_login != who.login:
+                hub.to_observers(session_id, ErrorEvent(
+                    code=ErrorKind.FORBIDDEN,
+                    message="Это занятие принадлежит другому преподавателю",
+                ))
                 continue
 
             match event.type:
@@ -315,7 +361,7 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                     if result.needs_network:
                         hub.to_observers(session_id, ErrorEvent(
                             code=ErrorKind.DIRECTIVE_NEEDS_NETWORK,
-                            message="Свободный текст требует LLM: офлайн доступны только кнопки",
+                            message="Свободный текст требует локально запущенной модели; без неё доступны кнопки",
                         ))
                         continue
                     state.directives.append(event.directive)
@@ -338,5 +384,6 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                             message=f"{event.type} ещё не реализовано",
                         ),
                     )
+            await hub.checkpoint(session_id)
     except WebSocketDisconnect:
         return

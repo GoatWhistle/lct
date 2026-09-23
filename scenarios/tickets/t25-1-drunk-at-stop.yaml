@@ -10,7 +10,8 @@ topics: [police]
 modes: [training, exam, self]
 
 extends: checklists/police.yaml
-signs: ["Пьют, курят в неположенном месте", Пьяный в общественном месте]
+# Источник сообщает о ругани и хватании прохожих, но не о распитии или курении.
+signs: [Хулиганство, Пьяный в общественном месте]
 
 persona:
   base: calm
@@ -30,7 +31,7 @@ facts:
     value: "нетрезвый сильно ругается и хватает прохожих за руки, скорая не требуется"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: пострадавших нет
+    value: "сведений о пострадавших нет; в исходной карточке указано «03 не требуется»"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "Соколов Иван Петрович, очевидец, телефон 916 896 3254"
@@ -46,8 +47,8 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Фабрициуса, дом 18"
-  victims: 0
+  address: "улица Фабрициуса, дом 18, остановка № 62 «улица Штурвальная»"
+  victims: null
 
 tree:
   pregenerated: false

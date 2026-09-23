@@ -90,6 +90,7 @@ class KIO(BaseModel):
     caller_number: str | None = None
     caller_name: str | None = None
     caller_contact: str | None = None
+    phone_on_scene: str | None = None
     language: str = "ru"
 
     # Место

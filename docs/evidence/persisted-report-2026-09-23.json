@@ -1,0 +1,13 @@
+{
+  "checked_at": "2026-09-23T10:41:50Z",
+  "session_id": "de882da7-da73-472a-a9f0-dba0014bf45b",
+  "backend_restart_ms": 4093.44,
+  "live_json_ms": 3.186,
+  "persisted_json_ms": 4.198,
+  "persisted_csv_ms": 2.616,
+  "persisted_pdf_ms": 191.173,
+  "pdf_bytes": 51432,
+  "requirement_ms": 30000,
+  "passed": true,
+  "scope": "card exercise; real PostgreSQL; report fetched after backend restart"
+}

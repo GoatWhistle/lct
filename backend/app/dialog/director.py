@@ -41,7 +41,7 @@ class DirectiveResult:
     say: str | None = None
     #: Оборвать связь: звук на полуслове, дальше обратный дозвон.
     drop_line: bool = False
-    #: Директива требует сети (свободный текст без LLM).
+    #: Директива требует локально работающую модель (без неё — только кнопки).
     needs_network: bool = False
 
 
@@ -72,14 +72,15 @@ def apply(state, directive: str) -> DirectiveResult:
                     state.slots.invalidate(fact.id)
         return DirectiveResult(applied=True, say=HARD_LINES[directive])
 
-    # Свободный текст уходит в контекст персоны — но подставить его в реплику
-    # может только LLM. Офлайн-дерево предгенерировано, произвольную фразу
-    # взять неоткуда (docs/arch/CONTRACT.md).
+    # Свободный текст разрешён лишь в режиме локальной модели. Он управляет
+    # интонацией, но не раскрывает факты и не меняет правила 112.
+    from app.dialog.caller import LlmCaller
+
+    if not isinstance(state.caller, LlmCaller) or len(directive) > 500:
+        return DirectiveResult(applied=False, needs_network=True)
     if state.persona is not None:
-        state.persona.directive = None
-    if state.directives is not None:
-        state.directives.append(directive)
-    return DirectiveResult(applied=False, needs_network=True)
+        state.persona.directive = directive
+    return DirectiveResult(applied=True)
 
 
 def mood_of(state) -> Mood:

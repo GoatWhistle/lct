@@ -30,7 +30,7 @@ from app.domain.roles import Role  # noqa: E402
 PEOPLE = [
     ("admin", "Администратор стенда", Role.ADMIN, None),
     ("teacher", "Преподаватель", Role.INSTRUCTOR, None),
-    ("trainee", "Курсант", Role.TRAINEE, "ДДС района"),
+    ("trainee", "Курсант", Role.TRAINEE, "Служба 101"),
 ]
 
 

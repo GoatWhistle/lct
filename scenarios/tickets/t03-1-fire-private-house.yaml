@@ -22,7 +22,7 @@ persona:
     - { stage: interview,    mood: worried }
     - { stage: dispatch,     mood: calm }
 
-first_line: "Здравствуйте! У нас крыша горит, дом деревянный! Приезжайте!"
+first_line: "Здравствуйте! Крыша частного дома горит!"
 
 facts:
   - id: f_address
@@ -33,14 +33,17 @@ facts:
     reveal_on: { question: q_address }
     refine_on: q_address_check
   - id: f_what_burns
-    value: "горит крыша, огонь открытый, дом деревянный"
+    value: "горит крыша частного дома"
     reveal_on: { question: q_what_burns }
   - id: f_people
-    value: "все вышли во двор, в доме никого нет"
+    value: "пострадавших нет"
     reveal_on: { question: q_people }
   - id: f_gas
     value: "дом не газифицирован, газа нет"
     reveal_on: { question: q_gas }
+  - id: f_caller
+    value: "Иванова Инна Степановна, телефон 916-126-34-71"
+    reveal_on: { question: q_caller }
 
 checklist:
   - { id: q_address,       fact: f_address }
@@ -48,6 +51,7 @@ checklist:
   - { id: q_what_burns,    fact: f_what_burns }
   - { id: q_people,        fact: f_people }
   - { id: q_gas,           fact: f_gas }
+  - { id: q_caller,        fact: f_caller }
 
 required_fields:
   - address

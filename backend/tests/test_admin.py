@@ -5,6 +5,7 @@
 """
 
 import uuid
+from xml.etree import ElementTree as ET
 
 import pytest
 from fastapi.testclient import TestClient
@@ -61,10 +62,27 @@ def test_instructor_cannot_open_admin(as_instructor):
     assert as_instructor.get("/api/admin/users").status_code == 403
     assert as_instructor.get("/api/admin/audit").status_code == 403
     assert as_instructor.get("/api/admin/status").status_code == 403
+    assert as_instructor.get("/api/admin/diagnostics").status_code == 403
+    assert as_instructor.get("/api/admin/config.xml").status_code == 403
 
 
 def test_anonymous_cannot_open_admin(client):
     assert client.get("/api/admin/users").status_code == 401
+
+
+def test_admin_downloads_safe_xml_configuration(as_admin):
+    response = as_admin.get("/api/admin/config.xml")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/xml")
+    assert "attachment" in response.headers["content-disposition"]
+    root = ET.fromstring(response.content)
+    assert root.tag == "lctConfiguration"
+    assert root.find("./workstations/workstation[@role='admin']") is not None
+    assert root.find("./timerLimits/timer[@code='dds_ack']") is not None
+    lowered = response.content.lower()
+    assert b"session_secret" not in lowered
+    assert b"llm_api_key" not in lowered
+    assert b"database_url" not in lowered
 
 
 def test_admin_has_no_way_to_change_a_score():
@@ -88,6 +106,39 @@ def test_admin_cannot_write_to_the_audit_log():
     assert not [
         path for path, method in methods if "audit" in path and method in {"POST", "PATCH", "DELETE"}
     ]
+
+
+def test_audit_api_applies_actor_action_and_offset_filters(as_admin):
+    """The admin UI must be able to reach older records, not just page zero."""
+    from app.api.http import admin as admin_module
+
+    class FakeDb:
+        statement = None
+
+        async def scalars(self, statement):
+            self.statement = statement
+            return []
+
+    fake_db = FakeDb()
+
+    async def fake_session():
+        yield fake_db
+
+    app.dependency_overrides[admin_module.get_session] = fake_session
+    try:
+        response = as_admin.get(
+            "/api/admin/audit",
+            params={"action": "login.failed", "actor": "alice", "limit": 201, "offset": 400},
+        )
+    finally:
+        app.dependency_overrides.pop(admin_module.get_session, None)
+
+    assert response.status_code == 200, response.text
+    statement = fake_db.statement
+    assert statement._limit_clause.value == 201
+    assert statement._offset_clause.value == 400
+    assert "audit_log.action" in str(statement.whereclause)
+    assert "audit_log.actor" in str(statement.whereclause)
 
 
 # ── учётные записи ──
@@ -170,7 +221,39 @@ def test_status_names_every_component(as_admin):
 
     names = {item["name"] for item in as_admin.get("/api/admin/status").json()}
     assert {"База данных", "Модели речи", "Эмбеддинги", "Провайдер LLM",
-            "Классификатор ЕКП", "Секрет сессии"} <= names
+            "Классификатор ЕКП", "Резервное копирование", "Секрет сессии",
+            "Нагрузка backend"} <= names
+
+
+def test_admin_gets_live_metrics_and_downloadable_failure_report(as_admin):
+    if not db_alive(as_admin):
+        pytest.skip("нет базы")
+
+    response = as_admin.get("/api/admin/diagnostics")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["metrics"]["cpu_cores"] >= 1
+    assert body["metrics"]["disk_total_bytes"] > body["metrics"]["disk_free_bytes"]
+    assert body["metrics"]["active_sessions"] >= 0
+    assert isinstance(body["recent_system_events"], list)
+    assert isinstance(body["failed_actions_24h"], list)
+
+    download = as_admin.get("/api/admin/diagnostics.json")
+    assert download.status_code == 200
+    assert "attachment" in download.headers["content-disposition"]
+
+
+def test_diagnostic_journal_redacts_credentials():
+    import logging
+
+    from app.monitoring import recent_events
+
+    logging.getLogger("app.redaction-test").warning(
+        "failure postgresql://user:secret@db/lct SESSION_SECRET=never-show"
+    )
+    event = recent_events(limit=1)[0]
+    assert "user:secret@" not in event["message"]
+    assert "never-show" not in event["message"]
 
 
 def test_default_session_secret_is_reported_as_a_problem(as_admin):
@@ -191,6 +274,32 @@ def test_backup_listing_is_open_to_admin(as_admin):
     assert as_admin.get("/api/admin/backups").status_code == 200
 
 
+def test_backup_listing_failure_does_not_break_admin_status(as_admin, monkeypatch):
+    from app.admin import backup as backup_service
+
+    def broken():
+        raise backup_service.BackupError("каталог временно недоступен")
+
+    monkeypatch.setattr(backup_service, "listing", broken)
+    response = as_admin.get("/api/admin/status")
+    assert response.status_code == 200, response.text
+    backup = next(item for item in response.json() if item["name"] == "Резервное копирование")
+    assert not backup["ok"]
+    assert "каталог временно недоступен" in backup["detail"]
+
+
+def test_backup_list_returns_503_on_storage_error(as_admin, monkeypatch):
+    from app.admin import backup as backup_service
+
+    def broken():
+        raise backup_service.BackupError("каталог временно недоступен")
+
+    monkeypatch.setattr(backup_service, "listing", broken)
+    response = as_admin.get("/api/admin/backups")
+    assert response.status_code == 503
+    assert "каталог временно недоступен" in response.json()["detail"]
+
+
 def test_backup_failure_explains_what_is_missing(as_admin, monkeypatch):
     """Кнопка не должна молча ничего не делать: если снять копию нечем,
     администратор видит, чего именно не хватает."""
@@ -203,3 +312,126 @@ def test_backup_failure_explains_what_is_missing(as_admin, monkeypatch):
     response = as_admin.post("/api/admin/backups")
     assert response.status_code == 503
     assert "pg_dump" in response.json()["detail"]
+
+
+def test_pg17_transaction_timeout_is_removed_from_pg16_backup(monkeypatch, tmp_path):
+    """Образ backend может содержать клиент новее сервера из Compose."""
+    from app.admin import backup as backup_service
+
+    monkeypatch.setattr(backup_service, "DIR", tmp_path)
+    monkeypatch.setattr(backup_service, "_dsn", lambda: ("u", "p", "db", "5432", "lct"))
+    monkeypatch.setattr(backup_service.shutil, "which", lambda name: "/usr/bin/pg_dump")
+
+    class Result:
+        returncode = 0
+        stderr = b""
+        stdout = (b"--\n-- PostgreSQL database dump\n--\n\n"
+                  b"SET transaction_timeout = 0;\nCREATE TABLE demo(id integer);\n")
+
+    monkeypatch.setattr(backup_service.subprocess, "run", lambda *args, **kwargs: Result())
+    made = backup_service.create()
+    content = (tmp_path / made["name"]).read_bytes()
+    assert b"transaction_timeout" not in content
+    assert b"CREATE TABLE demo" in content
+
+
+def test_docker_backup_does_not_put_database_password_in_process_arguments(monkeypatch, tmp_path):
+    import base64
+    from types import SimpleNamespace
+
+    from app.admin import backup as backup_service
+
+    password = "secret p@ss:word"
+    monkeypatch.setattr(backup_service, "DIR", tmp_path)
+    monkeypatch.setattr(backup_service, "_dsn", lambda: ("backup", password, "db", "5432", "lct"))
+    monkeypatch.setattr(
+        backup_service.shutil, "which", lambda name: "/usr/bin/docker" if name == "docker" else None
+    )
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["input"] = kwargs["input"]
+        return SimpleNamespace(
+            returncode=0,
+            stderr=b"",
+            stdout=b"--\n-- PostgreSQL database dump\nCREATE TABLE demo(id integer);\n",
+        )
+
+    monkeypatch.setattr(backup_service.subprocess, "run", fake_run)
+    backup_service.create()
+
+    assert password not in " ".join(captured["command"])
+    assert captured["input"] == base64.b64encode(password.encode()) + b"\n"
+
+
+def test_backup_dsn_decodes_escaped_credentials_without_exposing_them(monkeypatch):
+    from types import SimpleNamespace
+    from app.admin import backup as backup_service
+
+    monkeypatch.setattr(
+        backup_service, "get_settings",
+        lambda: SimpleNamespace(database_url="postgresql://backup:p%40ss%3Aword@db.example:5433/lct"),
+    )
+    assert backup_service._dsn() == ("backup", "p@ss:word", "db.example", "5433", "lct")
+
+    monkeypatch.setattr(
+        backup_service, "get_settings",
+        lambda: SimpleNamespace(database_url="not-a-valid-url-with-secret"),
+    )
+    try:
+        backup_service._dsn()
+    except backup_service.BackupError as exc:
+        assert "secret" not in str(exc)
+    else:
+        raise AssertionError("invalid DATABASE_URL must be rejected")
+
+
+def test_backup_directory_failure_is_retryable_backup_error(monkeypatch, tmp_path):
+    from app.admin import backup as backup_service
+
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("occupied")
+    monkeypatch.setattr(backup_service, "DIR", blocker / "backups")
+    monkeypatch.setattr(backup_service, "_dsn", lambda: ("u", "p", "db", "5432", "lct"))
+
+    with pytest.raises(backup_service.BackupError, match="каталог резервных копий"):
+        backup_service.create()
+
+
+def test_backup_listing_io_failure_is_retryable_error(monkeypatch, tmp_path):
+    from app.admin import backup as backup_service
+
+    monkeypatch.setattr(backup_service, "DIR", tmp_path)
+
+    def denied(_path):
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(backup_service.os, "scandir", denied)
+    with pytest.raises(backup_service.BackupError, match="прочитать каталог"):
+        backup_service.listing()
+
+
+def test_windows_backup_permissions_use_explicit_private_acl(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from app.admin import backup as backup_service
+
+    monkeypatch.setattr(backup_service, "getuser", lambda: "operator")
+    monkeypatch.setenv("USERDOMAIN", "TRAINING")
+    monkeypatch.setenv("SystemRoot", str(tmp_path))
+    called = {}
+
+    def fake_run(command, **kwargs):
+        called["command"] = command
+        called["kwargs"] = kwargs
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(backup_service.subprocess, "run", fake_run)
+    backup_service._restrict_file_permissions(-1, tmp_path / "copy.sql", platform_name="nt")
+
+    command = called["command"]
+    assert command[0].endswith("icacls.exe")
+    assert "/inheritance:r" in command
+    assert "TRAINING\\operator:(F)" in command
+    assert "*S-1-5-18:(F)" in command
+    assert called["kwargs"]["timeout"] == 15

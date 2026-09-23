@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: panic }
     - { stage: interview, mood: worried }
 
-first_line: "Меня сожитель ножом в ногу ударил, кровь идёт!"
+first_line: "Сожитель ударил ножом в ногу, идёт кровь!"
 
 facts:
   - id: f_address
@@ -28,10 +28,10 @@ facts:
     value: "сожитель ударил ножом в ногу, кровотечение"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "одна пострадавшая, в сознании"
+    value: "одна пострадавшая, кровотечение; сведения о сознании не указаны"
     reveal_on: { question: q_victims }
   - id: f_suspects
-    value: "сожитель, находится в квартире"
+    value: "сожитель; его местонахождение не указано"
     reveal_on: { question: q_suspects }
   - id: f_caller
     value: "Иванова Елена Сергеевна, телефон 916 896 3254"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description, victims_count]
 
 ground_truth:
-  address: "улица Зверенецкая, дом 22, квартира 7"
+  address: "улица Зверенецкая, дом 22, квартира 7, подъезд 1, этаж 2, код домофона 7В"
   victims: 1
 
 tree:

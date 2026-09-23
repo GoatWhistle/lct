@@ -48,7 +48,7 @@ required_fields: [address, incident_type, description]
 
 ground_truth:
   address: улица Большая Ордынка на пересечении с Пыжевским переулком
-  victims: 0
+  victims: null
 
 tree:
   pregenerated: false

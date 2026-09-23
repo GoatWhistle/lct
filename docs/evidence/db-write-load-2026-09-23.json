@@ -1,0 +1,15 @@
+{
+  "database": "local PostgreSQL",
+  "operations_requested": 1000,
+  "operations_written": 1000,
+  "elapsed_seconds": 0.22153720800270094,
+  "operations_per_second": 4513.91443006634,
+  "operation_latency_ms": {
+    "min": 0.17074999777833,
+    "median": 0.20056249923072755,
+    "p95": 0.27329099975759163,
+    "max": 2.2030000036465935
+  },
+  "pass_100_writes_per_second": true,
+  "scope": "sequential INSERT statements over one local asyncpg connection into a temporary table; table is dropped on commit; not target 6-core/32-GB hardware"
+}

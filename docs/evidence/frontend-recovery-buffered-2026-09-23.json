@@ -1,0 +1,19 @@
+{
+  "frontend": "https://127.0.0.1:5444",
+  "session_id": "d3097521-94f1-4063-b38a-7df5e342316e",
+  "component_restarted": "frontend (Nginx TLS/WSS proxy) container stop/start",
+  "observed_states": [
+    "● АРМ подключёнКарточка заполняется",
+    "● связь потеряна, переподключениеКарточка заполняется",
+    "● АРМ подключёнКарточка заполняется"
+  ],
+  "recovery_seconds": 8.77677112499805,
+  "browser_errors": [],
+  "buffered_patch": {
+    "field": "address",
+    "value": "улица Буферная, дом 30",
+    "confirmed_by_server": true
+  },
+  "pass_recovery_30s": true,
+  "scope": "one live card exercise; backend acknowledgement is stalled after address edit; Nginx is stopped; after recovery reconnect repeats only the idempotent KIO patch"
+}

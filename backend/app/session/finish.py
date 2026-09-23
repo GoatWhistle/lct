@@ -7,17 +7,18 @@
 событие сразу: им ждать нечего.
 """
 
+import asyncio
 import logging
 from uuid import UUID
 
-from app.domain.events import Exercise, Metric, ScoreReady
-from app.domain.taxonomy import Competency, ErrorCode, Finding, FindingSource
-from app.domain.timers import NORMATIVES, TimerCode
+from app.domain.events import Exercise, ScoreReady
+from app.domain.timers import TimerCode
 from app.scenarios import store
-from app.scoring.competency import radar
 from app.scoring.card import evaluate_card
+from app.scoring.competency import radar
 from app.scoring.dispatcher import dispatcher_metrics, evaluate_dispatcher
 from app.scoring.gost import GostResult, evaluate
+from app.scoring.report import build as build_report
 from app.scoring.weights import apply_weights
 from app.session.hub import hub
 from app.session.state import DdsCardRecord, now_utc
@@ -28,34 +29,16 @@ log = logging.getLogger(__name__)
 def score_current_dds(state) -> DdsCardRecord:
     """Оценить активную карточку отдельно, до выдачи следующей."""
     number = state.dds_card_index + 1
+    decision_limit_ms = state.timers.limits[TimerCode.DDS_ACK]
     findings = evaluate_dispatcher(
         entries=state.status_log,
-        services=state.notified_services(),
-        deadline_ms=NORMATIVES[TimerCode.DDS_ACK].limit_ms,
+        services=state.managed_services(),
+        deadline_ms=decision_limit_ms,
         elapsed_ms=state.timers.measured_ms(TimerCode.DDS_ACK),
     )
-    metrics = dispatcher_metrics(state, NORMATIVES[TimerCode.DDS_ACK].limit_ms)
-    reply = state.reply_text.strip()
-    if reply or len(state.dds_scenarios) > 1:
-        passed = len(reply) >= 20 and len(reply.split()) >= 3
-        metrics.append(Metric(
-            key="dds_reply", title="Свободный ответ по карточке",
-            fact=reply or "ответ отсутствует",
-            norm="содержательный текст не короче 20 символов и 3 слов",
-            ref="ТЗ: действия с карточками, ввод текста",
-            passed=passed, weight=1.5,
-        ))
-        if not passed:
-            findings.append(Finding(
-                code=ErrorCode.D5, source=FindingSource.DISPATCHER,
-                summary="Свободный ответ отсутствует или слишком краток",
-                fact=reply or "ответ отсутствует",
-                norm="не менее 20 символов и 3 слов; грамматика отдельно не проверялась",
-                ref="ТЗ: действия с карточками, ввод текста",
-                competency=Competency.COMMUNICATION,
-            ))
+    metrics = dispatcher_metrics(state, decision_limit_ms)
     weighted = GostResult(metrics=metrics, findings=findings)
-    apply_weights(weighted, state.scenario.score_weights)
+    apply_weights(weighted, {**state.scenario.score_weights, **state.criteria.score_weights})
     actions = [
         {"type": "card.status", "service": mark.service, "status": mark.status.value,
          "comment": mark.comment, "at": mark.at.isoformat()}
@@ -87,6 +70,9 @@ def score_current_dds(state) -> DdsCardRecord:
 
 
 async def finish(session_id: UUID, state) -> None:
+    if state.recorder is not None:
+        path = await asyncio.to_thread(state.recorder.finalize)
+        state.recording_path = str(path) if path else None
     # Сценарий занятия, а не библиотечный: директивы могли поправить эталон.
     scenario = state.scenario or store.get(state.scenario_id)
     if scenario is None:
@@ -95,22 +81,20 @@ async def finish(session_id: UUID, state) -> None:
     if state.exercise is Exercise.CARD:
         result = evaluate_card(scenario, state.dispatched_card or state.kio)
     elif state.exercise is Exercise.DDS:
-        # В ДДС могут последовательно пройти несколько карточек. Уже закрытые
-        # сохранены отдельными результатами; активную оцениваем лишь однажды.
+        # Все карточки выданы одновременно: при досрочном завершении оцениваем
+        # каждую, включая не открытую, потому что её норматив уже шёл.
         result = GostResult()
         cards = list(state.dds_completed)
-        if state.dispatched_card and not any(
-            item.card_id == state.dispatched_card.card_id for item in cards
-        ):
+        state.capture_active_dds()
+        for live in sorted(state.dds_live_cards, key=lambda item: item.original_index):
+            if any(item.card_id == live.card_id for item in cards):
+                continue
+            state.activate_dds_card(live.card_id, capture=False)
             cards.append(score_current_dds(state))
         state.dds_completed = cards
         for card in cards:
             result.metrics.extend(card.metrics)
             result.findings.extend(card.findings)
-        result.unavailable.append(
-            "Грамматика свободного ответа: автоматическая проверка не настроена; "
-            "оценивались только наличие и минимальная полнота текста"
-        )
     else:
         result = evaluate(
             scenario=scenario,
@@ -129,16 +113,20 @@ async def finish(session_id: UUID, state) -> None:
     if state.dispatched_card is not None and (
         state.exercise is Exercise.CALL or state.handoff_to_dds
     ):
+        decision_limit_ms = state.timers.limits[TimerCode.DDS_ACK]
         dispatcher_findings = evaluate_dispatcher(
             entries=state.status_log,
-            services=state.notified_services(),
-            deadline_ms=NORMATIVES[TimerCode.DDS_ACK].limit_ms,
+            services=state.managed_services(),
+            deadline_ms=decision_limit_ms,
             elapsed_ms=state.timers.measured_ms(TimerCode.DDS_ACK),
         )
         result.findings.extend(dispatcher_findings)
-        result.metrics.extend(dispatcher_metrics(state, NORMATIVES[TimerCode.DDS_ACK].limit_ms))
+        result.metrics.extend(dispatcher_metrics(state, decision_limit_ms))
+    # DDS cards were weighted individually in score_current_dds using each
+    # card's scenario defaults plus the lesson override. Reapplying the first
+    # scenario's weights here would corrupt the other ticket cards.
     if state.exercise is not Exercise.DDS:
-        apply_weights(result, scenario.score_weights)
+        apply_weights(result, {**scenario.score_weights, **state.criteria.score_weights})
 
     # Сводка числами: по ней считается дельта между попытками в профиле.
     # Вытаскивать её разбором текста метрик («94 с») — путь к тихим ошибкам.
@@ -172,6 +160,9 @@ async def finish(session_id: UUID, state) -> None:
             for card in cards
         ] if state.exercise is Exercise.DDS else [],
     }
+    # Полный разбор хранится вместе с оценкой: PDF/CSV и история должны
+    # переживать перезапуск backend, а не зависеть от объекта в hub._sessions.
+    state.score["full_report"] = build_report(session_id, state, scenario).model_dump(mode="json")
     log.info("сессия %s: оценка %.1f, отметок %d", session_id, result.score, len(result.findings))
 
     if hub.journal:
@@ -179,6 +170,18 @@ async def finish(session_id: UUID, state) -> None:
 
     hub.to_observers(session_id, ScoreReady(session_id=session_id))
     await release_score(session_id, state)
+
+
+async def refresh_archived_report(session_id: UUID, state) -> None:
+    """Дополнить сохранённый разбор самооценкой, пришедшей после hangup."""
+    if state.score is None:
+        return
+    scenario = state.scenario or store.get(state.scenario_id)
+    if scenario is None:
+        return
+    state.score["full_report"] = build_report(session_id, state, scenario).model_dump(mode="json")
+    if hub.journal:
+        await hub.journal.score_snapshot(session_id, state.score)
 
 
 async def release_score(session_id: UUID, state) -> None:

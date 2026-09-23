@@ -31,7 +31,7 @@ facts:
     value: "женщина на вид семидесяти лет, неизвестная"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: "в сознании, на ногах"
+    value: "сведения о сознании женщины не указаны"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: "вызывает прохожий Титов Олег Иванович, телефон 916 896 3254"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: дорога от Каширского шоссе в сторону деревни Истомиха
+  address: "дорога от Каширского шоссе в сторону деревни Истомиха, у остановки Домодедовское кладбище, рядом с КПП"
   victims: 1
 
 tree:

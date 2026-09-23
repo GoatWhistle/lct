@@ -13,3 +13,4 @@ os.environ.setdefault("VOICE_ENABLED", "false")
 # ждал бы ответа провайдера и зависел от его настроения.
 # Живые проверки LLM — в test_llm.py, он читает backend/.env.test.
 os.environ.setdefault("LLM_API_KEY", "")
+os.environ.setdefault("LLM_PROVIDER", "disabled")

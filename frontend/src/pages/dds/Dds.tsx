@@ -1,36 +1,40 @@
-// Учебное АРМ ДДС. Звонок бригаде имитируется внутри приложения, без SIP.
+// Учебное АРМ ДДС. Проверяемый текстовый протокол дополняется настоящим
+// локальным SIP/WebRTC-телефоном; оба контура явно подписаны в интерфейсе.
 import { useEffect, useRef, useState } from "react";
 
-import { GROUPS } from "@/features/kio-card/fields";
 import { KioCard } from "@/features/kio-card/KioCard";
 import { applyState, empty as emptyCard, readPath, type CardState } from "@/features/kio-card/merge";
+import { SipPhone } from "@/features/sip/SipPhone";
 import { sessionIdFromUrl } from "@/shared/api/session";
 import { stationChannel, type ChannelStatus } from "@/shared/api/ws";
-import type { ServiceStatus, SessionReport, StationSnapshot, StationToServer } from "@/shared/types/generated";
+import type { DdsQueueCard, ServiceStatus, SessionReport, StationSnapshot, StationToServer } from "@/shared/types/generated";
 import { ALARMING, CARD_STATUS_LABELS, SERVICE_STATUS_LABELS } from "./statuses";
 
 const ACK_LIMIT_S = 30;
 type ReportPhase = "dispatched" | "arrived" | "working" | "completed";
 interface PhoneReport { service: string; crew: string; phase: ReportPhase; text: string; at: string }
+interface PhoneLine { service: string; crew: string; speaker: "dispatcher" | "crew"; text: string; at: string }
+interface PhonePending { service: string; crew: string; phase: ReportPhase }
 interface CompletedCard { card_id: string; scenario_id: string; score_auto: number }
 interface DdsSnapshot extends StationSnapshot {
+  recipient_services?: string[];
+  managed_service?: string | null;
   crew_options?: string[];
   crew_selected?: string | null;
   phone_reports?: PhoneReport[];
+  phone_lines?: PhoneLine[];
+  phone_pending?: PhonePending | null;
   card_id?: string | null;
   card_index?: number;
   card_total?: number;
   reply_text?: string;
   completed_cards?: CompletedCard[];
+  queue_cards?: DdsQueueCard[];
 }
 const REPORT_LABELS: Record<ReportPhase, string> = {
   dispatched: "Доклад о выезде", arrived: "Доклад о прибытии",
   working: "Доклад о ходе работ", completed: "Доклад о завершении работ",
 };
-const FIELDS = GROUPS.flatMap((group) =>
-  group.fields.filter((item) => !item.readOnly).map((item) => ({ path: item.path, label: item.label })),
-);
-
 function field(card: CardState, path: string): string {
   const value = readPath(card.server, path);
   return value === null || value === undefined || value === "" ? "—" : String(value);
@@ -60,19 +64,19 @@ export function Dds() {
   const [station, setStation] = useState<DdsSnapshot | null>(null);
   const [lastReport, setLastReport] = useState<PhoneReport | null>(null);
   const [dialing, setDialing] = useState(false);
+  const [brief, setBrief] = useState({ address: "", incident: "", request: "" });
+  const [checkText, setCheckText] = useState("");
   const [error, setError] = useState("");
   const [ended, setEnded] = useState(false);
   const [report, setReport] = useState<SessionReport | null>(null);
   const [reportState, setReportState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [reportError, setReportError] = useState("");
-  const [missing, setMissing] = useState<string[]>([]);
-  const [bounceComment, setBounceComment] = useState("");
-  const [bounced, setBounced] = useState(false);
   const [zone, setZone] = useState<boolean | null>(null);
   const [reply, setReply] = useState({ text: "", dirty: false });
   const [advancePending, setAdvancePending] = useState(false);
   const channel = useRef<ReturnType<typeof stationChannel> | null>(null);
   const activeCardId = useRef<string | null>(null);
+  const openCardAfterSwitch = useRef(false);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -104,6 +108,13 @@ export function Dds() {
         if (event.type === "station.state") {
           const snapshot = event.snapshot as DdsSnapshot;
           setStation(snapshot);
+          if (snapshot.card_id == null && snapshot.pending_cards_count > 0) {
+            activeCardId.current = null;
+            setCard(null);
+            setView("registry");
+            setPane(null);
+            setAdvancePending(false);
+          }
           setActiveService((previous) => previous && snapshot.services.includes(previous)
             ? previous : snapshot.services[0] ?? null);
           setReply((previous) => {
@@ -121,13 +132,13 @@ export function Dds() {
             setReply({ text: "", dirty: false });
             setLastReport(null);
             setDialing(false);
-            setMissing([]);
-            setBounceComment("");
-            setBounced(false);
+            setBrief({ address: "", incident: "", request: "" });
+            setCheckText("");
             setZone(null);
             setReport(null);
             setReportState("idle");
-            setView("registry");
+            setView(openCardAfterSwitch.current ? "card" : "registry");
+            openCardAfterSwitch.current = false;
             setPane(null);
             setActiveService(null);
           }
@@ -145,8 +156,11 @@ export function Dds() {
         else if (event.type === "phone.report") {
           setLastReport(event);
           setDialing(false);
+          setBrief({ address: "", incident: "", request: "" });
+          setCheckText("");
           setError("");
         }
+        else if (event.type === "phone.line") setDialing(false);
       },
     }).connect();
     channel.current = ch;
@@ -173,18 +187,21 @@ export function Dds() {
 
   const reports = station?.phone_reports ?? [];
   const selectedCrew = station?.crew_selected ?? "";
-  const latest = lastReport ?? reports.at(-1) ?? null;
+  const latest = (lastReport?.crew === selectedCrew ? lastReport : null) ??
+    reports.filter((item) => item.crew === selectedCrew).at(-1) ?? null;
+  const phoneCall = station?.phone_pending ?? null;
+  const phoneLines = (station?.phone_lines ?? []).filter((line) => line.crew === selectedCrew);
   const isConnected = status === "open";
   const cardId = card ? String(readPath(card.server, "card_id") ?? "") : "";
   const cardIndex = station?.card_index ?? 1;
   const cardTotal = station?.card_total ?? 1;
   const completedCards = station?.completed_cards ?? [];
-  const activeIsCompleted = completedCards.some((item) => item.card_id === cardId);
+  const queueCards = station?.queue_cards ?? [];
   const query = search.trim().toLocaleLowerCase("ru-RU");
   const visibleCompletedCards = completedCards.filter((item) =>
     !query || `${item.card_id} ${item.scenario_id}`.toLocaleLowerCase("ru-RU").includes(query));
-  const showActive = card && !activeIsCompleted && (!query ||
-    [cardId, field(card, "address"), field(card, "description"), field(card, "incident_type")]
+  const visibleQueueCards = queueCards.filter((item) => !query ||
+    [item.card_id, item.address ?? "", item.description ?? "", item.incident_type ?? "", item.title]
       .some((value) => value.toLocaleLowerCase("ru-RU").includes(query)));
   const crewAccepted = Boolean(station?.services.some((service) =>
     selectedCrew.startsWith(`${service} —`) &&
@@ -271,23 +288,55 @@ export function Dds() {
           <td data-label="Тип происшествия">Сценарий {item.scenario_id}</td><td data-label="Постр.">—</td><td data-label="Адрес">—</td>
           <td data-label="Статус службы">Отработана · {item.score_auto.toFixed(0)} / 100</td>
         </tr>)}
-        {showActive && card && <tr className="dds-selected" aria-current="true">
-          <td data-label="Связи"><button type="button" className="dds-row-open" onClick={() => setView("card")} aria-label="Открыть карточку">▾</button></td>
-          <td data-label="ЧС">{field(card, "is_emergency") === "true" ? "Да" : "Нет"}</td>
+        {visibleQueueCards.map((item) => {
+          const received = new Date(item.received_at);
+          const liveElapsed = item.timer_stopped ? item.elapsed_ms / 1000 : Math.max(
+            item.elapsed_ms / 1000, (clockNow.getTime() - received.getTime()) / 1000,
+          );
+          const openCard = () => {
+            if (item.active) {
+              setView("card");
+              return;
+            }
+            openCardAfterSwitch.current = true;
+            if (!send({ type: "card.open", card_id: item.card_id })) {
+              openCardAfterSwitch.current = false;
+            }
+          };
+          return <tr key={item.card_id} className={item.active ? "dds-selected" : ""}
+            aria-current={item.active ? "true" : undefined}>
+          <td data-label="Связи"><button type="button" className="dds-row-open" onClick={openCard} aria-label="Открыть карточку">▾</button></td>
+          <td data-label="ЧС">—</td>
           <td data-label="Опер.">0</td><td data-label="АРМ">ДДС</td>
-          <td data-label="Номер"><button type="button" className="dds-row-link" onClick={() => setView("card")}>{cardId.slice(0, 8).toUpperCase()}</button></td>
-          <td data-label="Дата">{receivedAt ? new Date(receivedAt).toLocaleDateString("ru-RU") : "—"}</td>
-          <td data-label="Время">{receivedAt ? new Date(receivedAt).toLocaleTimeString("ru-RU") : "—"}</td>
-          <td data-label="Тип происшествия">{field(card, "incident_code")} · {field(card, "incident_type")}
-            <small>Описание: {field(card, "description")}</small></td>
-          <td data-label="Постр.">{field(card, "victims_count")}</td>
-          <td data-label="Адрес">{field(card, "address")}</td>
-          <td data-label="Статус службы">{station?.services.map((service) => `${service}: ${SERVICE_STATUS_LABELS[station.statuses[service]]}`).join("; ") || "Добавлена"}</td>
-        </tr>}
-        {!showActive && !visibleCompletedCards.length && <tr><td colSpan={11} className="dds-empty">
+          <td data-label="Номер"><button type="button" className="dds-row-link" onClick={openCard}>{item.card_id.slice(0, 8).toUpperCase()}</button></td>
+          <td data-label="Дата">{received.toLocaleDateString("ru-RU")}</td>
+          <td data-label="Время">{received.toLocaleTimeString("ru-RU")}</td>
+          <td data-label="Тип происшествия"><span className="dds-cell-value">
+            <span>{item.title} · {item.incident_type || "тип не указан"}</span>
+            <small>Описание: {item.description || "—"}</small>
+          </span></td>
+          <td data-label="Постр.">{item.victims_count ?? "—"}</td>
+          <td data-label="Адрес">{item.address || "—"}</td>
+          <td data-label="Статус службы"><span className="dds-cell-value">
+            <span>{item.managed_service || "ДДС"}: {SERVICE_STATUS_LABELS[item.service_status]}</span>
+            <small className={!item.timer_stopped && liveElapsed * 1000 > item.limit_ms ? "state-violated" : ""}>
+              {item.timer_stopped ? "решение за" : "до первичного решения"} {liveElapsed.toFixed(0)} с
+            </small>
+          </span></td>
+        </tr>})}
+        {!visibleQueueCards.length && !visibleCompletedCards.length && <tr><td colSpan={11} className="dds-empty">
           {query ? "По запросу ничего не найдено." : "Ожидание готовой карточки от преподавателя или оператора 112…"}</td></tr>}
       </tbody></table></div>
-      {cardTotal > cardIndex && <p className="dds-hint">Остальные {cardTotal - cardIndex} карточки поступят после завершения текущей.</p>}
+      {queueCards.length > 1 && <p className="dds-hint">Одновременно в работе {queueCards.length} карточек. Таймер каждой идёт независимо от того, какая строка открыта.</p>}
+      {station && station.pending_cards_count > 0 && <p className="dds-hint" role="status" aria-live="polite">
+        {station.next_arrival_in_seconds === null
+          ? `Осталось карточек: ${station.pending_cards_count}. Все карточки уже поступили; необработанные находятся в реестре.`
+          : station.next_arrival_in_seconds > 0
+          ? `Осталось карточек: ${station.pending_cards_count}. Следующее поступление примерно через ${station.next_arrival_in_seconds} с.`
+          : queueCards.filter((item) => !item.active).length >= station.max_waiting_cards
+            ? `Осталось карточек: ${station.pending_cards_count}. Очередь ожидания заполнена (${station.max_waiting_cards}); новые поступят, когда освободится место.`
+            : `Осталось карточек: ${station.pending_cards_count}. Ожидается следующее поступление.`}
+      </p>}
     </section>
     </>}
 
@@ -298,7 +347,7 @@ export function Dds() {
         <div className="dds-call-off"><span className="dds-call-icon">☎</span><strong>Отключение</strong><small>записи звонков · список SMS</small></div>
         <div><span className="dds-call-icon">☎</span><small>АОН</small><strong>{field(card, "caller_number")}</strong></div>
         <div><span className="dds-call-icon">☎</span><small>предоставленный</small><strong>{field(card, "caller_contact")}</strong></div>
-        <div><span className="dds-call-icon">☎</span><small>телефон на место</small><strong>{field(card, "caller_contact")}</strong></div>
+        <div><span className="dds-call-icon">☎</span><small>телефон на место</small><strong>{field(card, "phone_on_scene")}</strong></div>
         <div className="dds-call-incident"><strong>Происшествие {cardId.slice(0, 8).toUpperCase()}</strong>
           <small>Сохр. {receivedAt ? new Date(receivedAt).toLocaleString("ru-RU") : "—"}</small>
           <small>Опер., АРМ ДДС</small></div>
@@ -314,7 +363,8 @@ export function Dds() {
         <div className="dds-case-classification"><strong>Происшествие {field(card, "incident_code")}</strong>
           <div><b>{field(card, "description")}</b></div>
           <div>Класс: <b>{field(card, "incident_type")}</b></div>
-          <div>Список оповещения: <b>{station?.services.join(", ") || field(card, "notify")}</b></div></div>
+          <div>Получатели карточки: <b>{station?.recipient_services?.join(", ") || field(card, "notify")}</b></div>
+          <div>Ваша ДДС: <b>{station?.managed_service || "служба не назначена"}</b></div></div>
       </div>
       <div className="dds-case-stage">
       {pane && <div className={`dds-case-drawer dds-case-drawer-${pane}`}>
@@ -348,49 +398,75 @@ export function Dds() {
           {station.services.filter((service) => service === (activeService ?? station.services[0])).map((service) =>
             <StatusRow key={`${cardId}:${service}`} service={service}
               current={station.statuses[service]} available={station.available[service] ?? []}
-              disabled={!isConnected || ended} reports={reports.filter((report) => report.service === service)}
-              phoneExercise={from === "учебный сценарий"}
+              disabled={!isConnected || ended}
               crewOptions={station.crew_options?.filter((crew) => crew.startsWith(`${service} —`)) ?? []}
               selectedCrew={selectedCrew.startsWith(`${service} —`) ? selectedCrew : ""}
               onCrew={(crew) => send({ type: "crew.select", crew })}
               onSet={(next, comment) => channel.current?.send({ type: "card.status", service, status: next, comment })} />)}
         </> : <p className="dds-empty">Ожидаем состав служб по карточке.</p>}
-        <p className="dds-hint">Сначала примите карточку или укажите причину отказа. Последующие статусы в занятии ДДС подтверждаются докладами по телефону.</p>
+        <p className="dds-hint">Сначала примите карточку или укажите причину отказа. Последующие статусы ставятся по фактически полученной информации; телефон — один из возможных каналов.</p>
       </section>}
       {pane === "journal" && station && station.log.length > 0 && <section className="dds-panel"><div className="dds-panel-title"><h2>Журнал реагирования</h2></div>
         <div className="dds-table-wrap"><table className="dds-registry"><thead><tr><th>Время</th><th>Служба</th><th>Статус</th><th>Комментарий</th></tr></thead>
           <tbody>{station.log.map((entry, index) => <tr key={`${entry.at}-${index}`}><td>{time(entry.at)}</td><td>{entry.service}</td>
             <td>{SERVICE_STATUS_LABELS[entry.status]}</td><td>{entry.comment || "—"}</td></tr>)}</tbody></table></div></section>}
     </div><aside className="dds-right">
-      {pane === "phone" && <section className="dds-panel dds-phone"><div className="dds-panel-title"><h2>IP-телефон</h2><span>Учебная имитация</span></div>
-        <p className="dds-hint">Выберите бригаду вручную, свяжитесь со старшим группы и внесите его доклад в карточку.</p>
+      {pane === "phone" && <section className="dds-panel dds-phone"><div className="dds-panel-title"><h2>IP-телефон</h2><span>SIP/WebRTC + учебный протокол</span></div>
+        <SipPhone defaultExtension="6101" defaultTarget="6102" title="Реальный локальный канал ДДС" />
+        <p className="dds-hint">На втором рабочем месте откройте <a href="/phone" target="_blank" rel="noreferrer">телефон старшего группы</a> и зарегистрируйте 6102. Пароли 6101/6102 выдаёт локальный администратор командой <code>make sip-credentials</code>.</p>
+        <h3 className="dds-protocol-title">Учебный протокол доклада</h3>
+        <p className="dds-hint">Связь используется при необходимости. Разговор и учебный доклад сохраняются в журнале, но не блокируют изменение статуса.</p>
         <label htmlFor="dds-crew">Дежурная бригада</label>
         <select id="dds-crew" value={selectedCrew} disabled={!isConnected || ended || !station?.crew_options?.length}
           onChange={(event) => send({ type: "crew.select", crew: event.target.value })}>
           <option value="">Выберите бригаду</option>
           {station?.crew_options?.map((crew) => <option key={crew} value={crew}>{crew}</option>)}
         </select>
-        <button type="button" className="dds-dial" disabled={!crewAccepted || !isConnected || ended || dialing}
+        <button type="button" className="dds-dial" disabled={!crewAccepted || !isConnected || ended || dialing || Boolean(phoneCall)}
           onClick={() => { if (send({ type: "phone.dial" })) setDialing(true); }}>
           ☎ {dialing ? "Соединение…" : "Позвонить старшему группы"}</button>
         {selectedCrew && !crewAccepted && <p className="dds-hint state-warn">Перед звонком поставьте статус «Принята» для службы этой бригады.</p>}
+        {phoneCall && <div className="dds-phone-active" aria-live="polite">
+          <strong>● Соединение установлено · {phoneCall.crew}</strong>
+          {phoneCall.phase === "dispatched" ? <div className="dds-phone-form">
+            <p>Передайте сведения из карточки и задачу бригаде. Доклад о выезде появится только после передачи.</p>
+            <label htmlFor="dds-phone-address">Полный адрес из карточки</label>
+            <input id="dds-phone-address" value={brief.address} onChange={(event) => setBrief({ ...brief, address: event.target.value })} placeholder="Улица, дом, при наличии квартира и этаж" />
+            <label htmlFor="dds-phone-incident">Характер происшествия</label>
+            <textarea id="dds-phone-incident" rows={2} value={brief.incident} onChange={(event) => setBrief({ ...brief, incident: event.target.value })} placeholder="Что случилось и важные обстоятельства" />
+            <label htmlFor="dds-phone-request">Что требуется от бригады</label>
+            <input id="dds-phone-request" value={brief.request} onChange={(event) => setBrief({ ...brief, request: event.target.value })} placeholder="Подтвердите выезд и доложите о прибытии" />
+            <button type="button" disabled={!isConnected || ended || !brief.address.trim() || !brief.incident.trim() || !brief.request.trim()}
+              onClick={() => send({ type: "phone.brief", ...brief })}>Передать сообщение</button>
+          </div> : <div className="dds-phone-form">
+            <p>Уточните обстановку у старшего группы. Ответ станет основанием для следующего статуса.</p>
+            <label htmlFor="dds-phone-check">Ваш вопрос старшему</label>
+            <textarea id="dds-phone-check" rows={2} value={checkText} onChange={(event) => setCheckText(event.target.value)} placeholder="Сообщите, пожалуйста, текущее состояние работ по карточке" />
+            <button type="button" disabled={!isConnected || ended || checkText.trim().length < 8}
+              onClick={() => send({ type: "phone.check", text: checkText })}>Спросить обстановку</button>
+          </div>}
+          <button type="button" className="dds-phone-hangup" onClick={() => send({ type: "phone.hangup" })}>Завершить без доклада</button>
+        </div>}
+        {phoneLines.length > 0 && <div className="dds-phone-transcript" aria-live="polite"><strong>Учебный разговор</strong>
+          {phoneLines.map((line, index) => <p key={`${line.at}-${index}`}><small>{time(line.at)} · {line.speaker === "crew" ? "Старший группы" : "Диспетчер"}</small><br />{line.text}</p>)}
+        </div>}
         {latest ? <div className="dds-report" aria-live="polite"><small>{REPORT_LABELS[latest.phase]} · {time(latest.at)}</small>
           <strong>{latest.crew}</strong><p>{latest.text}</p>
           <span>Прослушайте доклад и поставьте соответствующий статус реагирования.</span></div>
-          : <div className="dds-phone-idle">Доклады поступят после исходящего учебного звонка.</div>}
+          : <div className="dds-phone-idle">Доклад появится после передачи сведений и ответа старшего группы.</div>}
         {reports.length > 0 && <details className="dds-details"><summary>История докладов ({reports.length})</summary>
           <ol className="dds-reports">{reports.map((report, index) => <li key={`${report.at}-${index}`}><b>{REPORT_LABELS[report.phase]}</b> · {time(report.at)}<br />{report.text}</li>)}</ol>
         </details>}
       </section>}
       {pane === "reply" && <section className="dds-panel dds-reply">
-        <div className="dds-panel-title"><h2>Ответ и комментарий диспетчера</h2>
+        <div className="dds-panel-title"><h2>Рабочая заметка диспетчера</h2>
           <span>{reply.dirty ? "Не сохранено" : "Сохранено"}</span></div>
-        <label htmlFor="dds-reply-text">Свободный текст по текущей карточке</label>
+        <label htmlFor="dds-reply-text">Необязательная заметка по текущей карточке</label>
         <textarea id="dds-reply-text" rows={7} value={reply.text}
           disabled={!isConnected || ended || advancePending}
           placeholder="Что сообщено старшему группы, какие сведения получены и почему принято решение"
           onChange={(event) => setReply({ text: event.target.value, dirty: true })} />
-        <p className="dds-hint">Ответ сохраняется в журнале текущей карточки. Автооценка проверяет его наличие и минимальную полноту, но не грамотность или фактическую верность каждого предложения.</p>
+        <p className="dds-hint">Заметка сохраняется в журнале, но не влияет на оценку. Обязательный комментарий вводится непосредственно при статусе отказа.</p>
         <button type="button" disabled={!cardId || !reply.dirty || !isConnected || ended || advancePending}
           onClick={() => { if (send({ type: "card.reply", card_id: cardId, text: reply.text })) setError(""); }}>
           Сохранить ответ</button>
@@ -400,20 +476,13 @@ export function Dds() {
           onClick={() => { channel.current?.send({ type: "zone.decision", in_zone: true }); setZone(true); }}>Наша</button>
           <button type="button" disabled={zone !== null || !isConnected || ended}
             onClick={() => { channel.current?.send({ type: "zone.decision", in_zone: false }); setZone(false); }}>Не наша</button></div>
-        <details className="dds-details"><summary>Вернуть карточку на уточнение</summary>
-          <div className="bounce-fields">{FIELDS.map((item) => <label key={item.path}><input type="checkbox" checked={missing.includes(item.path)}
-            onChange={() => setMissing((previous) => previous.includes(item.path) ? previous.filter((path) => path !== item.path) : [...previous, item.path])} /> {item.label}</label>)}</div>
-          <input type="text" value={bounceComment} placeholder="Что необходимо уточнить" onChange={(event) => setBounceComment(event.target.value)} />
-          <button type="button" disabled={!missing.length || bounced || !isConnected || ended} onClick={() => {
-            channel.current?.send({ type: "card.bounce", missing_fields: missing, comment: bounceComment }); setBounced(true);
-          }}>Вернуть оператору</button>
-        </details>
+        <p className="dds-hint">ДДС не исправляет и не возвращает заполненную карточку: её качество контролируют оператор и служба контроля 112.</p>
         <button type="button" className="dds-finish" disabled={!cardId || !isConnected || ended || advancePending}
           onClick={() => {
             if (reply.dirty && !send({ type: "card.reply", card_id: cardId, text: reply.text })) return;
             if (send({ type: "card.next", card_id: cardId })) setAdvancePending(true);
           }}>
-          {cardIndex < cardTotal ? "Завершить карточку и открыть следующую" : "Завершить карточку и занятие"}
+          {queueCards.length > 1 ? "Закрыть карточку" : "Закрыть карточку и занятие"}
         </button>
         {cardTotal > 1 && <button type="button" disabled={!isConnected || ended || advancePending}
           onClick={() => { if (window.confirm("Завершить занятие досрочно? Остальные карточки не будут пройдены.")) send({ type: "station.finish" }); }}>
@@ -434,25 +503,20 @@ export function Dds() {
           onClick={() => {
             if (reply.dirty && !send({ type: "card.reply", card_id: cardId, text: reply.text })) return;
             if (send({ type: "card.next", card_id: cardId })) setAdvancePending(true);
-          }}><b>✓ Завершить</b><small>{cardIndex < cardTotal ? "Следующая карточка" : "Занятие"}</small></button>
+          }}><b>✓ Завершить</b><small>{queueCards.length > 1 ? "Закрыть карточку" : "Занятие"}</small></button>
       </nav>
     </div>}
   </main>;
 }
 
-function StatusRow({ service, current, available, disabled, reports, phoneExercise, crewOptions, selectedCrew, onCrew, onSet }: {
+function StatusRow({ service, current, available, disabled, crewOptions, selectedCrew, onCrew, onSet }: {
   service: string; current: ServiceStatus; available: ServiceStatus[]; disabled: boolean;
-  reports: PhoneReport[]; phoneExercise: boolean; crewOptions: string[]; selectedCrew: string;
+  crewOptions: string[]; selectedCrew: string;
   onCrew: (crew: string) => void; onSet: (status: ServiceStatus, comment: string) => void;
 }) {
   const [chosen, setChosen] = useState<ServiceStatus | "">("");
   const [comment, setComment] = useState("");
   const needsComment = chosen === "declined" || chosen === "refused";
-  const reportNeeded: Partial<Record<ServiceStatus, ReportPhase>> = {
-    responding: "dispatched", arrived: "arrived", working: "working", completed: "completed",
-  };
-  const matchingReport = !chosen || !phoneExercise || !reportNeeded[chosen] ||
-    reports.some((report) => report.phase === reportNeeded[chosen]);
   if (!available.length) return <p className="dds-hint">{serviceTitle(service)}: {SERVICE_STATUS_LABELS[current]}. Дальнейшие статусы недоступны.</p>;
   return <div className="dds-status-editor">
     <label>Статус
@@ -475,10 +539,9 @@ function StatusRow({ service, current, available, disabled, reports, phoneExerci
         onChange={(event) => setComment(event.target.value)} />
     </label>
     <button type="button" className="dds-status-save" aria-label="Сохранить статус"
-      disabled={disabled || !chosen || (needsComment && !comment.trim()) || !matchingReport}
+      disabled={disabled || !chosen || (needsComment && !comment.trim())}
       onClick={() => { if (chosen) { onSet(chosen, comment.trim()); setChosen(""); setComment(""); } }}>✓</button>
     <button type="button" className="dds-status-cancel" aria-label="Отменить изменение статуса"
       onClick={() => { setChosen(""); setComment(""); }}>×</button>
-    {chosen && !matchingReport && <span className="dds-status-warning state-warn">Сначала получите доклад по телефону.</span>}
   </div>;
 }

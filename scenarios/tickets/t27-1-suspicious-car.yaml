@@ -28,7 +28,7 @@ facts:
     value: "под машиной лежит непонятная коробка с проводами; машина приехала ночью, чем-то сильно нагружена, просели задние колёса"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "пострадавших нет, людей вокруг много"
+    value: "сведений о пострадавших нет"
     reveal_on: { question: q_victims }
   - id: f_vehicle
     value: "ваз 2110 чёрная, очень грязная, государственный номер а155ат 33"
@@ -47,8 +47,8 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "Тихорецкий бульвар, дом 12, корпус 1"
-  victims: 0
+  address: "Тихорецкий бульвар, дом 12, корпус 1, во дворе у входа в магазин «Билла»"
+  victims: null
 
 tree:
   pregenerated: false

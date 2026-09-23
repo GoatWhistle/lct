@@ -6,6 +6,7 @@
 
 import contextlib
 import time
+import wave
 from uuid import uuid4
 
 import pytest
@@ -254,6 +255,32 @@ def test_events_still_work_between_audio_frames(client):
             trainee.send_bytes(b"\x00\x00" * 320)
             wait_for(lambda: state.kio.floor == "5")
         assert state.audio_frames == 2
+
+
+def test_answered_call_is_saved_as_wav_on_hangup(client, monkeypatch, tmp_path):
+    from app.api.ws import call as call_api
+    from app.voice.recording import CallRecorder
+
+    monkeypatch.setattr(
+        call_api, "start_recording",
+        lambda session_id: CallRecorder(tmp_path / f"{session_id}.wav"),
+    )
+    with lesson(client) as (session_id, _):
+        state = hub.get(session_id)
+        path = tmp_path / f"{session_id}.wav"
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            read_until(trainee, "call.incoming")
+            trainee.send_json({"type": "call.answer"})
+            read_until(trainee, "call.started")
+            trainee.send_bytes((1000).to_bytes(2, "little", signed=True) * 320)
+            trainee.send_json({"type": "call.hangup"})
+            read_until(trainee, "call.ended")
+            wait_for(path.is_file)
+
+    assert state.recording_path == str(path)
+    with wave.open(str(path), "rb") as source:
+        assert source.getframerate() == 16_000
+        assert source.getnframes() >= 320
 
 
 def test_score_waits_for_self_assessment(client):

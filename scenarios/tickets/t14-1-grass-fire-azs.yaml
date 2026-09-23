@@ -23,14 +23,14 @@ first_line: "Трава горит, огонь к заправке подход�
 facts:
   - id: f_address
     value: "Московская область, трасса М-2, АЗС Роснефть, не доезжая до Расторгуевского шоссе"
-    refined: "Московская область, трасса М-2, 25 километр по столбам в сторону Москвы, владение 2"
+    refined: "Московская область, трасса М-2, 25 км по столбам в сторону Москвы, владение 2"
     reveal_on: { question: q_address }
     refine_on: q_address_check
   - id: f_what_burns
     value: "горит сухая трава, огонь подходит к территории АЗС"
     reveal_on: { question: q_what_burns }
   - id: f_people
-    value: "пострадавших нет, работников выводим"
+    value: "сведения о пострадавших не указаны"
     reveal_on: { question: q_people }
   - id: f_caller
     value: "Потапов Иван Сергеевич, работник АЗС, телефон 916-123-98-78"
@@ -46,8 +46,8 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "Московская область, трасса М-2, 25 километр, владение 2"
-  victims: 0
+  address: "Московская область, трасса М-2, 25 км по столбам в сторону Москвы, владение 2"
+  victims: null
 
 tree:
   pregenerated: false

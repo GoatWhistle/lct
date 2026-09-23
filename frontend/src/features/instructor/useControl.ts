@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { controlChannel, type ChannelStatus } from "@/shared/api/ws";
-import type { SessionMode } from "@/shared/types/generated";
+import type { LessonCriteria, SessionMode } from "@/shared/types/generated";
 
 export function useControl(sessionId: string | null) {
   const [status, setStatus] = useState<ChannelStatus>("closed");
@@ -25,7 +25,7 @@ export function useControl(sessionId: string | null) {
   }, [sessionId]);
 
   const start = useCallback(
-    (scenarioId: string, mode: SessionMode, trainee: string, exercise: "dds" | "call" | "card" = "dds", group?: string, traineeId?: string, scenarioIds?: string[], handoffToDds = false) => {
+    (scenarioId: string, mode: SessionMode, trainee: string, exercise: "dds" | "call" | "card" = "dds", group?: string, traineeId?: string, ddsService?: string, scenarioIds?: string[], ddsArrivalIntervalSeconds = 60, ddsMaxWaiting = 3, handoffToDds = false, criteria?: LessonCriteria) => {
       const message = {
         type: "scenario.start",
         scenario_id: scenarioId,
@@ -33,9 +33,13 @@ export function useControl(sessionId: string | null) {
         trainee,
         group_id: group || null,
         trainee_id: traineeId || null,
+        dds_service: ddsService || null,
         exercise,
         handoff_to_dds: handoffToDds,
         scenario_ids: scenarioIds?.length ? scenarioIds : undefined,
+        dds_arrival_interval_seconds: ddsArrivalIntervalSeconds,
+        dds_max_waiting: ddsMaxWaiting,
+        criteria,
       } as const;
       channel.current?.send(message);
     },

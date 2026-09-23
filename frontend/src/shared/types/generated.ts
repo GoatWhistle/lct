@@ -93,6 +93,12 @@ export interface CardNext {
   card_id: string;
 }
 
+/** Открыть одну из уже выданных карточек, не меняя её таймер. */
+export interface CardOpen {
+  type: "card.open";
+  card_id: string;
+}
+
 /** Снимок КИО. После передачи не меняется — оператор не дописывает задним числом. */
 export interface CardReceived {
   type: "card.received";
@@ -169,6 +175,25 @@ export interface DdsCardSummary {
 export interface DdsDispatch {
   type: "dds.dispatch";
   service?: DDSCode | null;
+}
+
+/** Строка общей очереди ДДС; таймер каждой карточки идёт независимо. */
+export interface DdsQueueCard {
+  card_id: string;
+  scenario_id: string;
+  title: string;
+  address?: string | null;
+  description?: string | null;
+  incident_type?: string | null;
+  victims_count?: number | null;
+  received_at: string;
+  managed_service?: string | null;
+  service_status: ServiceStatus;
+  card_status: CardStatus;
+  elapsed_ms: number;
+  limit_ms: number;
+  timer_stopped: boolean;
+  active: boolean;
 }
 
 /** `immediate` — только для обрыва связи: рвёт TTS на полуслове. */
@@ -272,6 +297,7 @@ export interface KIO {
   caller_number?: string | null;
   caller_name?: string | null;
   caller_contact?: string | null;
+  phone_on_scene?: string | null;
   language?: string;
   okato?: string | null;
   address?: string | null;
@@ -322,6 +348,14 @@ export interface KioState {
   kio: KIO;
 }
 
+/** Настраиваемые преподавателем условия именно этого занятия. Нормативы ГОСТ для приёма вызова сюда не входят. Меняется учебный лимит решения ДДС и порог успешности, которые ТЗ прямо отдаёт преподавателю. */
+export interface LessonCriteria {
+  decision_time_limit_seconds?: number;
+  allowed_errors?: number;
+  require_correct_grammar?: boolean;
+  score_weights?: Record<string, number>;
+}
+
 /** Уровень сложности сценария. */
 export type Level = "L1" | "L2" | "L3";
 
@@ -359,8 +393,49 @@ export type Outcome = "card" | "consultation" | "transfer_region";
 /** `auto` — сервер распознал факт из речи, `operator` — эхо правки курсанта. */
 export type PatchSource = "auto" | "operator";
 
+/** Что диспетчер передал старшему группы при первом исходящем звонке. */
+export interface PhoneBrief {
+  type: "phone.brief";
+  address: string;
+  incident: string;
+  request?: string;
+}
+
+export interface PhoneCallPending {
+  service: string;
+  crew: string;
+  phase: string;
+}
+
+/** Запрос диспетчера об обстановке после предыдущего доклада. */
+export interface PhoneCheck {
+  type: "phone.check";
+  text: string;
+}
+
 export interface PhoneDial {
   type: "phone.dial";
+}
+
+export interface PhoneHangup {
+  type: "phone.hangup";
+}
+
+export interface PhoneLine {
+  type: "phone.line";
+  service: string;
+  crew: string;
+  speaker: "dispatcher" | "crew";
+  text: string;
+  at: string;
+}
+
+export interface PhoneLineRecord {
+  service: string;
+  crew: string;
+  speaker: string;
+  text: string;
+  at: string;
 }
 
 export interface PhoneReport {
@@ -420,12 +495,16 @@ export interface ScenarioStart {
   type: "scenario.start";
   scenario_id: string;
   scenario_ids?: Array<string> | null;
+  dds_arrival_interval_seconds?: number;
+  dds_max_waiting?: number;
   trainee: string;
   trainee_id?: string | null;
+  dds_service?: string | null;
   group_id?: string | null;
   mode: SessionMode;
   exercise?: Exercise;
   handoff_to_dds?: boolean;
+  criteria?: LessonCriteria;
 }
 
 /** Коррекция оценки. Автооценка сохраняется рядом. */
@@ -486,6 +565,9 @@ export interface SessionReport {
   scenario_id: string;
   mode: SessionMode;
   attempt?: number;
+  criteria: LessonCriteria;
+  failed_metrics: number;
+  passed: boolean;
   transcript: Array<TranscriptEntry>;
   findings: Array<Finding>;
   metrics: Array<Metric>;
@@ -512,6 +594,7 @@ export interface SessionSnapshot {
   level: Level;
   mode: SessionMode;
   exercise?: Exercise;
+  criteria?: LessonCriteria;
   trainee_name?: string | null;
   started_at?: string | null;
   kio: KIO;
@@ -535,6 +618,8 @@ export interface StationFinish {
 /** Что видит диспетчер: службы, их статусы и что доступно дальше. Все поля обязательные, хотя списки и могут быть пустыми: снимок всегда собирается целиком, а необязательное поле уезжает в TypeScript как `| undefined` и заставляет фронт проверять то, чего не бывает. */
 export interface StationSnapshot {
   services: Array<string>;
+  recipient_services?: Array<string>;
+  managed_service?: string | null;
   statuses: Record<string, ServiceStatus>;
   available: Record<string, Array<ServiceStatus>>;
   card: CardStatus;
@@ -542,11 +627,17 @@ export interface StationSnapshot {
   crew_options?: Array<string>;
   crew_selected?: string | null;
   phone_reports?: Array<PhoneReportRecord>;
+  phone_lines?: Array<PhoneLineRecord>;
+  phone_pending?: PhoneCallPending | null;
   card_id?: string | null;
   card_index?: number;
   card_total?: number;
   reply_text?: string;
   completed_cards?: Array<DdsCardSummary>;
+  queue_cards?: Array<DdsQueueCard>;
+  pending_cards_count: number;
+  next_arrival_in_seconds: number | null;
+  max_waiting_cards: number;
 }
 
 /** Состояние АРМ ДДС после каждой отметки: что стоит и что доступно дальше. */
@@ -652,9 +743,9 @@ export type ServerToObserver = SessionSnapshot | TranscriptAppend | KioState | T
 
 export type InstructorToServer = ScenarioStart | DirectorInject | ReferencePlay | InstructorNoteAdd | ScoreOverride | ScenarioPublish | SessionStop;
 
-export type ServerToStation = CardReceived | StationState | PhoneReport | TimerTick | SessionEnded | ScoreReady | ErrorEvent;
+export type ServerToStation = CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded | ScoreReady | ErrorEvent;
 
-export type StationToServer = CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | StationFinish | CardReply | CardNext | ZoneDecision | CrewDispatched | CrewArrived;
+export type StationToServer = CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | PhoneBrief | PhoneCheck | PhoneHangup | StationFinish | CardReply | CardNext | CardOpen | ZoneDecision | CrewDispatched | CrewArrived;
 
 export type EventName =
   "bg.start"
@@ -671,6 +762,7 @@ export type EventName =
   | "card.bounce"
   | "card.briefing"
   | "card.next"
+  | "card.open"
   | "card.received"
   | "card.reply"
   | "card.status"
@@ -689,7 +781,11 @@ export type EventName =
   | "kio.patch"
   | "kio.state"
   | "mode.set"
+  | "phone.brief"
+  | "phone.check"
   | "phone.dial"
+  | "phone.hangup"
+  | "phone.line"
   | "phone.report"
   | "reference.play"
   | "reference.started"

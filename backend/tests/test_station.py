@@ -104,9 +104,8 @@ def test_acknowledgement_stops_the_four_second_norm(client):
         control.__exit__(None, None, None)
 
 
-def test_bounced_card_becomes_e6_with_the_reason(client):
-    """Неполнота КИО перестаёт быть процентом в отчёте и становится
-    сорванным выездом с конкретной причиной."""
+def test_dds_cannot_return_card_for_112_quality_control(client):
+    """ДДС ставит статусы своей службы, а качество КИО контролирует 112."""
     session_id, control, _ = lesson(client)
     try:
         state = hub.get(session_id)
@@ -117,14 +116,15 @@ def test_bounced_card_becomes_e6_with_the_reason(client):
                 read_until(station, "card.received")
                 station.send_json({"type": "card.bounce", "missing_fields": ["floor", "victims_count"],
                                    "comment": "куда ехать без этажа"})
-                wait_for(lambda: state.bounced_fields)
+                error = read_until(station, "error")
+                assert "служба контроля 112" in error["message"]
+                assert state.bounced_fields == []
                 trainee.send_json({"type": "call.hangup"})
                 wait_for(lambda: state.score is not None)
 
         response = client.get(f"/api/sessions/{session_id}/report").json()
         chain = [finding for finding in response["findings"] if finding["code"] == "E6"]
-        assert chain, "возврат карточки должен попасть в разбор"
-        assert "floor" in chain[0]["summary"] and "выезд сорван" in chain[0]["summary"]
+        assert chain == []
     finally:
         control.__exit__(None, None, None)
 
@@ -160,8 +160,9 @@ def test_station_sees_the_notify_list_from_the_classifier(client):
     session_id, station, contexts = dispatched(client)
     try:
         state = read_until(station, "station.state")
-        assert "Служба 101" in state["snapshot"]["services"]
-        assert len(state["snapshot"]["services"]) > 1
+        assert state["snapshot"]["services"] == ["Служба 101"]
+        assert "Служба 101" in state["snapshot"]["recipient_services"]
+        assert len(state["snapshot"]["recipient_services"]) > 1
         assert state["snapshot"]["statuses"]["Служба 101"] == "added"
     finally:
         close_all(contexts)

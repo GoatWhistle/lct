@@ -1,7 +1,7 @@
 # Билет 20, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
 # факты выведены из ситуации: чего в строке нет, того звонящий не знает.
 id: t20-3-rape
-title: "Изнасилование, пострадавшая просит полицию"
+title: "Изнасилование женщины, требуется полиция"
 ticket: 20
 position: 3
 type: other
@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: panic }
     - { stage: interview, mood: worried }
 
-first_line: "Меня изнасиловали, вызовите полицию!"
+first_line: "Женщину изнасиловали, ей около тридцати лет. Нужно вызвать полицию."
 
 facts:
   - id: f_address
@@ -43,7 +43,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "улица Кастанаевская, дом 42, корпус 2"
+  address: "улица Кастанаевская, дом 42, корпус 2, во дворе"
   victims: 1
 
 tree:

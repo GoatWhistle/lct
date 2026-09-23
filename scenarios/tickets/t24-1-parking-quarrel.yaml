@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: calm }
     - { stage: interview, mood: calm }
 
-first_line: "Во дворе ругаются из-за парковки, громко очень."
+first_line: "Во дворе ругаются из-за парковки."
 
 facts:
   - id: f_address
@@ -28,7 +28,7 @@ facts:
     value: ссора во дворе из-за парковки
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: пострадавших нет
+    value: "сведений о пострадавших нет"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "Соколов Иван Петрович, очевидец, телефон 916 896 3254"
@@ -43,8 +43,8 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Вешняковская, дом 37"
-  victims: 0
+  address: "улица Вешняковская, дом 37, двор у пятого подъезда"
+  victims: null
 
 tree:
   pregenerated: false

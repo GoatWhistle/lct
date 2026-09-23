@@ -37,13 +37,19 @@ def to_csv(report: SessionReport) -> bytes:
     row("Занятие", "", "Сценарий", report.scenario_id)
     row("Занятие", "", "Режим", report.mode.value)
     row("Занятие", "", "Попытка", report.attempt)
+    row("Критерии", "", "Лимит решения ДДС, с", report.criteria.decision_time_limit_seconds)
+    row("Критерии", "", "Допустимо ошибок", report.criteria.allowed_errors)
+    row("Критерии", "", "Грамматика обязательна", "да" if report.criteria.require_correct_grammar else "нет")
+    row("Критерии", "", "Переопределения весов", report.criteria.score_weights or "стандартные")
+    row("Критерии", "", "Нарушенных метрик", report.failed_metrics)
+    row("Критерии", "", "Зачёт", "да" if report.passed else "нет")
     row("Оценка", "", "Автоматическая", report.score_auto)
     row("Оценка", "", "Итоговая", report.score_final)
     row("Оценка", "", "Изменена преподавателем", report.overridden_by)
     row("Оценка", "", "Причина изменения", report.override_comment)
 
     for number, item in enumerate(report.metrics, 1):
-        row("Метрики", number, item.title, item.fact, f"Норматив: {item.norm}; результат: {'да' if item.passed else 'нет'}; источник: {item.ref or ''}")
+        row("Метрики", number, item.title, item.fact, f"Норматив: {item.norm}; результат: {'да' if item.passed else 'нет'}; вес: {item.weight:g}; источник: {item.ref or ''}")
     for number, item in enumerate(report.findings, 1):
         row("Ошибки", number, item.code.value, item.summary, f"Факт: {item.fact}; норматив: {item.norm or ''}; источник: {item.ref or ''}")
     for number, item in enumerate(report.competencies, 1):
@@ -138,6 +144,12 @@ def to_pdf(report: SessionReport) -> bytes:
         ("Сценарий", report.scenario_id),
         ("Режим", report.mode.value),
         ("Попытка", report.attempt),
+        ("Лимит решения ДДС", f"{report.criteria.decision_time_limit_seconds} с"),
+        ("Допустимо ошибок", report.criteria.allowed_errors),
+        ("Грамматика обязательна", "да" if report.criteria.require_correct_grammar else "нет"),
+        ("Переопределения весов", report.criteria.score_weights or "стандартные"),
+        ("Нарушенных метрик", report.failed_metrics),
+        ("Результат", "зачёт" if report.passed else "не зачтено"),
         ("Автоматическая оценка", report.score_auto),
         ("Итоговая оценка", report.score_final),
     ):
@@ -155,7 +167,7 @@ def to_pdf(report: SessionReport) -> bytes:
     if not report.metrics:
         story.append(p("Нет данных", muted))
     for item in report.metrics:
-        story.append(p(f"{item.title} - {'выполнено' if item.passed else 'нарушено'}"))
+        story.append(p(f"{item.title} - {'выполнено' if item.passed else 'нарушено'} (вес {item.weight:g})"))
         story.append(p(f"Факт: {item.fact}. Норматив: {item.norm}. {item.ref or ''}", muted))
 
     section("Выявленные ошибки")
@@ -225,4 +237,75 @@ def to_pdf(report: SessionReport) -> bytes:
         canvas.restoreState()
 
     document.build(story, onFirstPage=footer, onLaterPages=footer)
+    return output.getvalue()
+
+
+def certificate_pdf(
+    *, trainee_name: str, trainee_id: object, group_name: str | None,
+    attempts: int, average_score: float, issued_at: object,
+) -> bytes:
+    """Одностраничный сертификат по фактически сохранённым результатам."""
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
+    regular_path, bold_path = _font_paths()
+    regular_name = "LCTCertificateRegular"
+    bold_name = "LCTCertificateBold"
+    if regular_name not in pdfmetrics.getRegisteredFontNames():
+        regular = TTFont(regular_name, str(regular_path))
+        if not all(ord(char) in regular.face.charToGlyph for char in "Сертификат Ёж"):
+            raise RuntimeError(f"Шрифт не поддерживает кириллицу: {regular_path}")
+        pdfmetrics.registerFont(regular)
+        pdfmetrics.registerFont(TTFont(bold_name, str(bold_path or regular_path)))
+
+    title = ParagraphStyle(
+        "certificate-title", fontName=bold_name, fontSize=28, leading=34,
+        alignment=TA_CENTER, textColor=colors.HexColor("#193b56"), spaceAfter=20,
+    )
+    body = ParagraphStyle(
+        "certificate-body", fontName=regular_name, fontSize=14, leading=21,
+        alignment=TA_CENTER, textColor=colors.HexColor("#18202a"), spaceAfter=10,
+    )
+    name_style = ParagraphStyle(
+        "certificate-name", parent=body, fontName=bold_name, fontSize=22, leading=28,
+        textColor=colors.HexColor("#a24816"), spaceAfter=18,
+    )
+    small = ParagraphStyle(
+        "certificate-small", parent=body, fontSize=9, leading=13,
+        textColor=colors.HexColor("#5d6873"),
+    )
+    safe_name = escape(trainee_name)
+    safe_group = escape(group_name or "без группы")
+    safe_date = escape(str(issued_at))
+    story = [
+        Spacer(1, 34),
+        Paragraph("СЕРТИФИКАТ", title),
+        Paragraph("о прохождении учебных занятий в локальном тренажёре системы-112 и ДДС", body),
+        Spacer(1, 12),
+        Paragraph(safe_name, name_style),
+        Paragraph(
+            f"Выполнено занятий: <b>{attempts}</b> · средняя итоговая оценка: "
+            f"<b>{average_score:.1f} из 100</b>", body,
+        ),
+        Paragraph(f"Учебная группа: {safe_group}", body),
+        Spacer(1, 28),
+        Paragraph(f"Дата формирования: {safe_date}", small),
+        Paragraph(f"Идентификатор курсанта: {escape(str(trainee_id))}", small),
+        Paragraph(
+            "Документ сформирован локально по сохранённым результатам и не заменяет "
+            "квалификационный документ установленного образца.", small,
+        ),
+    ]
+    output = io.BytesIO()
+    document = SimpleDocTemplate(
+        output, pagesize=landscape(A4), leftMargin=60, rightMargin=60,
+        topMargin=45, bottomMargin=45, title="Сертификат о прохождении обучения",
+        author="Учебный симулятор 112",
+    )
+    document.build(story)
     return output.getvalue()

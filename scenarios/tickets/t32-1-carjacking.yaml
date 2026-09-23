@@ -10,7 +10,9 @@ topics: [police]
 modes: [training, exam, self]
 
 extends: checklists/police.yaml
-signs: [Угон транспорта, Транспорт автомашина, До 30 минут]
+# Билет описывает завладение машиной, но не сообщает, сколько времени прошло.
+# Не выбираем код угона, требующий точный интервал «до 30 минут» или «свыше 30 минут».
+signs: []
 
 persona:
   base: panic
@@ -18,7 +20,7 @@ persona:
     - { stage: registration, mood: panic }
     - { stage: interview, mood: worried }
 
-first_line: "Меня из машины вытащили и уехали! Перегородили и вытащили!"
+first_line: "Человека вытащили из машины, перегородив проезд, и уехали на «Мерседесе»!"
 
 facts:
   - id: f_address
@@ -28,7 +30,7 @@ facts:
     value: "перегородили проезд машиной, вытащили из автомобиля и уехали; брошенный ваз 2115 остался на проезжей части"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "пострадавших нет, скорая не требуется"
+    value: "сведений о пострадавших нет; в исходной карточке указано «03 не требуется»"
     reveal_on: { question: q_victims }
   - id: f_fled
     value: уехали в сторону Ходынского бульвара
@@ -52,7 +54,7 @@ required_fields: [address, incident_type, description]
 
 ground_truth:
   address: "улица Маргелова, перед перекрёстком с улицей Гризодубовой"
-  victims: 0
+  victims: null
 
 tree:
   pregenerated: false

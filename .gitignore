@@ -1,12 +1,15 @@
 # IDE
 .idea/
 .vscode/
+.agents/
 
 # Веса моделей (тянутся make models)
 backend/models/
 
 # Резервные копии базы (make backup)
 backend/backups/
+backend/recordings/
+recordings/
 
 # Python
 __pycache__/
@@ -22,9 +25,14 @@ frontend/dist/
 .env.*
 !.env.example
 *.local
+.local/
 
 # Python
 .pytest_cache/
+
+# Temporary SQLite files created by local in-memory demo/test runs
+:memory:.ses
+backend/:memory:.ses
 
 # Артефакты Windows рядом со скачанными файлами
 *:Zone.Identifier

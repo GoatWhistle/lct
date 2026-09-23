@@ -29,7 +29,7 @@ facts:
     value: "горит одно окно на девятом этаже, открытое пламя"
     reveal_on: { question: q_what_burns }
   - id: f_people
-    value: "на соседнем балконе двое людей, кричат о помощи"
+    value: "рядом на балконе двое людей, кричат о помощи"
     reveal_on: { question: q_people }
   - id: f_gas
     value: "дом не газифицирован, этажность семнадцать"
@@ -48,7 +48,7 @@ checklist:
 required_fields: [address, floor, incident_type, description, victims_count]
 
 ground_truth:
-  address: "улица Цюрупы, дом 12, корпус 6"
+  address: "улица Цюрупы, дом 12, корпус 6, единственный подъезд, балкон со стороны подъезда"
   victims: 2
 
 tree:

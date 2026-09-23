@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "У соседей драка, двое мужчин, слышно через стену."
+first_line: "В квартире дерутся двое мужчин."
 
 facts:
   - id: f_address
@@ -28,7 +28,7 @@ facts:
     value: дерутся в квартире двое мужчин
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "пострадавших нет, насколько слышно"
+    value: пострадавших нет
     reveal_on: { question: q_victims }
   - id: f_suspects
     value: "двое мужчин, оружия нет"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, entrance, incident_type, description]
 
 ground_truth:
-  address: "улица Маршала Василевского, дом 13, корпус 3, квартира 2"
+  address: "улица Маршала Василевского, дом 13, корпус 3, квартира 2, подъезд 1, этаж 1, код домофона 2В"
   victims: 0
 
 tree:

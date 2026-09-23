@@ -54,7 +54,10 @@ async def main() -> None:
 
     slots = SlotMachine(scenario, embedder)
     persona = PersonaState(scenario.persona)
-    caller = build_caller(scenario.id)
+    caller = build_caller(
+        scenario.id,
+        use_pregenerated=scenario.tree.pregenerated,
+    )
 
     print(f"── {scenario.title} ({scenario.level.value}) ──")
     print("Вы — оператор 112. Команды: /подсказка /факты /итог /выход\n")

@@ -31,7 +31,7 @@ facts:
     value: "Иванова Ирина Петровна, дата рождения 10.03.1975"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: "без сознания, дышит"
+    value: "без сознания"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: "вызывает супруг, телефон 916 897 5623"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description]
 
 ground_truth:
-  address: "Коломенская набережная, дом 18, квартира 142"
+  address: "Коломенская набережная, дом 18, квартира 142, подъезд 3, этаж 4, код домофона 142"
   victims: 1
 
 tree:

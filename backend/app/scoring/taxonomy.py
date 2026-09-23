@@ -29,6 +29,7 @@ METRIC_MAP: dict[str, tuple[ErrorCode, Competency]] = {
     "dds_progress": (ErrorCode.D6, Competency.CARD),
     "dds_completion": (ErrorCode.D6, Competency.CARD),
     "dds_reply": (ErrorCode.D5, Competency.COMMUNICATION),
+    "dds_grammar": (ErrorCode.D5, Competency.COMMUNICATION),
 }
 
 #: Вес метрики в детерминированной оценке.

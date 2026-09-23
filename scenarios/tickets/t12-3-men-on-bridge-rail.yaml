@@ -18,19 +18,19 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "На ограждении моста мужчины, в крови оба!"
+first_line: "На ограждении моста мужчины, они в крови!"
 
 facts:
   - id: f_address
     value: "над МКАД между улицей Свободы и АЗС SHELL, внешняя сторона"
-    refined: "МКАД, 73 километр, внешняя сторона"
+    refined: "над МКАД между улицей Свободы и АЗС SHELL, 73 километр, внешняя сторона"
     reveal_on: { question: q_address }
     refine_on: q_address_check
   - id: f_what_happened
-    value: "двое мужчин на ограждении моста, в крови"
+    value: "мужчины на ограждении моста, в крови"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "двое, в сознании, держатся за ограждение"
+    value: "точное число неизвестно; мужчин как минимум двое, состояние пострадавших не указано"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "Иванова Елена Сергеевна, телефон 916 896 3254"
@@ -43,11 +43,11 @@ checklist:
   - { id: q_victims, fact: f_victims }
   - { id: q_caller, fact: f_caller }
 
-required_fields: [address, incident_type, description, victims_count]
+required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "МКАД, 73 километр, внешняя сторона"
-  victims: 2
+  address: "над МКАД между улицей Свободы и АЗС SHELL, 73 километр, внешняя сторона"
+  victims: null
 
 tree:
   pregenerated: false

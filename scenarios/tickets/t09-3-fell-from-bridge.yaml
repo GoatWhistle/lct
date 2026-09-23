@@ -28,7 +28,7 @@ facts:
     value: "мужчина упал с моста в воду, плавать не умеет"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "один человек в воде, на поверхности, кричит"
+    value: "один человек в воде, кричит"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "Иванова Елена Сергеевна, телефон 916 896 3254"
@@ -43,7 +43,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Бережковский мост, ТТК, внутренняя сторона"
+  address: "Бережковский мост, ТТК, внутренняя сторона, середина моста"
   victims: 1
 
 tree:

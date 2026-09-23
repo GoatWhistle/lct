@@ -51,7 +51,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Комсомольская площадь, дом 2А"
+  address: "Комсомольская площадь, дом 2А, у «Бургер Кинга»"
   victims: 1
 
 tree:

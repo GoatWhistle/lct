@@ -10,7 +10,7 @@ topics: [police]
 modes: [training, exam, self]
 
 extends: checklists/police.yaml
-signs: [Суицид, "Наблюдает приготовление к суициду (хочет спрыгнуть с моста, с крыши, отравиться, порезать вены и т.д.)"]
+signs: [Суицид]
 
 persona:
   base: worried
@@ -28,7 +28,7 @@ facts:
     value: "прислал СМС о намерении повеситься, доступа в квартиру нет"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "один человек в квартире, на связь не выходит"
+    value: "знакомый отправил СМС о намерении повеситься; его текущее состояние неизвестно"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "Иванова Елена Сергеевна, подруга, телефон 916 896 3254"
@@ -43,7 +43,7 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description]
 
 ground_truth:
-  address: "улица Белозерская, дом 11Б, квартира 5"
+  address: "улица Белозерская, дом 11Б, квартира 5, подъезд 1, этаж 2"
   victims: 1
 
 tree:

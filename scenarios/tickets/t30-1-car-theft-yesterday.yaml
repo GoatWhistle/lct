@@ -1,7 +1,7 @@
 # Билет 30, вызов 1 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
 # факты выведены из ситуации: чего в строке нет, того звонящий не знает.
 id: t30-1-car-theft-yesterday
-title: "Угон машины, обнаружен утром"
+title: "Угон машины, последний раз видели вчера вечером"
 ticket: 30
 position: 1
 type: police
@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: calm }
     - { stage: interview, mood: calm }
 
-first_line: "Машину угнали, вчера вечером последний раз видел."
+first_line: "Машину угнали, в последний раз её видели вчера вечером."
 
 facts:
   - id: f_address
@@ -28,7 +28,7 @@ facts:
     value: "машину угнали, последний раз видели вчера вечером"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: пострадавших нет
+    value: "сведений о пострадавших нет"
     reveal_on: { question: q_victims }
   - id: f_vehicle
     value: "тойота синяя, государственный номер А128НА 177"
@@ -47,8 +47,8 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Ташкентская, дом 25, корпус 1"
-  victims: 0
+  address: "улица Ташкентская, дом 25, корпус 1, двор от седьмого подъезда"
+  victims: null
 
 tree:
   pregenerated: false

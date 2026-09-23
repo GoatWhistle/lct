@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.domain.events import Metric
+from app.domain.events import LessonCriteria, Metric
 from app.scenarios.loader import load_file
 from app.scenarios.schema import Scenario
 from app.scoring.gost import GostResult
@@ -37,3 +37,12 @@ def test_scenario_accepts_only_known_finite_weights():
     body["score_weights"] = {"address": 11.0}
     with pytest.raises(ValidationError, match="от 0 до 10"):
         Scenario.model_validate(body)
+
+
+def test_lesson_criteria_validate_metric_weight_overrides():
+    criteria = LessonCriteria(score_weights={"address": 3.5, "dds_ack": 0})
+    assert criteria.score_weights == {"address": 3.5, "dds_ack": 0}
+    with pytest.raises(ValidationError, match="неизвестные метрики"):
+        LessonCriteria(score_weights={"adress": 2})
+    with pytest.raises(ValidationError, match="от 0 до 10"):
+        LessonCriteria(score_weights={"address": 11})

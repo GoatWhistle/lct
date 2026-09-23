@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "У соседей скандал, муж пьяный, женщине голову разбил!"
+first_line: "У соседей скандал, женщине нужна скорая: голова травмирована, кровь идёт!"
 
 facts:
   - id: f_address
@@ -31,7 +31,7 @@ facts:
     value: "Петрова Елена Михайловна, 28 лет, травма головы, кровотечение"
     reveal_on: { question: q_victims }
   - id: f_suspects
-    value: "муж в квартире, пьян"
+    value: "муж женщины пьян; его местонахождение не указано"
     reveal_on: { question: q_suspects }
   - id: f_caller
     value: "Соколов Иван Петрович, сосед, телефон 916 896 3254"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description, victims_count]
 
 ground_truth:
-  address: "улица Тихомирова, дом 15, корпус 1, квартира 79"
+  address: "улица Тихомирова, дом 15, корпус 1, квартира 79, подъезд 2, этаж 4, код домофона 80В"
   victims: 1
 
 tree:

@@ -18,11 +18,11 @@ persona:
     - { stage: registration, mood: panic }
     - { stage: interview, mood: worried }
 
-first_line: "Сыну живот скрутило, рвота с кровью! Мы в дороге!"
+first_line: "Сыну живот скрутило, рвота с кровью!"
 
 facts:
   - id: f_address
-    value: "Ленинградское шоссе около памятника Ленину, напротив вокзала станции Ржев-1, ехали из Зубцова в сторону Селижарова"
+    value: "стоят на Ленинградском шоссе около памятника Ленину, напротив вокзала станции Ржев-1; ехали из Зубцова в сторону Селижарова"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "боль в животе, рвота с кровью"
@@ -30,8 +30,11 @@ facts:
   - id: f_who
     value: "Соловьёв Максим, 4 года"
     reveal_on: { question: q_who }
+  - id: f_vehicle
+    value: "белая Mazda-6, государственный номер П325ОР 197"
+    reveal_on: { question: q_vehicle }
   - id: f_conscious
-    value: "в сознании, в автомобиле мазда-6 белая П325ОР 197"
+    value: "сведения о сознании ребёнка не указаны"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: "вызывает папа, телефон 916 896 3254"
@@ -41,13 +44,17 @@ checklist:
   - { id: q_address, fact: f_address }
   - { id: q_what_happened, fact: f_what_happened }
   - { id: q_who, fact: f_who }
+  - id: q_vehicle
+    question: "В какой машине вы находитесь: марка, цвет и номер?"
+    examples: ["Назовите автомобиль и госномер.", "На какой машине едете? Какого она цвета?"]
+    fact: f_vehicle
   - { id: q_conscious, fact: f_conscious }
   - { id: q_caller, fact: f_caller }
 
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Ленинградское шоссе у памятника Ленину, напротив вокзала Ржев-1"
+  address: "стоят на Ленинградском шоссе около памятника Ленину, напротив вокзала станции Ржев-1; ехали из Зубцова в сторону Селижарова"
   victims: 1
 
 tree:

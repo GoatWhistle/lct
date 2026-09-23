@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.domain.events import TimerTick
+from app.domain.events import CardReceived, Exercise, StationState, TimerTick
 from app.session.state import SessionState
 
 #: Очередь одного подписчика. Медленный наблюдатель не тормозит занятие:
@@ -30,14 +30,20 @@ class Journal(Protocol):
     async def start_lesson(
         self, session_id: UUID, scenario_id: str, mode: str, trainee_name: str | None,
         trainee_id: UUID | None = None,
-    ) -> tuple[int, UUID | None]: ...
+    ) -> tuple[int, UUID | None, str | None]: ...
     async def utterance(self, session_id: UUID, entry) -> None: ...
     async def hint(self, session_id: UUID, checklist_id: str, question: str, at) -> None: ...
     async def note(self, session_id: UUID, ref: str, text: str, author: str) -> None: ...
     async def self_assessment(self, session_id: UUID, missed: list[str], comment: str, at) -> None: ...
     async def score(self, session_id: UUID, score_auto: float, report: dict) -> None: ...
+    async def score_snapshot(self, session_id: UUID, report: dict) -> None: ...
+    async def score_override(
+        self, session_id: UUID, score_final: float, author: str, comment: str,
+    ) -> None: ...
     async def session_started(self, session_id: UUID, at) -> None: ...
     async def session_ended(self, session_id: UUID, at, reason: str) -> None: ...
+    async def checkpoint(self, state: SessionState) -> None: ...
+    async def restore_active(self) -> list[SessionState]: ...
 
 
 class SessionHub:
@@ -58,9 +64,25 @@ class SessionHub:
     def get(self, session_id: UUID) -> SessionState | None:
         return self._sessions.get(session_id)
 
+    def has_active_scenario(self, scenario_id: str) -> bool:
+        """Архивирование контента не должно менять уже идущее занятие."""
+        return any(
+            not state.ended and (
+                state.scenario_id == scenario_id
+                or any(item.id == scenario_id for item in state.dds_scenarios)
+            )
+            for state in self._sessions.values()
+        )
+
     def drop(self, session_id: UUID) -> None:
         self._sessions.pop(session_id, None)
         self.stop_ticker(session_id)
+
+    async def checkpoint(self, session_id: UUID) -> None:
+        """Зафиксировать подтверждённое состояние, если журнал доступен."""
+        state = self.get(session_id)
+        if state is not None and self.journal is not None:
+            await self.journal.checkpoint(state)
 
     # ── подписки ──
 
@@ -138,6 +160,18 @@ class SessionHub:
                 state = self.get(session_id)
                 if state is None or state.ended:
                     return
+                if state.exercise is Exercise.DDS:
+                    from app.session.dds import deliver_due_cards
+
+                    active_before = state.dds_active_card_id
+                    delivered = deliver_due_cards(state)
+                    if state.dds_active_card_id != active_before and state.dds_active_card_id:
+                        self.to_station(session_id, state.card_received_event())
+                    if delivered:
+                        await self.checkpoint(session_id)
+                    # Keep the pending count and countdown live even while
+                    # the active dispatcher card is being handled.
+                    self.to_station(session_id, StationState(snapshot=state.station_snapshot()))
                 self.broadcast(session_id, TimerTick(timers=state.timers.snapshot()))
         except asyncio.CancelledError:
             raise

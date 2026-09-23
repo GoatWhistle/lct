@@ -20,6 +20,32 @@ export interface AuditRow {
   at: string; actor: string; role: string; action: string; object_id: string | null; detail: string;
 }
 export interface Backup { name: string; size_bytes: number; at: string }
+export interface RuntimeMetrics {
+  at: string;
+  uptime_seconds: number;
+  cpu_percent: number;
+  load_1m_percent: number | null;
+  cpu_cores: number;
+  rss_bytes: number | null;
+  memory_total_bytes: number | null;
+  memory_available_bytes: number | null;
+  disk_total_bytes: number;
+  disk_free_bytes: number;
+  threads: number;
+  active_sessions: number;
+  restored_sessions: number;
+  completed_sessions_24h: number;
+}
+export interface DiagnosticEvent { at: string; level: string; source: string; message: string }
+export interface FailureEvent {
+  at: string; actor: string; action: string; object_id: string | null; detail: string;
+}
+export interface DiagnosticReport {
+  generated_at: string;
+  metrics: RuntimeMetrics;
+  recent_system_events: DiagnosticEvent[];
+  failed_actions_24h: FailureEvent[];
+}
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -44,10 +70,22 @@ export const useStatus = () =>
     refetchInterval: 10_000,
   });
 
-export const useAudit = (action: string) =>
+export const useDiagnostics = () =>
   useQuery({
-    queryKey: ["admin-audit", action],
-    queryFn: () => call<AuditRow[]>(`/api/admin/audit${action ? `?action=${encodeURIComponent(action)}` : ""}`),
+    queryKey: ["admin-diagnostics"],
+    queryFn: () => call<DiagnosticReport>("/api/admin/diagnostics"),
+    refetchInterval: 10_000,
+  });
+
+export const useAudit = (action: string, actor: string, offset: number) =>
+  useQuery({
+    queryKey: ["admin-audit", action, actor, offset],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: "201", offset: String(offset) });
+      if (action) params.set("action", action);
+      if (actor) params.set("actor", actor);
+      return call<AuditRow[]>(`/api/admin/audit?${params.toString()}`);
+    },
   });
 
 export const useBackups = () =>

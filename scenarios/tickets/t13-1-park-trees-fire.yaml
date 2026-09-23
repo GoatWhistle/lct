@@ -46,7 +46,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "Кусковский лесопарк, рядом со стадионом Фрезер"
+  address: "Кусковский лесопарк, рядом со стадионом Фрезер, вход со стороны аллеи Первой Маёвки"
   victims: 0
 
 tree:

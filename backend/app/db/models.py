@@ -8,7 +8,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,6 +26,8 @@ class Group(Base):
 
     id: Mapped[UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column(String(120), unique=True)
+    # NULL — legacy/admin-managed group; instructor-created groups are private.
+    owner_login: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     trainees: Mapped[list["Trainee"]] = relationship(back_populates="group")
@@ -43,6 +45,52 @@ class Trainee(Base):
     sessions: Mapped[list["Session"]] = relationship(back_populates="trainee")
 
 
+class LearningMaterial(Base):
+    """Локальный учебный материал или загруженный преподавателем ресурс."""
+
+    __tablename__ = "learning_materials"
+
+    id: Mapped[UUID] = _uuid_pk()
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    level: Mapped[str] = mapped_column(String(4), default="L1")
+    kind: Mapped[str] = mapped_column(String(16), default="text")
+    body: Mapped[str] = mapped_column(Text, default="")
+    scenario_id: Mapped[str | None] = mapped_column(
+        ForeignKey("scenarios.id", ondelete="SET NULL"), nullable=True
+    )
+    file_name: Mapped[str | None] = mapped_column(String(240))
+    media_type: Mapped[str | None] = mapped_column(String(120))
+    file_data: Mapped[bytes | None] = mapped_column(LargeBinary)
+    file_sha256: Mapped[str | None] = mapped_column(String(64))
+    active: Mapped[bool] = mapped_column(default=True)
+    created_by: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class MaterialAssignment(Base):
+    """Назначение материала курсанту и факт изучения."""
+
+    __tablename__ = "material_assignments"
+
+    id: Mapped[UUID] = _uuid_pk()
+    material_id: Mapped[UUID] = mapped_column(
+        ForeignKey("learning_materials.id", ondelete="CASCADE")
+    )
+    trainee_id: Mapped[UUID] = mapped_column(ForeignKey("trainees.id", ondelete="CASCADE"))
+    assigned_by: Mapped[str] = mapped_column(String(80))
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("material_id", "trainee_id", name="uq_material_assignment"),
+        Index("ix_material_assignments_trainee", "trainee_id", "assigned_at"),
+    )
+
+
 class Scenario(Base):
     """Сценарий целиком лежит в `body`: библиотека — контент, а не схема.
     Отдельными колонками вынесено только то, по чему идёт выборка в списке."""
@@ -56,6 +104,9 @@ class Scenario(Base):
     topics: Mapped[list] = mapped_column(JSONB, default=list)
     modes: Mapped[list] = mapped_column(JSONB, default=list)
     status: Mapped[str] = mapped_column(String(16), default="published")
+    # У черновика и утверждённого авторского сценария ровно один владелец;
+    # NULL означает базовую/унаследованную системную библиотеку.
+    owner_login: Mapped[str | None] = mapped_column(String(80), nullable=True)
     body: Mapped[dict] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -74,6 +125,7 @@ class Session(Base):
 
     id: Mapped[UUID] = _uuid_pk()
     scenario_id: Mapped[str] = mapped_column(ForeignKey("scenarios.id", ondelete="RESTRICT"))
+    owner_login: Mapped[str | None] = mapped_column(String(80), nullable=True)
     trainee_id: Mapped[UUID | None] = mapped_column(ForeignKey("trainees.id", ondelete="SET NULL"))
     group_id: Mapped[UUID | None] = mapped_column(ForeignKey("groups.id", ondelete="SET NULL"))
     mode: Mapped[str] = mapped_column(String(16))
@@ -82,6 +134,10 @@ class Session(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     end_reason: Mapped[str | None] = mapped_column(String(16))
     kio: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Последний подтверждённый снимок незавершённого занятия. Он очищается при
+    # завершении и позволяет новому backend-процессу продолжить карточку/ДДС.
+    live_state: Mapped[dict | None] = mapped_column(JSONB)
+    checkpoint_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     trainee: Mapped["Trainee | None"] = relationship(back_populates="sessions")
@@ -214,6 +270,9 @@ class User(Base):
     service: Mapped[str | None] = mapped_column(String(120))
     trainee_id: Mapped[UUID | None] = mapped_column(ForeignKey("trainees.id", ondelete="SET NULL"))
     blocked: Mapped[bool] = mapped_column(default=False)
+    # Версия полномочий попадает в подписанную cookie. Смена роли, пароля или
+    # блокировки увеличивает её и отзывает старые cookie даже после restart.
+    auth_version: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

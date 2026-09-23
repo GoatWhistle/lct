@@ -31,7 +31,7 @@ facts:
     value: "женщина за дверью, имени не знаю"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: "отвечает, говорит"
+    value: "женщина просит о помощи из-за двери; её состояние не видно"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: "Иванова Елена Сергеевна, соседка, телефон 916 897 5623; на месте сотрудники полиции"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description]
 
 ground_truth:
-  address: "проспект Маршала Жукова, дом 20, корпус 2, квартира 57"
+  address: "проспект Маршала Жукова, дом 20, корпус 2, квартира 57, подъезд 3, этаж 5, код домофона 57В"
   victims: 1
 
 tree:

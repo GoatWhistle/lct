@@ -50,7 +50,8 @@ def test_demo_without_db_starts_dds_and_issues_owned_trainee_cookie(monkeypatch)
             assert client.post("/api/auth/dev-token?role=trainee").json()["trainee_id"] == str(DEMO_TRAINEE_ID)
             assert client.post("/api/auth/dev-token").json()["role"] == "instructor"
             assert client.get("/api/trainees").json() == [
-                {"id": str(DEMO_TRAINEE_ID), "name": "Демо-курсант", "group": None}
+                {"id": str(DEMO_TRAINEE_ID), "name": "Демо-курсант", "group": None,
+                 "service": "Служба 101"}
             ]
             # БД-зависимые экраны получают быстрый и явный отказ, не ждут TCP timeout.
             assert client.get("/api/sessions").json()["detail"] == "database_disabled_demo"

@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "Пешехода сбили и уехали! Мужчина в сознании, голова разбита."
+first_line: "Пешехода сбили и уехали! Мужчина в сознании, травма головы."
 
 facts:
   - id: f_address

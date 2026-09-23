@@ -30,7 +30,7 @@ facts:
     value: "горит мусорный контейнер, пламя открытое"
     reveal_on: { question: q_what_burns }
   - id: f_people
-    value: "пострадавших нет, рядом никого"
+    value: пострадавших нет
     reveal_on: { question: q_people }
   - id: f_caller
     value: "Сидоров Иван Сергеевич, телефон 916-126-34-71"

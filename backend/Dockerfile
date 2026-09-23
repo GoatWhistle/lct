@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Экспорт PDF требует локальный TTF с кириллицей; базовый slim-образ его не
 # гарантирует. Шрифт запекается в образ при подготовке офлайн-комплекта.
-RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core \
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Зависимости — из pyproject.toml, а не отдельным списком: ручной список разошёлся

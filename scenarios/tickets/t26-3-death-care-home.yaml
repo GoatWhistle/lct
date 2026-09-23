@@ -10,7 +10,9 @@ topics: [medical]
 modes: [training, exam, self]
 
 extends: checklists/medical.yaml
-signs: [На улице, Улица общественное место, Труп]
+# В центре для пожилых людей; код «труп на улице» к этому адресу неприменим.
+# Источник не уточняет время/порядок констатации, поэтому код ЕКП не назначаем.
+signs: []
 
 persona:
   base: calm
@@ -43,7 +45,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "улица Лескова, дом 6Б"
+  address: "улица Лескова, дом 6Б, этаж 1, центр для пожилых людей «Союз», охрана встретит"
   victims: 1
 
 tree:

@@ -31,7 +31,7 @@ facts:
     value: "женщина неизвестная, около семидесяти лет"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: "в сознании, на ногах"
+    value: "сведения о сознании не указаны"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: "Соколов Иван Петрович, прохожий, телефон 916 897 5623"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: Люберецкие поля фильтрации
+  address: "Люберецкие поля фильтрации, пересечение дороги из Кожухова в Железнодорожный и дороги из Некрасовки в Железнодорожный"
   victims: 1
 
 tree:

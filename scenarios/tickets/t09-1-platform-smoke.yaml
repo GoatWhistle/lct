@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "На платформе дымом пахнет, дым идёт."
+first_line: "На платформе задымление."
 
 facts:
   - id: f_address
@@ -27,10 +27,10 @@ facts:
     reveal_on: { question: q_address }
     refine_on: q_address_check
   - id: f_what_burns
-    value: "задымление на платформе, открытого пламени нет"
+    value: "задымление на платформе"
     reveal_on: { question: q_what_burns }
   - id: f_people
-    value: "пострадавших нет, людей выводят"
+    value: "пострадавших людей нет"
     reveal_on: { question: q_people }
   - id: f_caller
     value: "Тихий Олег Юрьевич, телефон 916-123-98-78"

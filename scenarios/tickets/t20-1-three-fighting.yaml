@@ -31,10 +31,10 @@ facts:
     value: пострадавших нет
     reveal_on: { question: q_victims }
   - id: f_suspects
-    value: "трое мужчин, оружия не видно"
+    value: "дерутся три человека, оружия нет; пол участников не указан"
     reveal_on: { question: q_suspects }
   - id: f_caller
-    value: "Иванов Сергей Петрович, очевидец, телефон 916-123-98-78"
+    value: "Иванов Сергей Петрович — очевидец, также Орлова Вера Ивановна, телефон 916-123-98-78"
     reveal_on: { question: q_caller }
 
 checklist:
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "Олонецкий проезд, дом 4"
+  address: "Олонецкий проезд, дом 4, за домом, дорожка в сторону кладбища"
   victims: 0
 
 tree:

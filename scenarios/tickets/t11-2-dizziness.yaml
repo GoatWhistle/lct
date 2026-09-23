@@ -31,7 +31,7 @@ facts:
     value: "Легкодушев Дмитрий Константинович, дата рождения 31.05.2011"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: "сознание теряет, но приходит в себя"
+    value: "теряет сознание; не знаю, приходит ли в себя"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: "вызывает отец, Максимов Олег Иванович, телефон 916 897 5623"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Беломорская, дом 10, корпус 2"
+  address: "улица Беломорская, дом 10, корпус 2, на дворовой дороге"
   victims: 1
 
 tree:

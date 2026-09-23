@@ -28,7 +28,7 @@ facts:
     value: "лежит большая коробка, замотана скотчем, внутри что-то тикает"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "пострадавших нет, рядом гуляют люди"
+    value: "сведений о пострадавших нет"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "Соколов Иван Петрович, прохожий, телефон 916 896 3254"
@@ -43,8 +43,8 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "парк Лосиный остров, вход от улицы Красной Сосны"
-  victims: 0
+  address: "парк Лосиный остров, вход от улицы Красной Сосны, далее по дорожке прямо до скамеек"
+  victims: null
 
 tree:
   pregenerated: false

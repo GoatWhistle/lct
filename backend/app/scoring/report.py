@@ -46,6 +46,8 @@ def assess_difference(
 
 def build(session_id: UUID, state, scenario: Scenario) -> SessionReport:
     score = state.score or {}
+    metrics = [Metric.model_validate(item) for item in score.get("metrics", [])]
+    failed_metrics = sum(not item.passed and item.weight > 0 for item in metrics)
     # Без модели эмбеддингов распознать *какие* факты прозвучали нельзя.
     # Но если оператор не произнёс ни слова, все обязательные вопросы точно
     # пропущены — это доказуемый частный случай и он нужен офлайн-разбору.
@@ -78,9 +80,12 @@ def build(session_id: UUID, state, scenario: Scenario) -> SessionReport:
                      else scenario.id),
         mode=state.mode,
         attempt=state.attempt,
+        criteria=state.criteria,
+        failed_metrics=failed_metrics,
+        passed=failed_metrics <= state.criteria.allowed_errors,
         transcript=list(state.transcript),
         findings=[Finding.model_validate(item) for item in score.get("findings", [])],
-        metrics=[Metric.model_validate(item) for item in score.get("metrics", [])],
+        metrics=metrics,
         card_results=[DdsCardReport.model_validate(item)
                       for item in score.get("card_results", [])],
         competencies=[CompetencyScore.model_validate(item) for item in score.get("competencies", [])],

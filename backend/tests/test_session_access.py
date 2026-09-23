@@ -31,6 +31,35 @@ async def test_trainee_cannot_read_foreign_session(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_instructor_cannot_read_foreign_session(monkeypatch):
+    who = Principal(login="teacher-a", full_name="Преподаватель A", role=Role.INSTRUCTOR)
+    monkeypatch.setattr(sessions, "require", lambda _: who)
+
+    async def row(_db, _session_id):
+        return SimpleNamespace(owner_login="teacher-b")
+
+    monkeypatch.setattr(sessions.repo, "get_session", row)
+    with pytest.raises(HTTPException) as error:
+        await sessions.read(uuid4(), request(), db=object())
+    assert error.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_instructor_history_is_scoped_to_owner(monkeypatch):
+    who = Principal(login="teacher-a", full_name="Преподаватель A", role=Role.INSTRUCTOR)
+    monkeypatch.setattr(sessions, "require", lambda _: who)
+    seen = {}
+
+    async def history(_db, **filters):
+        seen.update(filters)
+        return []
+
+    monkeypatch.setattr(sessions.repo, "history", history)
+    await sessions.listing(request(), db=object())
+    assert seen["owner_login"] == "teacher-a"
+
+
+@pytest.mark.asyncio
 async def test_trainee_cannot_read_foreign_checklist(monkeypatch):
     who = Principal(login="trainee", full_name="Курсант", role=Role.TRAINEE, trainee_id=uuid4())
     monkeypatch.setattr(sessions, "require", lambda _: who)

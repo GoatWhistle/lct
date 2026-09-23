@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: calm }
     - { stage: interview, mood: calm }
 
-first_line: "У нас пожарная сигнализация сработала, а дыма нет."
+first_line: "В жилом доме сработала пожарная сигнализация, дыма и возгорания нет."
 
 facts:
   - id: f_address
@@ -28,7 +28,7 @@ facts:
     value: "сигнализация сработала, дыма и возгорания не видно"
     reveal_on: { question: q_what_burns }
   - id: f_people
-    value: пострадавших нет
+    value: сведения о пострадавших не указаны
     reveal_on: { question: q_people }
   - id: f_caller
     value: "Сухов Леонид Сергеевич, телефон 916-123-98-78"
@@ -43,8 +43,8 @@ checklist:
 required_fields: [address, entrance, incident_type, description]
 
 ground_truth:
-  address: "Большой Сухаревский переулок, дом 19, строение 2"
-  victims: 0
+  address: "Большой Сухаревский переулок, дом 19, строение 2, подъезд 1, код домофона 2215"
+  victims: null
 
 tree:
   pregenerated: false

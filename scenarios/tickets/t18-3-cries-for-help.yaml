@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "Со двора мужчина кричит о помощи, а что там — не вижу."
+first_line: "С улицы слышны крики, мужчина зовёт на помощь."
 
 facts:
   - id: f_address
@@ -28,7 +28,7 @@ facts:
     value: "с улицы слышны крики о помощи, кричит мужчина"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "сколько человек и что с ними, не знаю"
+    value: "один мужчина кричит о помощи; причина неизвестна"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "Иванова Елена Сергеевна, телефон 916 896 3254"
@@ -43,7 +43,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "Огородный проезд, дом 12"
+  address: "Огородный проезд, дом 12, во дворе"
   victims: 1
 
 tree:

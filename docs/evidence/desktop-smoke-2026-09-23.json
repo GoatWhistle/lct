@@ -1,0 +1,412 @@
+{
+  "checked_at": "2026-09-23T17:55:19Z",
+  "base_url": "http://127.0.0.1:5173",
+  "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "device_scale_factor": 1.0,
+    "touch_target_minimum_px": null
+  },
+  "screens": {
+    "instructor": {
+      "viewport": 1920,
+      "document_width": 1920,
+      "overflowing": [],
+      "small_controls": [
+        {
+          "tag": "select",
+          "label": "Категория происшествия",
+          "width": 220,
+          "height": 19
+        },
+        {
+          "tag": "select",
+          "label": "Билет заказчика",
+          "width": 220,
+          "height": 19
+        },
+        {
+          "tag": "input",
+          "label": "Поиск сценария",
+          "width": 220,
+          "height": 21
+        },
+        {
+          "tag": "select",
+          "label": "Билет 1, вызов 1 · Возгорание мусорного контейнера · L2Билет",
+          "width": 220,
+          "height": 19
+        },
+        {
+          "tag": "summary",
+          "label": "Дополнительные карточки (0)",
+          "width": 220,
+          "height": 16
+        },
+        {
+          "tag": "select",
+          "label": "Выберите учётную записьДемо-курсант · Служба 101",
+          "width": 220,
+          "height": 19
+        },
+        {
+          "tag": "input",
+          "label": "Интервал поступления карточек ДДС, секунд",
+          "width": 72,
+          "height": 25
+        },
+        {
+          "tag": "input",
+          "label": "Максимум ожидающих карточек ДДС",
+          "width": 72,
+          "height": 25
+        },
+        {
+          "tag": "input",
+          "label": "Лимит решения ДДС, секунд",
+          "width": 72,
+          "height": 25
+        },
+        {
+          "tag": "input",
+          "label": "Допустимое число ошибок",
+          "width": 72,
+          "height": 25
+        },
+        {
+          "tag": "select",
+          "label": "Пожар в квартире, паникующий заявитель · L2Возгорание мусорн",
+          "width": 1429,
+          "height": 34
+        },
+        {
+          "tag": "input",
+          "label": "необязательно",
+          "width": 220,
+          "height": 34
+        },
+        {
+          "tag": "button",
+          "label": "Создать черновик",
+          "width": 165,
+          "height": 32
+        },
+        {
+          "tag": "input",
+          "label": "Например: ночное возгорание, плотный дым, заявитель паникует",
+          "width": 1374,
+          "height": 34
+        },
+        {
+          "tag": "input",
+          "label": "draft-…",
+          "width": 1731,
+          "height": 34
+        },
+        {
+          "tag": "summary",
+          "label": "Демо · экраны",
+          "width": 124,
+          "height": 27
+        }
+      ]
+    },
+    "trainee": {
+      "viewport": 1920,
+      "document_width": 1920,
+      "overflowing": [],
+      "small_controls": [
+        {
+          "tag": "input",
+          "label": "ФИО",
+          "width": 342,
+          "height": 29
+        },
+        {
+          "tag": "input",
+          "label": "Контактный телефон",
+          "width": 342,
+          "height": 29
+        },
+        {
+          "tag": "input",
+          "label": "Язык общения",
+          "width": 342,
+          "height": 29
+        },
+        {
+          "tag": "input",
+          "label": "ОКАТО",
+          "width": 199,
+          "height": 29
+        },
+        {
+          "tag": "input",
+          "label": "Адрес",
+          "width": 837,
+          "height": 29
+        },
+        {
+          "tag": "input",
+          "label": "Улица",
+          "width": 412,
+          "height": 29
+        },
+        {
+          "tag": "input",
+          "label": "Дом",
+          "width": 199,
+          "height": 29
+        },
+        {
+          "tag": "input",
+          "label": "Подъезд",
+          "width": 199,
+          "height": 29
+        },
+        {
+          "tag": "input",
+          "label": "Этаж",
+          "width": 199,
+          "height": 29
+        },
+        {
+          "tag": "input",
+          "label": "Код домофона",
+          "width": 199,
+          "height": 29
+        },
+        {
+          "tag": "button",
+          "label": "Пожар",
+          "width": 68,
+          "height": 33
+        },
+        {
+          "tag": "button",
+          "label": "Медицинский вызов",
+          "width": 159,
+          "height": 33
+        },
+        {
+          "tag": "button",
+          "label": "Правонарушение",
+          "width": 138,
+          "height": 33
+        },
+        {
+          "tag": "button",
+          "label": "Авария ЖКХ",
+          "width": 106,
+          "height": 33
+        },
+        {
+          "tag": "button",
+          "label": "ДТП, автовызов",
+          "width": 130,
+          "height": 33
+        },
+        {
+          "tag": "button",
+          "label": "Прочее",
+          "width": 73,
+          "height": 33
+        },
+        {
+          "tag": "select",
+          "label": "Категория происшествия",
+          "width": 693,
+          "height": 29
+        },
+        {
+          "tag": "input",
+          "label": "Пострадавших",
+          "width": 693,
+          "height": 29
+        },
+        {
+          "tag": "button",
+          "label": "Да",
+          "width": 49,
+          "height": 29
+        },
+        {
+          "tag": "button",
+          "label": "Нет",
+          "width": 49,
+          "height": 29
+        }
+      ]
+    },
+    "dds": {
+      "viewport": 1920,
+      "document_width": 1920,
+      "overflowing": [],
+      "small_controls": [
+        {
+          "tag": "input",
+          "label": "Введите номер или адрес",
+          "width": 520,
+          "height": 26
+        },
+        {
+          "tag": "button",
+          "label": "сбросить",
+          "width": 73,
+          "height": 24
+        },
+        {
+          "tag": "button",
+          "label": "Открыть карточку",
+          "width": 14,
+          "height": 15
+        },
+        {
+          "tag": "button",
+          "label": "DE9AA7B8",
+          "width": 69,
+          "height": 14
+        },
+        {
+          "tag": "summary",
+          "label": "Демо · экраны",
+          "width": 124,
+          "height": 27
+        }
+      ]
+    },
+    "dds_card": {
+      "viewport": 1920,
+      "document_width": 1920,
+      "overflowing": [],
+      "small_controls": [
+        {
+          "tag": "button",
+          "label": "← Список происшествий",
+          "width": 166,
+          "height": 21
+        },
+        {
+          "tag": "button",
+          "label": "просмотр",
+          "width": 100,
+          "height": 34
+        },
+        {
+          "tag": "button",
+          "label": "дополнение",
+          "width": 100,
+          "height": 34
+        },
+        {
+          "tag": "summary",
+          "label": "Демо · экраны",
+          "width": 124,
+          "height": 27
+        }
+      ]
+    },
+    "dds_workflow": {
+      "viewport": 1920,
+      "document_width": 1920,
+      "overflowing": [],
+      "small_controls": [
+        {
+          "tag": "button",
+          "label": "← Список происшествий",
+          "width": 166,
+          "height": 21
+        },
+        {
+          "tag": "button",
+          "label": "просмотр",
+          "width": 100,
+          "height": 34
+        },
+        {
+          "tag": "button",
+          "label": "дополнение",
+          "width": 100,
+          "height": 34
+        },
+        {
+          "tag": "button",
+          "label": "Закрыть панель",
+          "width": 27,
+          "height": 26
+        },
+        {
+          "tag": "input",
+          "label": "SIP внутренний номер",
+          "width": 336,
+          "height": 36
+        },
+        {
+          "tag": "input",
+          "label": "Пароль SIP",
+          "width": 336,
+          "height": 36
+        },
+        {
+          "tag": "select",
+          "label": "Выберите бригадуСлужба 101 — бригада №1Служба 101 — бригада ",
+          "width": 878,
+          "height": 33
+        },
+        {
+          "tag": "button",
+          "label": "☎ Позвонить старшему группы",
+          "width": 878,
+          "height": 34
+        },
+        {
+          "tag": "summary",
+          "label": "История докладов (1)",
+          "width": 878,
+          "height": 15
+        },
+        {
+          "tag": "summary",
+          "label": "Демо · экраны",
+          "width": 124,
+          "height": 27
+        }
+      ]
+    }
+  },
+  "workflow": {
+    "service": "Служба 101",
+    "status": "Принята",
+    "crew": "Служба 101 — бригада №1",
+    "brief_recorded": true,
+    "session_finished": true
+  },
+  "problems": {
+    "instructor": {
+      "horizontal_overflow": false,
+      "small_controls": 16,
+      "touch_target_check_applies": false
+    },
+    "trainee": {
+      "horizontal_overflow": false,
+      "small_controls": 20,
+      "touch_target_check_applies": false
+    },
+    "dds": {
+      "horizontal_overflow": false,
+      "small_controls": 5,
+      "touch_target_check_applies": false
+    },
+    "dds_card": {
+      "horizontal_overflow": false,
+      "small_controls": 4,
+      "touch_target_check_applies": false
+    },
+    "dds_workflow": {
+      "horizontal_overflow": false,
+      "small_controls": 10,
+      "touch_target_check_applies": false
+    }
+  },
+  "passed": true
+}

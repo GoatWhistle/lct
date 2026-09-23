@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "Мне плохо очень, я в машине сижу, выйти не могу."
+first_line: "Здравствуйте, мне стало плохо, я нахожусь в машине."
 
 facts:
   - id: f_address
@@ -31,7 +31,7 @@ facts:
     value: "Иванов Павел Сергеевич, сорок лет, вызывает себе"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: "в сознании, говорит сам"
+    value: "сведения о сознании не указаны"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: телефон 916 897 5623
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Красный Казанец, дом 19Б"
+  address: "улица Красный Казанец, дом 19Б, напротив дома, на стоянке"
   victims: 1
 
 tree:

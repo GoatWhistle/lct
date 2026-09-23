@@ -19,7 +19,7 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview,    mood: worried }
 
-first_line: "Алло! Тут человек пятнадцать дерутся, прутами машут! Скорее!"
+first_line: "Алло! Тут десять-пятнадцать человек дерутся, палками и прутами машут! Скорее!"
 
 facts:
   - id: f_address
@@ -34,7 +34,7 @@ facts:
     value: "пятеро пострадавших с разными травмами"
     reveal_on: { question: q_victims }
   - id: f_suspects
-    value: "дерутся палками и железными прутами, огнестрельного не видно"
+    value: "дерутся палками и железными прутами"
     reveal_on: { question: q_suspects }
   - id: f_caller
     value: "Иванов Пётр Иванович, телефон 916-123-98-78"

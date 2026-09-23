@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "У нас на стройке рабочий в котлован упал, сам не выбирается!"
+first_line: "На стройке жилого дома рабочий упал в котлован!"
 
 facts:
   - id: f_address
@@ -28,7 +28,7 @@ facts:
     value: на стройке жилого дома рабочий упал в котлован
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "один пострадавший, в сознании, сам выбраться не может"
+    value: "один рабочий упал в котлован; его состояние неизвестно"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "Иванова Елена Сергеевна, телефон 916 896 3254"
@@ -43,7 +43,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Московская область, городской округ Химки, микрорайон Подрезково"
+  address: "Московская область, городской округ Химки, микрорайон Подрезково, стройка между улицей Центральной и улицей 1-я Лесная"
   victims: 1
 
 tree:

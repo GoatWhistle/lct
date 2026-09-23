@@ -73,7 +73,7 @@ export function useLogout() {
 /** Какие экраны открыты роли. Повторяет domain/roles.py: список короткий
  *  и меняется редко, а держать его на сервере ради двух строк — лишний запрос. */
 export const SCREENS: Record<Role, string[]> = {
-  admin: ["/admin", "/profile", "/groups"],
-  instructor: ["/instructor", "/wall", "/profile", "/dds", "/groups"],
-  trainee: ["/trainee", "/dds", "/profile"],
+  admin: ["/admin", "/profile", "/groups", "/materials"],
+  instructor: ["/instructor", "/wall", "/profile", "/dds", "/phone", "/groups", "/materials"],
+  trainee: ["/trainee", "/dds", "/phone", "/profile", "/materials"],
 };

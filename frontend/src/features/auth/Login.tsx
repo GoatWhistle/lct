@@ -23,6 +23,7 @@ function DemoLinks() {
         <a href="/instructor" onClick={(event) => openScreen(event, "/instructor")}>Преподаватель</a>
         <a href="/trainee" onClick={(event) => openScreen(event, "/trainee")}>Оператор 112</a>
         <a href="/dds" onClick={(event) => openScreen(event, "/dds")}>ДДС</a>
+        <a href="/materials" onClick={(event) => openScreen(event, "/materials")}>Материалы</a>
       </div>
     </details>
   </nav>;

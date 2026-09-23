@@ -30,10 +30,12 @@ async def create_session(
     trainee_id: UUID | None = None,
     group_id: UUID | None = None,
     session_id: UUID | None = None,
+    owner_login: str | None = None,
 ) -> Session:
     session = Session(
         scenario_id=scenario_id,
         mode=mode,
+        owner_login=owner_login,
         trainee_id=trainee_id,
         group_id=group_id,
         attempt=await next_attempt(db, trainee_id, scenario_id),
@@ -54,6 +56,7 @@ async def ensure_session(
     trainee_name: str | None = None,
     trainee_id: UUID | None = None,
     group_name: str | None = None,
+    owner_login: str | None = None,
 ) -> Session:
     """Занятие, запущенное с пульта, должно иметь строку в журнале.
 
@@ -62,9 +65,11 @@ async def ensure_session(
     """
     existing = await db.get(Session, session_id)
     if existing is not None:
+        if existing.owner_login != owner_login:
+            raise PermissionError("занятие принадлежит другому преподавателю")
         return existing
 
-    group = await ensure_group(db, group_name) if group_name else None
+    group = await ensure_group(db, group_name, owner_login=owner_login) if group_name else None
     trainee = await db.get(Trainee, trainee_id) if trainee_id else None
     if trainee_id and trainee is None:
         raise ValueError(f"курсант {trainee_id} не найден")
@@ -77,6 +82,7 @@ async def ensure_session(
         trainee_id=trainee.id if trainee else None,
         group_id=group.id if group else trainee.group_id if trainee else None,
         session_id=session_id,
+        owner_login=owner_login,
     )
 
 
@@ -137,6 +143,7 @@ async def history(
     trainee_id: UUID | None = None,
     group_id: UUID | None = None,
     mode: str | None = None,
+    owner_login: str | None = None,
     since: datetime | None = None,
     limit: int = 100,
 ) -> list[Session]:
@@ -149,17 +156,23 @@ async def history(
         query = query.where(Session.group_id == group_id)
     if mode is not None:
         query = query.where(Session.mode == mode)
+    if owner_login is not None:
+        query = query.where(Session.owner_login == owner_login)
     if since is not None:
         query = query.where(Session.created_at >= since)
     return list(await db.scalars(query))
 
 
-async def ensure_group(db: AsyncSession, name: str) -> Group:
+async def ensure_group(
+    db: AsyncSession, name: str, *, owner_login: str | None = None
+) -> Group:
     group = await db.scalar(select(Group).where(Group.name == name))
     if group is None:
-        group = Group(name=name)
+        group = Group(name=name, owner_login=owner_login)
         db.add(group)
         await db.commit()
+    elif group.owner_login != owner_login:
+        raise PermissionError("группа принадлежит другому преподавателю или администратору")
     return group
 
 

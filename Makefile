@@ -21,10 +21,34 @@ dev: ## Поднять стенд: postgres + backend --reload + frontend
 offline: ## Поднять карточки/ДДС из заранее собранных локальных образов, без скачивания
 	$(COMPOSE) up --pull never --no-build
 
+tls: ## Поднять полный стенд по HTTPS/WSS с локальным сертификатом
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.tls.yml up --build
+
+offline-tls: ## Поднять HTTPS/WSS из уже собранных образов без сети
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.tls.yml up --pull never --no-build
+
+sip: ## Собрать и поднять локальный Asterisk SIP/VoIP
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.sip.yml up --build -d sip
+
+offline-sip: ## Поднять SIP из уже собранного образа без сети
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.sip.yml up --pull never --no-build -d sip
+
+sip-credentials: ## Показать локальные пароли софтфонов 6001–6003 и WebRTC 6101–6102
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.sip.yml exec -T sip cat /var/lib/lct-sip/credentials.env
+
+sip-test: ## Проверить регистрацию, звонок, RTP и задержку (args="--rtp-host-offset 1000")
+	python3 scripts/smoke_sip.py --port $(or $(SIP_PORT),5060) $(args)
+
+webrtc-test: ## Проверить два браузерных SIP-клиента, аудио и запись Asterisk
+	python3 scripts/smoke_webrtc_browser.py \
+		--frontend-url https://127.0.0.1:$(or $(TLS_PORT),5443) \
+		--backend-url http://127.0.0.1:$(or $(BACKEND_PORT),8000) \
+		--database-url postgresql+asyncpg://lct:lct@127.0.0.1:$(or $(POSTGRES_PORT),5432)/lct $(args)
+
 down: ## Погасить стенд
 	$(COMPOSE) down
 
-back: ## Бэкенд нативно, с голосовым контуром (порт 8000: сначала docker compose stop backend)
+back: ## Бэкенд нативно, без голоса по умолчанию (порт 8000: сначала docker compose stop backend)
 	cd backend && $(UV) run --extra voice uvicorn app.main:app --reload --port 8000 --workers 1
 
 front: ## Только фронтенд, локально
@@ -42,8 +66,17 @@ test-voice: ## Тест голосового контура на настоящ�
 typecheck: ## Проверить фронтенд компилятором
 	npm --prefix frontend run typecheck
 
-models: ## Скачать модели в backend/models/: эмбеддинги, GigaAM, Silero VAD; Silero TTS — вручную
+models: ## Скачать эмбеддинги и Silero VAD; Silero TTS — вручную
 	cd backend && $(UV) run python scripts/models.py
+
+local-models: ## Скачать и проверить Qwen3 1.7B, Vikhr 1B, Whisper small (нужна сеть один раз)
+	cd backend && $(UV) run --offline --no-sync python scripts/download_local_models.py
+
+local-llm: ## Запустить Qwen3 на localhost:18080 (mode=both для Qwen3 и Vikhr)
+	cd backend && python3 scripts/local_llms.py --mode $(or $(mode),dialogue)
+
+local-stt: ## Запустить локальный whisper.cpp server на localhost:18082
+	cd backend && python3 scripts/local_stt.py
 
 ekp: ## Классификатор происшествий заказчика → app/domain/ekp.json (разовый импорт)
 	cd backend && $(UV) run --with openpyxl python scripts/import_ekp.py
@@ -66,7 +99,7 @@ lesson: ## Запустить занятие и напечатать ссылк�
 test-llm: ## Живые проверки LLM по backend/.env.test (медленно: рассуждающая модель)
 	cd backend && $(UV) run --extra dev pytest tests/test_llm.py -m llm -q -s
 
-llm-check: ## Один запрос к LLM: проверить ключ и адрес из backend/.env
+llm-check: ## Один запрос к активной локальной модели из backend/.env
 	cd backend && $(UV) run python scripts/llm_check.py
 
 latency: ## Замер задержки голосового контура по этапам — запускать на демо-машине
@@ -84,10 +117,10 @@ repl: ## Текстовый диалог со звонящим без голос
 pregen: ## Офлайн-таблицы реплик: make pregen [s=<сценарий>] [t=<билет>] [force=1]
 	cd backend && s="$(s)" t="$(t)" force="$(force)" $(UV) run python scripts/pregenerate.py
 
-demo: ## Поднять стенд для занятия: база, сценарии, бэкенд с голосом, фронт
+demo: ## Поднять основной стенд ДДС: база, готовые карточки, бэкенд и фронт
 	./scripts/demo.sh
 
 demo-lite: ## Локальная демонстрация карточки/ДДС без Docker, БД, голоса и внешней сети
 	cd backend && UV_CACHE_DIR=/tmp/lct-uv-demo-cache OFFLINE=true VOICE_ENABLED=false DEV_AUTH_BYPASS=true DEMO_NO_DB=true $(UV) run --offline --no-sync uvicorn app.main:app --host 127.0.0.1 --port $(DEMO_PORT) --workers 1
 
-.PHONY: help dev offline down back front types ekp users users-docker backup test test-voice typecheck test-llm lesson llm-check latency migrate revision models seed repl pregen demo demo-lite
+.PHONY: help dev offline tls offline-tls sip offline-sip sip-credentials sip-test webrtc-test down back front types ekp users users-docker backup test test-voice typecheck test-llm lesson llm-check latency migrate revision models local-models local-llm local-stt seed repl pregen demo demo-lite

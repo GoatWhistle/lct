@@ -33,14 +33,15 @@ from app.domain.events import (
 )
 from app.domain.events import BgStart
 from app.scenarios import store
-from app.session.finish import finish, release_score
+from app.session.finish import finish, refresh_archived_report, release_score
 from app.api.auth import principal_of
 from app.domain.roles import Role
 from app.session.hub import hub
 from app.session.state import now_utc
 from app.domain.kio import ResponseStatus
-from app.voice.models import get_voice_models
+from app.voice.models import TTS_RATE, get_voice_models
 from app.voice.pipeline import VoiceSession
+from app.voice.recording import start_recording
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -62,6 +63,8 @@ def _on_audio(session_id: UUID, state, frame: bytes) -> None:
                         session_id, len(frame), FRAME_BYTES)
         return
     state.audio_frames += 1
+    if state.recorder is not None:
+        state.recorder.add_pcm(frame, sample_rate=16_000)
     if state.voice is not None:
         state.voice.feed(frame)
     if state.audio_frames % FRAMES_PER_LOG == 0:
@@ -138,6 +141,8 @@ async def _handle(session_id: UUID, state, event) -> None:
             hub.to_observers(session_id, state.snapshot())
             if hub.journal:
                 await hub.journal.session_started(session_id, state.started_at)
+            if state.recorder is None:
+                state.recorder = start_recording(session_id)
             _start_voice(session_id, state)
 
         case "kio.patch":
@@ -220,6 +225,7 @@ async def _handle(session_id: UUID, state, event) -> None:
                 await hub.journal.self_assessment(
                     session_id, event.missed, event.comment, now_utc()
                 )
+            await refresh_archived_report(session_id, state)
             # Оценка могла быть готова раньше самооценки — теперь её можно отдать.
             await release_score(session_id, state)
 
@@ -237,6 +243,8 @@ async def _handle(session_id: UUID, state, event) -> None:
                 )
             await finish(session_id, state)
 
+    await hub.checkpoint(session_id)
+
 
 def _start_voice(session_id: UUID, state) -> None:
     """Голос включается, когда курсант снял трубку: звонящий сразу кричит первую реплику."""
@@ -244,13 +252,18 @@ def _start_voice(session_id: UUID, state) -> None:
     scenario = store.get(state.scenario_id)
     if models is None or scenario is None or state.voice is not None:
         return
+    def send_audio(pcm: bytes) -> None:
+        if state.recorder is not None:
+            state.recorder.add_pcm(pcm, sample_rate=TTS_RATE)
+        hub.to_trainee(session_id, pcm)
+
     state.voice = VoiceSession(
         session_id=session_id,
         state=state,
         models=models,
         send_event=lambda event: hub.to_trainee(session_id, event),
         send_observer=lambda event: hub.to_observers(session_id, event),
-        send_audio=lambda pcm: hub.to_trainee(session_id, pcm),
+        send_audio=send_audio,
         journal=hub.journal,
     )
     if scenario.background:

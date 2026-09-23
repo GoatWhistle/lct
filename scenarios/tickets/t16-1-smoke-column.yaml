@@ -18,17 +18,17 @@ persona:
     - { stage: registration, mood: calm }
     - { stage: interview, mood: calm }
 
-first_line: "Вижу столб чёрного дыма, со стороны посёлка тянет."
+first_line: "Со стороны жилых домов посёлка вижу столб чёрного дыма."
 
 facts:
   - id: f_address
     value: "Московская область, железнодорожная станция Вялки, смотрю в сторону посёлка Быково"
     reveal_on: { question: q_address }
   - id: f_what_burns
-    value: "что именно горит, не знаю, вижу столб чёрного дыма со стороны жилых домов посёлка"
+    value: "вижу столб чёрного дыма со стороны жилых домов посёлка; что именно происходит, не знаю"
     reveal_on: { question: q_what_burns }
   - id: f_people
-    value: "информации о пострадавших нет, я далеко"
+    value: "информации о пострадавших нет"
     reveal_on: { question: q_people }
   - id: f_caller
     value: "Левин Борис Степанович, телефон 916-123-98-78"
@@ -43,8 +43,8 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "Московская область, посёлок Быково"
-  victims: 0
+  address: "Московская область, железнодорожная станция Вялки, направление на посёлок Быково"
+  victims: null
 
 tree:
   pregenerated: false

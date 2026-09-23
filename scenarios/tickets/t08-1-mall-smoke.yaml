@@ -30,10 +30,10 @@ facts:
     value: "задымление на минус первом этаже, источник не установлен"
     reveal_on: { question: q_what_burns }
   - id: f_people
-    value: "о пострадавших точной информации нет, людей выводят"
+    value: "о пострадавших точной информации нет"
     reveal_on: { question: q_people }
   - id: f_smoke
-    value: "дым идёт по нижнему этажу, на торговых этажах пока чисто"
+    value: "задымление на минус первом этаже"
     reveal_on: { question: q_smoke }
   - id: f_caller
     value: "Ивлев Артём Олегович, работник мебельного магазина, телефон 916-123-98-78"
@@ -51,7 +51,7 @@ required_fields: [address, incident_type, description]
 
 ground_truth:
   address: "улица Кировоградская, дом 15"
-  victims: 0
+  victims: null
 
 tree:
   pregenerated: false

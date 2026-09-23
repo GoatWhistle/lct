@@ -19,7 +19,7 @@ persona:
     - { stage: registration, mood: panic }
     - { stage: interview,    mood: worried }
 
-first_line: "С грузовика бревно слетело, прямо на легковую! Водитель зажат, не вылезает!"
+first_line: "На машину упало бревно с грузовика, водитель заблокирован!"
 
 facts:
   - id: f_address
@@ -31,10 +31,10 @@ facts:
     value: "бревно упало с грузовика на легковую машину"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "водитель заблокирован в машине, сам выйти не может"
+    value: "один водитель заблокирован в машине; его состояние не указано"
     reveal_on: { question: q_victims }
   - id: f_vehicle
-    value: "ВАЗ красного цвета, номер не видно"
+    value: "ВАЗ красного цвета; регистрационный номер в исходной карточке не указан"
     reveal_on: { question: q_vehicle }
   - id: f_caller
     value: "Иванова Елена Сергеевна, телефон 916 896 3254"
@@ -51,7 +51,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "съезд с МКАД внутренней стороны на Симферопольское шоссе"
+  address: "съезд с внутренней стороны МКАД на Симферопольское шоссе в область, за 100 метров до шоссе, обочина"
   victims: 1
 
 tree:

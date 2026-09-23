@@ -6,14 +6,18 @@ onnxruntime и torch отпускают GIL на время вычислений
 """
 
 import asyncio
+import io
 import logging
+import wave
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+import httpx
 
 from app.config import get_settings
+from app.dialog.llm import is_loopback_url
 from app.voice.text import normalize
 
 log = logging.getLogger(__name__)
@@ -51,6 +55,47 @@ class Recognizer:
         self.transcribe((rng.normal(0, 0.05, 16_000)).astype(np.float32))
 
 
+class WhisperRecognizer:
+    """Локальный whisper.cpp: GGML Whisper small, без облака и Python-зависимости STT.
+
+    VAD уже отделил реплику. Сервер держит модель в памяти, а Python отправляет
+    ему только 16-кГц WAV через loopback; адрес из конфигурации проверяется.
+    """
+
+    def __init__(self, server_url: str, client: httpx.Client | None = None) -> None:
+        if not is_loopback_url(server_url):
+            raise ValueError("Whisper server должен слушать только loopback")
+        self._url = server_url.rstrip("/")
+        self._client = client or httpx.Client(trust_env=False, timeout=30.0)
+
+    def transcribe(self, audio: np.ndarray) -> str:
+        pcm = (np.clip(audio, -1, 1) * 32767).astype("<i2")
+        with io.BytesIO() as buffer:
+            with wave.open(buffer, "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16_000)
+                wav.writeframes(pcm.tobytes())
+            payload = buffer.getvalue()
+        response = self._client.post(
+            self._url + "/inference",
+            files={"file": ("utterance.wav", payload, "audio/wav")},
+            data={"language": "ru", "response_format": "json", "temperature": "0",
+                  "temperature_inc": "0", "no_context": "true"},
+        )
+        response.raise_for_status()
+        result = response.json()
+        if not isinstance(result, dict) or not isinstance(result.get("text"), str):
+            raise ValueError("некорректный ответ локального Whisper server")
+        return result["text"].strip()
+
+    def warmup(self) -> None:
+        # GET / отвечает локальная страница server.cpp. Не запускаем тяжёлый
+        # инференс на тишине: сервер загрузил модель до готовности порта.
+        response = self._client.get(self._url + "/", timeout=2.0)
+        response.raise_for_status()
+
+
 class Synthesizer:
     """Silero v5: около десятой доли длительности фразы на синтез (docs/LATENCY.md)."""
 
@@ -80,7 +125,8 @@ class Synthesizer:
 
 
 class VoiceModels:
-    def __init__(self, recognizer: Recognizer, synthesizer: Synthesizer, vad_path: Path) -> None:
+    def __init__(self, recognizer: Recognizer | WhisperRecognizer, synthesizer: Synthesizer,
+                 vad_path: Path) -> None:
         self.recognizer = recognizer
         self.synthesizer = synthesizer
         self.vad_path = vad_path
@@ -100,8 +146,14 @@ def get_voice_models() -> VoiceModels | None:
     if not settings.voice_enabled:
         return None
     models = ROOT / settings.models_dir
+    stt_path = (ROOT / settings.whisper_model_path / "ggml-small-q5_1.bin"
+                if settings.stt_model == "whisper-small"
+                else models / "gigaam-v3-onnx" / "v3_rnnt_encoder.int8.onnx")
+    if settings.stt_model not in {"whisper-small", "gigaam-v3-rnnt"}:
+        log.error("неизвестный STT_MODEL: %s", settings.stt_model)
+        return None
     required = [
-        models / "gigaam-v3-onnx" / "v3_rnnt_encoder.int8.onnx",
+        stt_path,
         models / "silero-vad" / "silero_vad.onnx",
         models / "silero-tts" / "v5_ru.pt",
     ]
@@ -110,12 +162,13 @@ def get_voice_models() -> VoiceModels | None:
         log.warning("голосовой контур выключен, нет моделей: %s — make models", ", ".join(missing))
         return None
     try:
-        recognizer = Recognizer(models / "gigaam-v3-onnx")
+        recognizer = (WhisperRecognizer(settings.whisper_server_url) if settings.stt_model == "whisper-small"
+                      else Recognizer(models / "gigaam-v3-onnx"))
         synthesizer = Synthesizer(models / "silero-tts" / "v5_ru.pt")
         # Прогрев здесь, на старте стенда, а не на первой реплике курсанта.
         recognizer.warmup()
         synthesizer.warmup()
         return VoiceModels(recognizer, synthesizer, models / "silero-vad" / "silero_vad.onnx")
-    except ImportError as exc:
-        log.warning("голосовой контур выключен: не установлены зависимости (%s) — uv sync --extra voice", exc)
+    except (ImportError, httpx.HTTPError, ValueError) as exc:
+        log.warning("голосовой контур выключен: модели/сервер не готовы (%s)", exc)
         return None

@@ -160,6 +160,11 @@ def test_filled_112_card_continues_as_dds_in_the_same_lesson(client):
             station.send_json({"type": "crew.select", "crew": crew})
             read_until(station, "station.state")
             station.send_json({"type": "phone.dial"})
+            assert read_until(station, "phone.line")["speaker"] == "crew"
+            read_until(station, "station.state")
+            station.send_json({"type": "phone.brief", "address": "улица Ленина, 14",
+                               "incident": "Пожар в квартире",
+                               "request": "Прошу подтвердить выезд и доложить о прибытии"})
             assert read_until(station, "phone.report")["phase"] == "dispatched"
             read_until(station, "station.state")
             station.send_json({"type": "card.status", "service": service, "status": "responding"})
@@ -170,7 +175,8 @@ def test_filled_112_card_continues_as_dds_in_the_same_lesson(client):
         score = wait_for(lambda: hub.get(session_id).score)
         assert hub.get(session_id).ended
         keys = {item["key"] for item in score["metrics"]}
-        assert {"address", "incident_signs", "dds_primary", "dds_contact"} <= keys
+        assert {"address", "incident_signs", "dds_primary", "dds_progress"} <= keys
+        assert "dds_contact" not in keys
         assert score["score_auto"] < 100
     finally:
         control.__exit__(None, None, None)

@@ -8,6 +8,7 @@
     0 3 * * * cd … && make backup   в crontab демо-машины
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from app.admin.backup import BackupError, create, listing  # noqa: E402
 
 #: Сколько копий держать. Место на демо-машине не бесконечно, а копия за
 #: позапрошлую неделю не нужна никому.
-KEEP = 14
+KEEP = max(1, int(os.environ.get("BACKUP_KEEP", "14")))
 
 
 def main() -> int:

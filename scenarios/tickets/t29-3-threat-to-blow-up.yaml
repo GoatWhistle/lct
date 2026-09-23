@@ -10,7 +10,7 @@ topics: [police]
 modes: [training, exam, self]
 
 extends: checklists/police.yaml
-signs: [Человек в опасности, Человеку угрожают убийством]
+signs: [Дом многоквартирный]
 
 persona:
   base: panic
@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: panic }
     - { stage: interview, mood: worried }
 
-first_line: "Бывший муж угрожает квартиру взорвать! Я боюсь!"
+first_line: "Муж угрожает взорвать квартиру бывшей супруги!"
 
 facts:
   - id: f_address
@@ -28,7 +28,7 @@ facts:
     value: бывший муж угрожает взорвать квартиру
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "пострадавших нет, в квартире заявительница"
+    value: "неизвестно, есть ли кто-либо в квартире; сведений о пострадавших нет"
     reveal_on: { question: q_victims }
   - id: f_suspects
     value: "бывший муж, где находится сейчас — неизвестно"
@@ -47,8 +47,8 @@ checklist:
 required_fields: [address, entrance, incident_type, description]
 
 ground_truth:
-  address: "проезд Шокальского, дом 67, корпус 1, квартира 3"
-  victims: 0
+  address: "проезд Шокальского, дом 67, корпус 1, квартира 3, подъезд 1, этаж 1, код домофона 67"
+  victims: null
 
 tree:
   pregenerated: false

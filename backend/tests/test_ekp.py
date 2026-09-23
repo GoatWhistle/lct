@@ -30,9 +30,31 @@ def test_all_customer_ticket_cards_are_complete_and_classified():
     for ticket in range(1, 33):
         assert {scenario.position for scenario in cards if scenario.ticket == ticket} == {1, 2, 3}
     assert all(scenario.facts and scenario.signs and scenario.ground_truth.address
-               and scenario.ground_truth.victims is not None
                and scenario.ground_truth.incident_code
                and ekp.incident(scenario.ground_truth.incident_code)
+               for scenario in cards)
+    unknown_victim_counts = {scenario.id for scenario in cards
+                             if scenario.ground_truth.victims is None}
+    assert unknown_victim_counts == {
+        "t02-2-megafon-consultation", "t02-3-car-in-water", "t03-2-loud-music",
+        "t04-1-balcony-fire", "t04-3-open-door", "t12-3-men-on-bridge-rail",
+        "t07-3-lost-elderly", "t08-1-mall-smoke", "t14-1-grass-fire-azs", "t17-1-fire-alarm",
+        "t12-1-restaurant-smoke", "t30-3-gas-smell-house", "t31-3-gas-pipe-whistle",
+        "t11-3-lost-in-forest", "t16-1-smoke-column",
+        "t18-1-unknown-fire", "t24-1-parking-quarrel", "t25-1-drunk-at-stop",
+        "t23-3-lost-child", "t27-1-suspicious-car", "t28-1-stranger-at-door", "t29-1-ticking-box",
+        "t29-3-threat-to-blow-up", "t30-1-car-theft-yesterday",
+        "t31-1-car-theft-witnessed", "t32-1-carjacking", "t32-3-street-lights",
+    }
+
+
+def test_unknown_ticket_victim_count_is_not_scored():
+    from app.scoring.card import evaluate_card
+
+    cards = [scenario for scenario in load_library(Path(__file__).resolve().parents[2] / "scenarios")
+             if scenario.ticket is not None and scenario.ground_truth.victims is None]
+    assert len(cards) == 27
+    assert all("victims_count" not in {metric.key for metric in evaluate_card(scenario, KIO()).metrics}
                for scenario in cards)
 
 

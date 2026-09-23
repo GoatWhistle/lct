@@ -12,7 +12,7 @@ export function StandStatus() {
   if (!health.data) return null;
 
   if (health.data.demo_no_db) {
-    return <div className="stand stand-warn">Локальная демка: карточки 112 и ДДС работают без БД и голоса; история занятий не сохраняется.</div>;
+    return <div className="stand stand-warn">Локальная демка: карточки 112, ДДС и редактор работают без БД и голоса; история и черновики исчезнут после перезапуска.</div>;
   }
 
   const troubles: string[] = [];

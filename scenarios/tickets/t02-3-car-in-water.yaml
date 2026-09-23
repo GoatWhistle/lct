@@ -19,19 +19,19 @@ persona:
     - { stage: interview,    mood: panic }
     - { stage: dispatch,     mood: worried }
 
-first_line: "Машина в воду ушла! Прямо с набережной! Там человек внутри!"
+first_line: "Автомобиль упал в воду!"
 
 facts:
   - id: f_address
     value: "набережная Яузы, в сторону области"
-    refined: "набережная Яузы, напротив Большого Нижнего пруда"
+    refined: "набережная Яузы, в сторону области, напротив Большого Нижнего пруда"
     reveal_on: { question: q_address }
     refine_on: q_address_check
   - id: f_what_happened
-    value: "автомашина съехала с набережной и ушла под воду"
+    value: "автомашина упала в воду"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "в машине был человек, наружу никто не выбрался"
+    value: "заявитель не знает, были ли в машине люди"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "Иванова Елена Сергеевна, телефон 916 896 3254"
@@ -44,11 +44,11 @@ checklist:
   - { id: q_victims,       fact: f_victims }
   - { id: q_caller,        fact: f_caller }
 
-required_fields: [address, incident_type, description, victims_count]
+required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "набережная Яузы, напротив Большого Нижнего пруда"
-  victims: 1
+  address: "набережная Яузы, в сторону области, напротив Большого Нижнего пруда"
+  victims: null
 
 tree:
   pregenerated: false

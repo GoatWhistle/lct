@@ -4,9 +4,10 @@
 // планирования подготовки. Работа над ошибками превращается в измеримый цикл:
 // посмотрел разбор → попробовал снова → увидел дельту (docs/product/MODES.md).
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { COMPETENCY_LABELS, Radar } from "@/features/debrief/Radar";
+import { useMe } from "@/features/auth/useAuth";
 import { clock } from "@/features/timers/clock";
 import { useProfile, useTrainees } from "@/shared/api/http";
 
@@ -25,14 +26,22 @@ function sign(value: number | null, format: (value: number) => string): string {
 export function Profile() {
   const url = new URLSearchParams(location.search);
   const [traineeId, setTraineeId] = useState<string | null>(url.get("trainee"));
-  const trainees = useTrainees();
+  const me = useMe();
+  const isTrainee = me.data?.role === "trainee";
+  const trainees = useTrainees(!isTrainee);
   const profile = useProfile(traineeId);
+
+  useEffect(() => {
+    if (isTrainee && me.data?.trainee_id) setTraineeId(me.data.trainee_id);
+  }, [isTrainee, me.data?.trainee_id]);
 
   return (
     <main className="page">
       <h1>Профиль курсанта</h1>
 
-      <p>
+      <p><a href="/materials">Открыть назначенные учебные материалы →</a></p>
+
+      {!isTrainee && <p>
         <select value={traineeId ?? ""} onChange={(event) => setTraineeId(event.target.value || null)}>
           <option value="">— выберите курсанта —</option>
           {trainees.data?.map((trainee) => (
@@ -41,7 +50,7 @@ export function Profile() {
             </option>
           ))}
         </select>
-      </p>
+      </p>}
 
       {profile.data && (
         <div className="columns">
@@ -59,6 +68,11 @@ export function Profile() {
             <p className="ref">
               радар — среднее по попыткам; подсказок использовано всего: {profile.data.hints_total}
             </p>
+            {profile.data.attempts.some((attempt) => attempt.score !== null) && (
+              <p><a href={`/api/trainees/${profile.data.trainee.id}/certificate.pdf`}>
+                Скачать сертификат PDF
+              </a></p>
+            )}
 
             <h3>Дельта попыток</h3>
             <table className="grid">
@@ -100,6 +114,11 @@ export function Profile() {
                           ` · ${Object.entries(attempt.codes).map(([code, count]) => `${code}×${count}`).join(", ")}`}
                       </div>
                       <a href={`/wall?session=${attempt.session_id}`}>разбор</a>
+                      {attempt.recording_available && <>
+                        {" · "}<a href={`/api/sessions/${attempt.session_id}/recording.wav`}>
+                          запись WAV
+                        </a>
+                      </>}
                     </td>
                   </tr>
                 ))}

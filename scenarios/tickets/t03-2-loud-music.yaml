@@ -19,20 +19,20 @@ persona:
     - { stage: registration, mood: calm }
     - { stage: interview,    mood: calm }
 
-first_line: "Добрый вечер. Во дворе музыка на всю громкость, второй час уже."
+first_line: "Здравствуйте. Во дворе громко играет музыка."
 
 facts:
   - id: f_address
     value: "бульвар Маршала Рокоссовского, дом 25, во дворе"
     reveal_on: { question: q_address }
   - id: f_what_happened
-    value: "во дворе громко играет музыка из машины, компания сидит рядом"
+    value: "во дворе громко играет музыка"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "никто не пострадал, драки нет"
+    value: "не знаю, есть ли пострадавшие"
     reveal_on: { question: q_victims }
   - id: f_suspects
-    value: "человек пять молодых людей, оружия не видно"
+    value: "не знаю, кто включил музыку и есть ли там нарушители"
     reveal_on: { question: q_suspects }
   - id: f_caller
     value: "Соколов Иван Петрович, телефон 916 896 3254"
@@ -48,8 +48,8 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "бульвар Маршала Рокоссовского, дом 25"
-  victims: 0
+  address: "бульвар Маршала Рокоссовского, дом 25, двор"
+  victims: null
 
 tree:
   pregenerated: false

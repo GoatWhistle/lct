@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "У жены воды отошли, тридцать девять недель, мы в дороге!"
+first_line: "У жены отошли воды, срок 39 недель!"
 
 facts:
   - id: f_address
@@ -31,7 +31,7 @@ facts:
     value: "Минина Ольга Петровна, 36 лет"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: "в сознании, схватки начались"
+    value: "сведения о сознании не указаны"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: "вызывает супруг Минин Сергей Антонович, телефон 916 897 5623"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "дорога от Носовихинского шоссе в сторону Горьковского, остановка «Кафе»"
+  address: "дорога от Носовихинского шоссе, от железнодорожной станции Купавна в сторону Горьковского шоссе (М7), напротив Бисерова озера, автобусная остановка «Кафе»"
   victims: 1
 
 tree:

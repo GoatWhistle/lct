@@ -18,14 +18,14 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "Пожар вижу, а что горит — не пойму, я на дороге."
+first_line: "Пожар вижу, а что именно горит — не знаю."
 
 facts:
   - id: f_address
     value: "дорога от Киевского шоссе в сторону Минского через Крекшино, примерно полтора километра от железнодорожного переезда, напротив пруда"
     reveal_on: { question: q_address }
   - id: f_what_burns
-    value: "что горит, не знаю, вижу открытое пламя в стороне"
+    value: "вижу пожар в стороне, что именно горит — не знаю"
     reveal_on: { question: q_what_burns }
   - id: f_people
     value: информации о пострадавших нет
@@ -43,8 +43,8 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: дорога от Киевского шоссе в сторону Минского через Крекшино
-  victims: 0
+  address: "дорога от Киевского шоссе (М3) в сторону Минского шоссе (М1) через Крекшино, примерно 1,5 км от железнодорожного переезда, напротив пруда"
+  victims: null
 
 tree:
   pregenerated: false

@@ -56,6 +56,17 @@ def test_unknown_login_and_wrong_password_look_the_same(client):
     assert first.json()["detail"] == "bad_credentials"
 
 
+def test_login_rejects_values_outside_database_and_hash_bounds(client):
+    too_long_login = client.post(
+        "/api/auth/login", json={"login": "a" * 81, "password": "not-used"}
+    )
+    too_long_password = client.post(
+        "/api/auth/login", json={"login": "operator", "password": "x" * 1025}
+    )
+    assert too_long_login.status_code == 422
+    assert too_long_password.status_code == 422
+
+
 def test_me_requires_authentication(client):
     assert client.get("/api/auth/me").status_code == 401
 

@@ -34,7 +34,7 @@ facts:
     value: "Смирнов Илья, 11 лет"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: "в сознании, плачет"
+    value: "сведения о сознании ребёнка не указаны"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: "звонит мама, телефон 9163201283"
@@ -51,7 +51,7 @@ checklist:
 required_fields: []
 
 ground_truth:
-  address: "Волгоградская область, город Волжский, улица Карла Маркса"
+  address: "Волгоградская область, город Волжский, улица Карла Маркса, около Волжского Молсыркомбината"
   victims: 1
 
 tree:

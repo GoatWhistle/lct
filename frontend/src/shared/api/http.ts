@@ -31,6 +31,7 @@ export interface Health {
   models_ready: boolean;
   embeddings_ready: boolean;
   scenarios_loaded: number;
+  sessions_restored?: number;
   offline: boolean;
   demo_no_db?: boolean;
 }
@@ -42,10 +43,13 @@ export interface ScenarioSummary {
   level: Level;
   topics: string[];
   modes: SessionMode[];
+  signs: string[];
+  incident_code: string | null;
   dds: string | null;
   ticket: number | null;
   position: number | null;
   ekp_group: number | null;
+  can_manage: boolean;
 }
 
 export interface SessionInfo {
@@ -78,6 +82,7 @@ export interface TraineeInfo {
   id: string;
   name: string;
   group: string | null;
+  service: string | null;
 }
 
 export interface Attempt {
@@ -92,6 +97,7 @@ export interface Attempt {
   facts_required: number | null;
   hints: number | null;
   codes: Record<string, number>;
+  recording_available: boolean;
 }
 
 export interface Profile {
@@ -139,8 +145,12 @@ export function useSigns(prefix: string[], group: number | null = null) {
   });
 }
 
-export const useTrainees = () =>
-  useQuery({ queryKey: ["trainees"], queryFn: () => request<TraineeInfo[]>("/api/trainees") });
+export const useTrainees = (enabled = true) =>
+  useQuery({
+    queryKey: ["trainees"],
+    queryFn: () => request<TraineeInfo[]>("/api/trainees"),
+    enabled,
+  });
 
 export interface GroupInfo {
   id: string;
@@ -163,8 +173,19 @@ export interface GroupAnalytics {
   }[];
 }
 
-export const useGroups = () =>
-  useQuery({ queryKey: ["groups"], queryFn: () => request<GroupInfo[]>("/api/groups") });
+export interface GroupInsight {
+  summary: string;
+  priorities: string[];
+  source: "local_qwen";
+  personal_data_sent: false;
+}
+
+export const useGroups = (enabled = true) =>
+  useQuery({
+    queryKey: ["groups"],
+    queryFn: () => request<GroupInfo[]>("/api/groups"),
+    enabled,
+  });
 
 export function useCreateGroup() {
   const cache = useQueryClient();
@@ -196,6 +217,14 @@ export const useGroupAnalytics = (groupId: string | null) =>
     refetchInterval: 15_000,
   });
 
+export function useGroupInsight() {
+  return useMutation({
+    mutationFn: (groupId: string) => request<GroupInsight>(
+      `/api/groups/${groupId}/analytics/insight`, { method: "POST" },
+    ),
+  });
+}
+
 export const useProfile = (traineeId: string | null) =>
   useQuery({
     queryKey: ["profile", traineeId],
@@ -208,3 +237,121 @@ export const useCreateSession = () =>
     mutationFn: (body: { scenario_id: string; mode: SessionMode; trainee?: string; group?: string }) =>
       request<SessionInfo>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
   });
+
+export interface LearningMaterial {
+  id: string;
+  title: string;
+  description: string;
+  level: Level;
+  kind: "text" | "file";
+  body: string;
+  scenario_id: string | null;
+  file_name: string | null;
+  media_type: string | null;
+  file_size: number;
+  file_sha256: string | null;
+  active: boolean;
+  created_by: string;
+  created_at: string;
+  assigned_at: string | null;
+  completed_at: string | null;
+  assignment_count: number;
+}
+
+export interface MaterialCreateInput {
+  title: string;
+  description: string;
+  level: Level;
+  kind: "text" | "file";
+  body: string;
+  scenario_id: string | null;
+  file_name?: string;
+  media_type?: string;
+  content_base64?: string;
+}
+
+export const useMaterials = (includeArchived = false) => useQuery({
+  queryKey: ["materials", includeArchived],
+  queryFn: () => request<LearningMaterial[]>(
+    `/api/materials${includeArchived ? "?include_archived=true" : ""}`,
+  ),
+});
+
+function invalidateMaterials(cache: ReturnType<typeof useQueryClient>) {
+  return cache.invalidateQueries({ queryKey: ["materials"] });
+}
+
+export function useCreateMaterial() {
+  const cache = useQueryClient();
+  return useMutation({
+    mutationFn: (body: MaterialCreateInput) => request<LearningMaterial>("/api/materials", {
+      method: "POST", body: JSON.stringify(body),
+    }),
+    onSuccess: () => void invalidateMaterials(cache),
+  });
+}
+
+export function useUpdateMaterial() {
+  const cache = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<LearningMaterial> }) =>
+      request<LearningMaterial>(`/api/materials/${id}`, {
+        method: "PATCH", body: JSON.stringify(patch),
+      }),
+    onSuccess: () => void invalidateMaterials(cache),
+  });
+}
+
+export function useArchiveMaterial() {
+  const cache = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request<LearningMaterial>(`/api/materials/${id}`, {
+      method: "DELETE",
+    }),
+    onSuccess: () => void invalidateMaterials(cache),
+  });
+}
+
+export function useAssignMaterial() {
+  const cache = useQueryClient();
+  return useMutation({
+    mutationFn: ({ materialId, traineeId }: { materialId: string; traineeId: string }) =>
+      request<LearningMaterial>(`/api/materials/${materialId}/assign/${traineeId}`, {
+        method: "PUT",
+      }),
+    onSuccess: () => void invalidateMaterials(cache),
+  });
+}
+
+export function useAssignMaterialGroup() {
+  const cache = useQueryClient();
+  return useMutation({
+    mutationFn: ({ materialId, groupId }: { materialId: string; groupId: string }) =>
+      request<{ material_id: string; assigned: number }>(
+        `/api/materials/${materialId}/assign-group/${groupId}`, { method: "PUT" },
+      ),
+    onSuccess: () => void invalidateMaterials(cache),
+  });
+}
+
+export function useCompleteMaterial() {
+  const cache = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request<LearningMaterial>(`/api/materials/${id}/complete`, {
+      method: "POST",
+    }),
+    onSuccess: () => void invalidateMaterials(cache),
+  });
+}
+
+export function useStartMaterialPractice() {
+  return useMutation({
+    mutationFn: (id: string) => request<{
+      session_id: string;
+      scenario_id: string;
+      mode: "self";
+      exercise: "card";
+      path: string;
+    }>(`/api/materials/${id}/start`, { method: "POST" }),
+  });
+}

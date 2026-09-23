@@ -19,7 +19,7 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview,    mood: worried }
 
-first_line: "Здравствуйте, у нас дымом из мусоропровода тянет, весь подъезд в дыму."
+first_line: "Здравствуйте, дымит мусоропровод, я нахожусь на седьмом этаже."
 
 facts:
   - id: f_address
@@ -29,10 +29,10 @@ facts:
     value: "дымит мусоропровод, открытого пламени не видно"
     reveal_on: { question: q_what_burns }
   - id: f_people
-    value: "пострадавших нет, люди в квартирах"
+    value: пострадавших нет
     reveal_on: { question: q_people }
   - id: f_smoke
-    value: "дым идёт по подъезду, заявитель на 7-м этаже, в доме 17 этажей"
+    value: "заявитель на 7-м этаже, в доме 17 этажей"
     reveal_on: { question: q_smoke }
   - id: f_caller
     value: "Ким Олег Юрьевич, телефон 916-126-34-71"
@@ -48,7 +48,7 @@ checklist:
 required_fields: [address, entrance, incident_type, description]
 
 ground_truth:
-  address: "улица Берзарина, дом 21, корпус 1"
+  address: "улица Берзарина, дом 21, корпус 1, подъезд 3, домофон 68"
   victims: 0
 
 tree:

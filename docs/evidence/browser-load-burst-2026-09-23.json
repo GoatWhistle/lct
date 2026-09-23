@@ -1,0 +1,66 @@
+{
+  "frontend": "http://127.0.0.1:5176",
+  "backend": "http://127.0.0.1:8115",
+  "sessions_started": 20,
+  "browser_contexts": 100,
+  "dds_pages": 20,
+  "observer_pages": 80,
+  "pages_ready": 100,
+  "hold_seconds": 1.0,
+  "ramp_seconds": 0.0,
+  "ready_ms": {
+    "min": 917.006666000816,
+    "median": 1521.1596670014842,
+    "p95": 2280.8011250017444,
+    "max": 2453.9987910029595
+  },
+  "ready_ms_by_page": {
+    "dds": {
+      "min": 917.006666000816,
+      "median": 1463.283125001908,
+      "p95": 2360.8205420023296,
+      "max": 2453.9987910029595
+    },
+    "wall": {
+      "min": 1339.0390829954413,
+      "median": 1522.95606250118,
+      "p95": 2034.204249997856,
+      "max": 2278.488832998846
+    }
+  },
+  "browser_navigation_ms": {
+    "responseStart": {
+      "min": 1.5,
+      "median": 81.30000000447035,
+      "p95": 250.0,
+      "max": 252.5
+    },
+    "responseEnd": {
+      "min": 1.7000000029802322,
+      "median": 85.30000000074506,
+      "p95": 259.59999999403954,
+      "max": 262.3999999985099
+    },
+    "domInteractive": {
+      "min": 4.399999998509884,
+      "median": 90.20000000298023,
+      "p95": 259.69999999552965,
+      "max": 263.20000000298023
+    },
+    "domContentLoaded": {
+      "min": 23.399999998509884,
+      "median": 546.6499999985099,
+      "p95": 1336.0,
+      "max": 1415.0
+    }
+  },
+  "transfer_bytes": {
+    "min": 741.0,
+    "median": 741.0,
+    "p95": 741.0,
+    "max": 741.0
+  },
+  "errors": [],
+  "pass_browser_ui_2s": false,
+  "scope": "100 isolated Chromium contexts render real React DDS/wall pages for 20 sessions with a 0s connection ramp; all contexts remain active concurrently; same instructor account, local host, no VoIP, not target 6-core/32-GB server"
+}

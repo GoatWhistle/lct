@@ -9,6 +9,7 @@
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -19,6 +20,11 @@ from app.dialog.slots import SlotMachine, TurnResult
 from app.domain.events import Mood
 
 log = logging.getLogger(__name__)
+
+NUMBER_WORDS = {
+    "один", "одна", "одно", "двое", "два", "две", "трое", "три", "четверо", "четыре",
+    "пять", "шесть", "семь", "восемь", "девять", "десять",
+}
 
 
 @dataclass
@@ -152,6 +158,11 @@ class LlmCaller:
                 persona.on_repeat()
         mood = persona.remember()
 
+        # Непонятная реплика не передаёт модели право импровизировать фактами.
+        # Отбор фактов и вопросная карта — только слот-автомат, не LLM.
+        if not (turn.revealed or turn.refined or turn.repeated):
+            return await self._fallback.reply(turn, persona, slots)
+
         facts = {fact.id: fact.value for fact in slots.revealed_facts()}
         say_now = [
             facts[fact_id]
@@ -161,7 +172,7 @@ class LlmCaller:
         repeated = [facts[fact_id] for fact_id in turn.repeated if fact_id in facts]
 
         system = _prompt("caller.md").format(
-            scenario=slots.scenario.title,
+            scenario="учебное происшествие",
             mood=MOOD_WORDS.get(mood, mood.value),
             directive=_directive_line(persona),
             revealed="\n".join(f"- {value}" for value in facts.values()) or "- пока ничего",
@@ -173,13 +184,15 @@ class LlmCaller:
                 repeated="; ".join(repeated), repeats=persona.repeats
             )
 
-        self._history.append({"role": "user", "content": turn.text})
+        current_message = {"role": "user", "content": turn.text}
         try:
             text = await self._client.complete(
                 LlmRequest(
-                    messages=[{"role": "system", "content": system}, *self._history[-6:]],
+                    messages=[{"role": "system", "content": system},
+                              *self._history[-6:], current_message],
                     model=self._model,
                     temperature=self._temperature,
+                    max_tokens=160,
                 )
             )
         except LlmUnavailable as exc:
@@ -187,13 +200,61 @@ class LlmCaller:
             log.warning("звонящий на заготовках: %s", exc)
             return await self._fallback.reply(turn, persona, slots)
 
-        self._history.append({"role": "assistant", "content": text})
+        if not _allowed_reply(text, facts, say_now + repeated, slots):
+            self.fallbacks += 1
+            log.warning("ответ модели нарушил протокол раскрытия фактов — использована заготовка")
+            return await self._fallback.reply(turn, persona, slots)
+        # Отклонённый ответ и провокационный вопрос не должны загрязнять
+        # последующий контекст. Запоминаем только проверенную пару ходов.
+        self._history.extend((current_message, {"role": "assistant", "content": text}))
         return CallerLine(text=text, mood=mood)
 
     async def aclose(self) -> None:
         """Сетевой клиент живёт, пока идёт занятие, и закрывается вместе с ним:
         незакрытый держит событийный цикл и не даёт процессу завершиться."""
         await self._client.aclose()
+
+
+def _allowed_reply(text: str, allowed: dict[str, str], required_now: list[str], slots: SlotMachine) -> bool:
+    """Консервативная граница для текста модели; протокол 112 всё равно в коде.
+
+    Невозможно доказать истинность произвольной русской фразы регулярками,
+    поэтому сомнительный ответ заменяется детерминированной репликой.
+    """
+    if not text or len(text) > 300 or "\n" in text or "<think>" in text.lower():
+        return False
+    normalized = text.casefold().replace("ё", "е")
+    # Модель не вправе назвать числовой адрес или телефон, которого нет в
+    # раскрытых фактах, даже если оператор предположил его в своей реплике.
+    allowed_digits = set(re.findall(r"\d+", " ".join(allowed.values())))
+    if any(number not in allowed_digits for number in re.findall(r"\d+", normalized)):
+        return False
+    allowed_words = set(re.findall(r"[а-яё]+", " ".join(allowed.values()).casefold().replace("ё", "е")))
+    spoken_words = set(re.findall(r"[а-яё]+", normalized))
+    if (spoken_words & NUMBER_WORDS) - allowed_words:
+        return False
+    allowed_stems = {word[:4] for word in allowed_words if len(word) >= 4}
+    spoken_stems = {word[:4] for word in spoken_words if len(word) >= 4}
+    for fact in slots.scenario.facts:
+        if fact.id in allowed:
+            continue
+        for value in (fact.value, fact.refined):
+            if not value:
+                continue
+            if len(value) >= 7 and value.casefold().replace("ё", "е") in normalized:
+                return False
+            # Полная фраза — не единственный способ слить скрытый факт:
+            # «муж курил» раскрывает причину, даже без «на балконе».
+            hidden_stems = {word[:4] for word in re.findall(
+                r"[а-яё]{4,}", value.casefold().replace("ё", "е")
+            )} - allowed_stems
+            if hidden_stems & spoken_stems:
+                return False
+    # Новый обязательный факт нельзя опустить ради красивой реплики.
+    for value in required_now:
+        if value.casefold().replace("ё", "е") not in normalized:
+            return False
+    return True
 
 
 MOOD_WORDS = {
@@ -210,6 +271,8 @@ def _directive_line(persona: PersonaState) -> str:
 
     if persona.directive in SOFT:
         return f"ПРЕПОДАВАТЕЛЬ ВЕДЁТ СИТУАЦИЮ: {SOFT[persona.directive].lower()}."
+    if persona.directive:
+        return f"ПРЕПОДАВАТЕЛЬ ПРОСИТ ИЗМЕНИТЬ ПОДАЧУ: {persona.directive}. Факты не меняй."
     return ""
 
 

@@ -31,7 +31,7 @@ facts:
     value: "одна пострадавшая, около тридцати лет, неизвестная"
     reveal_on: { question: q_victims }
   - id: f_suspects
-    value: "нападавших не видел, их уже нет"
+    value: "сведения о нападавших не указаны"
     reveal_on: { question: q_suspects }
   - id: f_caller
     value: "Иванова Елена Сергеевна, прохожий, телефон 916 896 3254"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Дмитровское шоссе, дом 155, корпус 1"
+  address: "Дмитровское шоссе, дом 155, корпус 1, около магазина «Пятёрочка»"
   victims: 1
 
 tree:

@@ -10,7 +10,7 @@ topics: [medical, address]
 modes: [training, exam, self]
 
 extends: checklists/medical.yaml
-signs: ["Боль в ухе, нарушение слуха"]
+signs: [Травма]
 
 persona:
   base: calm
@@ -33,7 +33,7 @@ facts:
     value: "Липатина Ольга Сергеевна, дата рождения 10.03.1977, вызывает себе"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: в сознании
+    value: "сведения о сознании в исходном билете не указаны"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: телефон 916 896 3254

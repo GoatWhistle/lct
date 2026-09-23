@@ -29,7 +29,7 @@ facts:
     value: "мужчина тонет в настоящее время, кричит о помощи"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "один человек в воде, на поверхности"
+    value: "один человек в воде"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "Иванова Елена Сергеевна, телефон 916 896 3254"
@@ -44,7 +44,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "озеро Круглое, пляж"
+  address: "озеро Круглое, пляж, рядом с домом по улице Таманской, дом 75, корпус 2"
   victims: 1
 
 tree:

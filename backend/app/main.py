@@ -14,6 +14,7 @@ from app.api import auth
 from app.api.http import admin as admin_api
 from app.api.http import ekp as ekp_api
 from app.api.http import groups as groups_api
+from app.api.http import materials as materials_api
 from app.api.http import scenarios as scenarios_api
 from app.api.http import sessions
 from app.api.http import trainees
@@ -29,6 +30,7 @@ from app.scenarios import store
 from app.session.hub import hub
 from app.session.journal import DbJournal
 from app.scenarios.loader import ScenarioError
+from app.monitoring import install_diagnostics
 
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
@@ -38,6 +40,7 @@ LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
 # а до лога доходят одни предупреждения. Чужие библиотеки — от WARNING.
 logging.basicConfig(level=logging.WARNING, format="%(levelname)-8s %(name)s: %(message)s")
 logging.getLogger("app").setLevel(logging.INFO)
+install_diagnostics()
 
 
 @asynccontextmanager
@@ -52,6 +55,9 @@ async def lifespan(app: FastAPI):
     except ScenarioError as exc:
         raise RuntimeError(f"библиотека сценариев не прошла проверку: {exc}") from exc
     app.state.scenarios_loaded = len(loaded)
+    if settings.demo_no_db:
+        store.reset_demo_drafts()
+        materials_api.reset_demo_materials()
 
     # Утверждённые преподавателем сценарии хранятся в БД и должны переживать
     # перезапуск процесса. При недоступной БД остаётся базовая YAML-библиотека.
@@ -71,8 +77,34 @@ async def lifespan(app: FastAPI):
             "DEMO_NO_DB: занятия и оценки живут только до перезапуска; журнал БД выключен"
         )
 
+    if not settings.demo_no_db:
+        try:
+            async with asyncio.timeout(2):
+                await auth.load_generations()
+        except (SQLAlchemyError, OSError, TimeoutError) as exc:
+            logging.getLogger(__name__).warning(
+                "не удалось загрузить версии полномочий: %s", exc
+            )
+
     # Журнал: всё, что не записано, для оценки не существует.
     hub.journal = None if settings.demo_no_db else DbJournal(get_sessionmaker())
+    app.state.sessions_restored = 0
+    if hub.journal is not None:
+        try:
+            async with asyncio.timeout(3):
+                restored = await hub.journal.restore_active()
+            for state in restored:
+                hub.register(state)
+                hub.start_ticker(state.session_id)
+            app.state.sessions_restored = len(restored)
+            if restored:
+                logging.getLogger(__name__).info(
+                    "восстановлено активных занятий: %d", len(restored)
+                )
+        except (SQLAlchemyError, OSError, TimeoutError) as exc:
+            logging.getLogger(__name__).warning(
+                "не удалось восстановить активные занятия: %s", exc
+            )
 
     # Эмбеддинги для слот-автомата — грузятся один раз, до первого занятия.
     app.state.embeddings_ready = not settings.demo_no_db and get_embedder() is not None
@@ -81,6 +113,10 @@ async def lifespan(app: FastAPI):
     app.state.models_ready = get_voice_models() is not None
     yield
 
+    if hub.journal is not None:
+        for state in list(hub._sessions.values()):
+            if not state.ended:
+                await hub.journal.checkpoint(state)
     await hub.shutdown()
     for state in list(hub._sessions.values()):
         if state.voice is not None:
@@ -94,7 +130,7 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=get_settings().session_secret,
     session_cookie="lct_session",
-    https_only=False,  # учебный класс живёт по http во внутренней сети
+    https_only=get_settings().secure_cookies,
     max_age=12 * 60 * 60,  # смена занятий, не месяц
 )
 app.include_router(auth.router)
@@ -102,6 +138,7 @@ app.include_router(sessions.router)
 app.include_router(scenarios_api.router)
 app.include_router(ekp_api.router)
 app.include_router(groups_api.router)
+app.include_router(materials_api.router)
 app.include_router(admin_api.router)
 app.include_router(trainees.router)
 app.include_router(call_ws.router)
@@ -119,6 +156,7 @@ async def health() -> dict:
         "models_ready": getattr(app.state, "models_ready", False),
         "scenarios_loaded": getattr(app.state, "scenarios_loaded", 0),
         "embeddings_ready": getattr(app.state, "embeddings_ready", False),
+        "sessions_restored": getattr(app.state, "sessions_restored", 0),
         "offline": settings.offline,
         "demo_no_db": settings.demo_no_db,
     }

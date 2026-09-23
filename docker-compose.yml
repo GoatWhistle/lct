@@ -1,11 +1,14 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: lct
       POSTGRES_PASSWORD: lct
       POSTGRES_DB: lct
-    ports: ["5432:5432"]
+    # БД и backend не публикуются в класс: с рабочих мест доступен только
+    # TLS-терминатор frontend. Loopback-порты нужны для администрирования хоста.
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5432}:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U lct"]
@@ -16,17 +19,67 @@ services:
   backend:
     build: ./backend
     image: lct-hack-backend:local
+    restart: unless-stopped
     # Один воркер принципиально: состояние живой сессии и реестр наблюдателей
     # живут в памяти процесса (docs/arch/STACK.md).
-    command: sh -c "alembic upgrade head && python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"
+    command: >-
+      sh -c '
+      if [ -z "$${SESSION_SECRET:-}" ]; then
+        if [ ! -s /run/lct/session-secret ]; then
+          python -c "import secrets; print(secrets.token_urlsafe(48))" > /run/lct/session-secret;
+          chmod 600 /run/lct/session-secret;
+        fi;
+        export SESSION_SECRET="$$(cat /run/lct/session-secret)";
+      fi;
+      alembic upgrade head && python scripts/seed.py &&
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1'
     environment:
       DATABASE_URL: postgresql+asyncpg://lct:lct@postgres:5432/lct
       OFFLINE: "true"
       VOICE_ENABLED: "false"
+      RECORD_CALLS: "true"
+      RECORDINGS_DIR: /recordings
+      LLM_PROVIDER: local
+      LLM_BASE_URL: ${DOCKER_LLM_BASE_URL:-http://host.docker.internal:18080/v1}
+      LLM_MODEL_CALLER: ${LLM_MODEL_CALLER:-Qwen3-1.7B}
+      LLM_CONTROL_BASE_URL: ${DOCKER_LLM_CONTROL_BASE_URL:-http://host.docker.internal:18081/v1}
+      LLM_MODEL_CONTROL: ${LLM_MODEL_CONTROL:-Vikhr-1B}
+      GRAMMAR_LLM_ENABLED: ${GRAMMAR_LLM_ENABLED:-false}
+      ALLOW_DOCKER_HOST_MODELS: "true"
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
     volumes:
       - ./backend:/app
       - ./scenarios:/scenarios:ro
-    ports: ["8000:8000"]
+      - securitydata:/run/lct
+      - recordings:/recordings
+      - backups:/app/backups
+    ports: ["127.0.0.1:${BACKEND_PORT:-8000}:8000"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).read()"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  backup:
+    build: ./backend
+    image: lct-hack-backend:local
+    restart: unless-stopped
+    command: python scripts/backup_loop.py
+    environment:
+      DATABASE_URL: postgresql+asyncpg://lct:lct@postgres:5432/lct
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETRY_SECONDS: ${BACKUP_RETRY_SECONDS:-300}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
+    volumes:
+      - ./backend:/app
+      - backups:/app/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,15 +87,22 @@ services:
   frontend:
     build: ./frontend
     image: lct-hack-frontend:local
-    command: npm run dev -- --host 0.0.0.0
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+    restart: unless-stopped
     environment:
-      VITE_BACKEND_URL: http://backend:8000
-      VITE_WS_BACKEND_URL: ws://backend:8000
-    ports: ["5173:5173"]
-    depends_on: [backend]
+      BACKEND_HOST: backend
+      BACKEND_PORT: 8000
+    ports: ["${BIND_HOST:-127.0.0.1}:${FRONTEND_PORT:-5173}:5173"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
 volumes:
   pgdata:
+  securitydata:
+  recordings:
+  backups:

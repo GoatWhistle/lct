@@ -20,17 +20,17 @@ persona:
     - { stage: registration, mood: aggressive }
     - { stage: interview,    mood: aggressive }
 
-first_line: "Алло! Меня в салоне связи обманули, разбирайтесь!"
+first_line: "Я поругался с продавцом «Мегафон» и бросил трубку."
 
 facts:
   - id: f_address
     value: "Сущёвский Вал, дом 5, строение 1, салон «Мегафон»"
     reveal_on: { question: q_address }
   - id: f_what_happened
-    value: "поругался с продавцом, тот бросил трубку; угроз и рукоприкладства не было"
+    value: "заявитель поругался с продавцом и бросил трубку"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "никто не пострадал, помощь не нужна"
+    value: "сведений о пострадавших нет"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "телефон 916 896 3254"
@@ -47,7 +47,7 @@ required_fields: []
 
 ground_truth:
   address: "Сущёвский Вал, дом 5, строение 1"
-  victims: 0
+  victims: null
 
 tree:
   pregenerated: false

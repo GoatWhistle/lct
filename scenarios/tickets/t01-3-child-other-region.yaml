@@ -38,7 +38,7 @@ facts:
     value: "Смирнов Илья, 11 лет, сын"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: "в сознании, плачет, дышит нормально"
+    value: "сведения о сознании ребёнка не указаны"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: "звонит мама, телефон 9163201283"

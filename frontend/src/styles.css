@@ -49,6 +49,10 @@ button:disabled { opacity: 0.5; cursor: default; }
 .demo-switcher div { display: grid; min-width: 140px; border-top: 1px solid #b9c8d0; }
 .demo-switcher a { padding: 8px 10px; color: #154c71; text-decoration: none; }
 .demo-switcher a:hover, .demo-switcher a:focus-visible { background: #d7ebf6; text-decoration: underline; }
+@media (max-width: 600px) {
+  /* The fixed demo menu covered the address cell in the 390px DDS registry. */
+  .demo-switcher { position: static; width: fit-content; max-width: 100%; margin: 12px 0 0 auto; }
+}
 
 /* Две колонки: карточка и разговор рядом, как на настоящем АРМ. */
 .columns { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
@@ -63,6 +67,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 .instructor-layout select, .instructor-layout input { box-sizing: border-box; max-width: 100%; min-width: 0; }
 .instructor-layout section:first-child select, .instructor-layout section:first-child input[type="text"] { width: 100%; }
 .instructor-layout .mode-choice { overflow-wrap: anywhere; }
+.lesson-criterion { display: grid; grid-template-columns: minmax(0, 1fr) 72px; gap: 6px; align-items: center; margin-bottom: 5px; }
+.lesson-criterion input[type="number"] { width: 72px; padding: 3px 5px; }
 .instructor-scenario-filters { display: grid; gap: 5px; margin-bottom: 6px; }
 .kio-signs-hint { margin: 4px 0; color: #586572; font-size: 12px; }
 @media (max-width: 1350px) {
@@ -128,7 +134,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 /* Преподаватель редактирует копию шаблона до публикации. */
 .scenario-editor { margin-top: 24px; padding: 12px 16px 16px; background: var(--panel); border: 1px solid var(--line); }
 .scenario-editor h2 { margin-top: 0; }
-.scenario-editor-create, .scenario-editor-open, .scenario-editor-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 12px; margin: 12px 0; }
+.scenario-editor-create, .scenario-editor-open, .scenario-editor-actions, .scenario-library-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 12px; margin: 12px 0; }
+.scenario-library-actions { padding-top: 10px; border-top: 1px solid var(--line); }
+.scenario-library-actions span { align-self: center; color: var(--muted); font-size: 13px; }
 .scenario-editor-create label, .scenario-editor-open label { display: grid; gap: 4px; min-width: 220px; font-size: 13px; }
 .scenario-editor-create select, .scenario-editor-create input, .scenario-editor-open input { box-sizing: border-box; width: 100%; min-height: 34px; padding: 4px 6px; border: 1px solid var(--line); font: inherit; background: var(--panel); }
 .scenario-editor-create label:first-child { flex: 1 1 350px; }
@@ -193,6 +201,31 @@ button:disabled { opacity: 0.5; cursor: default; }
 .dds-report strong { margin-top: 4px; }
 .dds-report p { line-height: 1.45; }
 .dds-phone-idle { margin: 12px; padding: 18px 12px; border: 1px dashed #aab4bf; color: #66717b; text-align: center; font-size: 13px; }
+.sip-phone { margin: 12px; padding: 12px; border: 1px solid #7d9db2; background: #eef5f9; }
+.sip-phone > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 5px; }
+.sip-phone > header span { font-size: 12px; }
+.sip-phone-note { margin: 4px 0 10px; color: #52616b; font-size: 12px; }
+.sip-phone-settings, .sip-phone-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+.sip-phone-settings label, .sip-phone-controls label { display: grid; flex: 1 1 135px; gap: 4px; color: #52616b; font-size: 11px; }
+.sip-phone-settings input, .sip-phone-controls input { box-sizing: border-box; width: 100%; min-height: 36px; padding: 6px 8px; border: 1px solid #9aabb5; background: white; font: inherit; }
+.sip-phone-settings button, .sip-phone-controls button { min-height: 36px; }
+.sip-phone-controls .sip-answer { border-color: #1f6f3d; background: #1f6f3d; color: white; }
+.sip-phone-controls .sip-hangup { border-color: #a51d1d; color: #a51d1d; }
+.sip-phone audio { display: none; }
+.dds-protocol-title { margin: 18px 12px 4px; padding-top: 12px; border-top: 1px solid #ccd5db; font-size: 14px; }
+.phone-page { max-width: 760px; margin: 0 auto; }
+.phone-page .sip-phone { margin: 20px 0; }
+.dds-phone-active { margin: 12px; padding: 12px; border: 1px solid #8eafc8; background: #f5f9fc; }
+.dds-phone-active > strong { color: #21506e; }
+.dds-phone-form { margin-top: 12px; }
+.dds-phone-form p { margin: 6px 0 12px; font-size: 13px; line-height: 1.45; }
+.dds-phone-form label { display: block; margin: 10px 0 4px; font-size: 12px; font-weight: 600; }
+.dds-phone-form input, .dds-phone-form textarea { display: block; box-sizing: border-box; width: 100%; padding: 8px; font: inherit; border: 1px solid #aab4bf; background: #fff; }
+.dds-phone-form button { margin-top: 12px; background: #23577e; color: #fff; border-color: #23577e; }
+.dds-phone-hangup { margin-top: 10px; }
+.dds-phone-transcript { margin: 12px; padding: 12px; border: 1px solid #d2dbe2; background: #fff; max-height: 260px; overflow-y: auto; }
+.dds-phone-transcript p { margin: 8px 0; padding: 7px 9px; background: #f4f6f8; line-height: 1.4; }
+.dds-phone-transcript small { color: #5a6670; }
 .dds-reports { margin: 10px 0; padding-left: 22px; font-size: 12px; }
 .dds-reports li { padding: 5px 0; border-bottom: 1px solid #e0e3e6; }
 .dds-zone { padding: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; font-size: 13px; }
@@ -231,10 +264,54 @@ button:disabled { opacity: 0.5; cursor: default; }
   .dds-register-panel .dds-registry td::before { content: attr(data-label); flex: 0 0 38%; font-weight: 600; color: #56616c; }
   .dds-register-panel .dds-registry td.dds-empty { display: block; }
   .dds-register-panel .dds-registry td.dds-empty::before { content: none; }
+  .dds-register-panel .dds-registry .dds-cell-value { flex: 1 1 auto; min-width: 0; }
+  .dds-register-panel .dds-registry .dds-cell-value > span,
+  .dds-register-panel .dds-registry .dds-cell-value > small { display: block; overflow-wrap: anywhere; }
   .dds-status-action { display: grid; grid-template-columns: 1fr; }
   .dds-status-action select, .dds-status-action input { min-width: 0; max-width: none; width: 100%; }
   .dds-phone > select, .dds-dial, .dds-reply textarea { font-size: 16px; }
   .bounce-fields { grid-template-columns: 1fr; }
+}
+
+/* Локальная библиотека учебных материалов. */
+.workspace-links { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.materials-page { max-width: 1180px; }
+.materials-header, .materials-list-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.materials-header h1, .materials-list-head h2 { margin-bottom: 4px; }
+.materials-header p { margin-top: 0; color: var(--muted); }
+.material-create { margin: 20px 0; padding: 18px; border: 1px solid var(--line); background: var(--panel); }
+.material-create form, .material-create label { display: grid; gap: 6px; }
+.material-create form { gap: 12px; }
+.material-create-row { display: grid; grid-template-columns: 180px minmax(260px, 1fr); gap: 12px; }
+.material-create input, .material-create select, .material-create textarea,
+.material-assignment-bar select { box-sizing: border-box; width: 100%; }
+.material-create textarea { resize: vertical; }
+.material-create button { justify-self: start; }
+.material-assignment-bar { display: grid; grid-template-columns: minmax(190px, 1fr) minmax(190px, 1fr) 2fr; align-items: end; gap: 12px; margin: 12px 0; padding: 12px; border: 1px solid var(--line); background: #eef4f7; }
+.material-assignment-bar label { display: grid; gap: 4px; }
+.material-assignment-bar span { align-self: center; color: var(--muted); font-size: 13px; }
+.material-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.material-card { padding: 16px; border: 1px solid var(--line); border-left: 5px solid #2578a5; background: var(--panel); box-shadow: 0 2px 8px #24323a12; }
+.material-card.archived { border-left-color: #87949b; opacity: .72; }
+.material-card > header { display: flex; align-items: center; gap: 10px; }
+.material-card h3 { flex: 1; margin: 0; }
+.material-level { padding: 3px 7px; border-radius: 3px; background: #176b9d; color: #fff; font-size: 12px; font-weight: 700; }
+.material-body { margin: 12px 0; padding: 12px; white-space: pre-wrap; border-left: 3px solid #a9c4d3; background: #f4f7f9; line-height: 1.5; }
+.material-edit, .material-edit label { display: grid; gap: 6px; }
+.material-edit { gap: 10px; margin: 12px 0; padding: 12px; background: #f4f7f9; }
+.material-edit input, .material-edit select, .material-edit textarea { box-sizing: border-box; width: 100%; }
+.material-edit-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.material-card > footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.material-card > footer span { margin-right: auto; color: var(--muted); }
+.group-insight { display: grid; gap: 8px; margin: 14px 0; padding: 14px; border: 1px solid #9ebccc; background: #eef6fa; }
+.group-insight button { justify-self: start; }
+.group-insight > div { padding: 12px; border-left: 4px solid #176b9d; background: #fff; }
+.group-insight p, .group-insight ol { margin-bottom: 0; }
+
+@media (max-width: 700px) {
+  .materials-header, .materials-list-head { align-items: flex-start; flex-direction: column; }
+  .material-create-row, .material-assignment-bar, .material-cards { grid-template-columns: 1fr; }
+  .material-card > footer button { width: 100%; }
 }
 
 /* АРМ 112: рабочая геометрия оригинальной карточки — серое поле, белые
@@ -385,7 +462,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 /* ДДС: повтор композиции предоставленного АРМ (msg480, кадры 2–13, 20).
    Тёмный реестр и нижняя полоса служб — ориентиры боевого интерфейса. */
-.dds-workspace { box-sizing: border-box; max-width: none; min-height: 100vh; padding: 0; background: #d9e0e5; font-family: Arial, "Segoe UI", sans-serif; font-size: 13px; }
+.dds-workspace { box-sizing: border-box; max-width: none; min-height: 100vh; padding: 0; background: #c9ced1; font-family: Arial, "Segoe UI", sans-serif; font-size: 13px; }
 .dds-app-top { box-sizing: border-box; display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 4px 14px; background: #edf4fa; border-bottom: 1px solid #c7d3dc; color: #293740; }
 .dds-brand { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; background: #bd2630; color: white; font-weight: 800; border-radius: 4px; }
 .dds-app-name { flex: 1; font-weight: 600; }
@@ -416,12 +493,12 @@ button:disabled { opacity: 0.5; cursor: default; }
 .dds-row-open, .dds-row-link { min-height: 0; padding: 0 3px; border: 0; background: transparent; color: #fff; font: inherit; font-weight: 700; text-decoration: underline; }
 .dds-row-open:hover, .dds-row-link:hover { color: #aedbf9; }
 .dds-register-panel .dds-hint { color: #edf3f6; }
-.dds-case-layout { display: flex; flex-direction: column; min-height: calc(100vh - 38px); background: #d7dfe4; }
+.dds-case-layout { display: flex; flex-direction: column; min-height: calc(100vh - 38px); background: #c9ced1; }
 .dds-case-top { display: flex; align-items: center; gap: 12px; min-height: 30px; padding: 3px 8px; background: #eaf1f6; color: #24323a; }
 .dds-case-top button { min-height: 0; padding: 3px 8px; border: 0; background: transparent; color: #164d70; }
 .dds-case-top span { font-size: 14px; }
-.dds-call-strip { display: grid; grid-template-columns: .9fr 1.1fr 1.1fr 1.1fr 200px 100px; gap: 5px; padding: 7px; background: #d0d8dd; }
-.dds-call-strip > div { box-sizing: border-box; min-width: 0; min-height: 64px; padding: 6px 8px; background: #f7f9fa; }
+.dds-call-strip { display: grid; grid-template-columns: .9fr 1.1fr 1.1fr 1.1fr 200px 100px; gap: 5px; padding: 7px; background: #c9ced1; }
+.dds-call-strip > div { box-sizing: border-box; min-width: 0; min-height: 64px; padding: 6px 8px; background: #efefef; }
 .dds-call-strip > div:not(.dds-case-top-buttons) { display: grid; align-content: start; gap: 3px; }
 .dds-call-strip small { color: #56636c; font-size: 11px; }
 .dds-call-strip strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -430,17 +507,17 @@ button:disabled { opacity: 0.5; cursor: default; }
 .dds-case-top-buttons { display: grid; gap: 5px; padding: 0 !important; background: transparent !important; }
 .dds-case-top-buttons button { min-height: 0; padding: 5px; background: #176b9d; color: #fff; border: 0; font-size: 11px; }
 .dds-case-top-buttons button:last-child { background: #303a41; }
-.dds-case-meta { display: grid; grid-template-columns: 1.2fr 1fr 65px; gap: 6px; padding: 2px 7px 6px; background: #d0d8dd; }
-.dds-case-meta span { min-height: 29px; padding: 7px; background: #f7f9fa; }
+.dds-case-meta { display: grid; grid-template-columns: 1.2fr 1fr 65px; gap: 6px; padding: 2px 7px 6px; background: #c9ced1; }
+.dds-case-meta span { min-height: 29px; padding: 7px; background: #efefef; }
 .dds-case-summary { display: grid; grid-template-columns: .95fr 1.05fr; gap: 7px; padding: 0 7px; }
 .dds-case-address, .dds-case-classification { min-width: 0; }
 .dds-case-address > strong, .dds-case-address > span, .dds-case-address > div,
-.dds-case-classification > strong, .dds-case-classification > div { display: block; box-sizing: border-box; min-height: 30px; margin-bottom: 5px; padding: 7px 9px; background: #f7f9fa; }
+.dds-case-classification > strong, .dds-case-classification > div { display: block; box-sizing: border-box; min-height: 30px; margin-bottom: 5px; padding: 7px 9px; background: #efefef; }
 .dds-case-address > div { min-height: 330px; }
 .dds-case-classification > strong { background: #2c3439; color: #fff; }
 .dds-case-classification > div:first-of-type { font-weight: 600; }
 .dds-case-stage { position: relative; flex: 1; min-height: 360px; }
-.dds-case-drawer { position: absolute; bottom: 12px; left: 4%; z-index: 3; box-sizing: border-box; width: min(920px, 92%); max-height: min(65vh, 650px); overflow-y: auto; border: 1px solid #69899a; background: #f7f9fa; box-shadow: 0 8px 32px #1d2b3280; }
+.dds-case-drawer { position: absolute; bottom: 12px; left: 4%; z-index: 3; box-sizing: border-box; width: min(920px, 92%); max-height: min(65vh, 650px); overflow-y: auto; border: 1px solid #69899a; background: #efefef; box-shadow: 0 8px 32px #1d2b3280; }
 .dds-drawer-title { position: sticky; top: 0; z-index: 4; display: flex; align-items: center; justify-content: space-between; padding: 4px 9px; background: #1d6e9e; color: #fff; }
 .dds-drawer-title button { min-height: 0; padding: 0 7px; border: 0; background: transparent; color: #fff; font-size: 22px; }
 .dds-case-drawer .dds-main { display: block; margin: 0; padding: 8px; }
@@ -510,4 +587,68 @@ button:disabled { opacity: 0.5; cursor: default; }
   .dds-status-editor label { grid-column: 1 / -1; }
   .dds-status-editor button { min-height: 38px; }
   .dds-status-history > div { grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* Сенсорный режим. Узкая раскладка без горизонтального скролла недостаточна:
+   рабочие поля и действия должны попадаться пальцем, а не только мышью. */
+@media (max-width: 700px) {
+  button,
+  select,
+  textarea,
+  input:not([type="radio"]):not([type="checkbox"]),
+  summary {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  summary {
+    display: flex;
+    align-items: center;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .mode-choice {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    gap: 7px;
+  }
+  .mode-choice input[type="radio"],
+  .mode-choice input[type="checkbox"] {
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    margin: 0;
+  }
+  .lesson-criterion input[type="number"] { min-height: 44px; }
+  .scenario-editor-create select,
+  .scenario-editor-create input,
+  .scenario-editor-open input { min-height: 44px; }
+  .sip-phone { margin: 8px; }
+  .sip-phone > header { align-items: flex-start; flex-direction: column; }
+  .sip-phone-settings, .sip-phone-controls { display: grid; grid-template-columns: 1fr; }
+  .sip-phone-settings label, .sip-phone-controls label { min-width: 0; }
+  .sip-phone-settings input, .sip-phone-controls input,
+  .sip-phone-settings button, .sip-phone-controls button { min-height: 44px; }
+  .arm-call-actions button,
+  .arm-footer button,
+  .kio-arm input[type="text"],
+  .kio-arm input[type="number"],
+  .kio-arm select,
+  .kio-arm-choice button,
+  .kio-arm-type-picker button,
+  .dds-search-line input,
+  .dds-search-line button,
+  .dds-row-open,
+  .dds-row-link,
+  .dds-case-top button,
+  .dds-case-top-buttons button,
+  .dds-drawer-title button,
+  .dds-status-history .dds-status-close,
+  .dds-status-editor select,
+  .dds-status-editor input,
+  .dds-status-editor button {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }

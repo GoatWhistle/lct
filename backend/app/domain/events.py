@@ -15,14 +15,15 @@ from enum import StrEnum
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from app.domain.classifiers import DDSCode, IncidentType, Level, Outcome
+from app.domain.classifiers import DDSCode, Level, Outcome
 from app.domain.kio import KIO, Coords
 from app.domain.roles import Role
 from app.domain.statuses import ServiceStatus, StationSnapshot
 from app.domain.taxonomy import Finding
 from app.domain.timers import TimerSnapshot
+from app.scoring.taxonomy import METRIC_MAP
 
 
 class SessionMode(StrEnum):
@@ -38,6 +39,30 @@ class Exercise(StrEnum):
     CALL = "call"
     DDS = "dds"
     CARD = "card"
+
+
+class LessonCriteria(BaseModel):
+    """Настраиваемые преподавателем условия именно этого занятия.
+
+    Нормативы ГОСТ для приёма вызова сюда не входят. Для занятия меняются
+    учебный лимит решения, порог успешности и веса метрик; веса сценария
+    остаются базовыми, а настройки занятия могут их переопределить.
+    """
+
+    decision_time_limit_seconds: int = Field(default=30, ge=5, le=300)
+    allowed_errors: int = Field(default=0, ge=0, le=50)
+    require_correct_grammar: bool = True
+    score_weights: dict[str, float] = Field(default_factory=dict)
+
+    @field_validator("score_weights")
+    @classmethod
+    def validate_score_weights(cls, weights: dict[str, float]) -> dict[str, float]:
+        unknown = weights.keys() - METRIC_MAP.keys()
+        if unknown:
+            raise ValueError(f"неизвестные метрики весов: {', '.join(sorted(unknown))}")
+        if any(not 0 <= weight <= 10 for weight in weights.values()):
+            raise ValueError("каждый вес метрики должен быть от 0 до 10")
+        return weights
 
 
 class Speaker(StrEnum):
@@ -346,6 +371,7 @@ class SessionSnapshot(BaseModel):
     level: Level
     mode: SessionMode
     exercise: Exercise = Exercise.CALL
+    criteria: LessonCriteria = Field(default_factory=LessonCriteria)
     trainee_name: str | None = None
     started_at: datetime | None = None
     kio: KIO
@@ -420,12 +446,20 @@ class ScenarioStart(BaseModel):
     type: Literal["scenario.start"] = "scenario.start"
     scenario_id: str
     scenario_ids: list[str] | None = None
+    # Pace defaults to simultaneous for older clients; the instructor UI
+    # explicitly sends its slower training default.
+    dds_arrival_interval_seconds: int = Field(default=0, ge=0, le=300)
+    dds_max_waiting: int = Field(default=3, ge=1, le=10)
     trainee: str
     trainee_id: UUID | None = None
+    # Служба обучающегося определяет, чьи статусы он ведёт. В рабочем режиме
+    # сервер заменяет это значение данными учётной записи; поле нужно demo без БД.
+    dds_service: str | None = None
     group_id: str | None = None
     mode: SessionMode
     exercise: Exercise = Exercise.CALL
     handoff_to_dds: bool = False
+    criteria: LessonCriteria = Field(default_factory=LessonCriteria)
 
 
 class DirectorInject(BaseModel):
@@ -527,6 +561,35 @@ class PhoneDial(BaseModel):
     type: Literal["phone.dial"] = "phone.dial"
 
 
+class PhoneBrief(BaseModel):
+    """Что диспетчер передал старшему группы при первом исходящем звонке."""
+
+    type: Literal["phone.brief"] = "phone.brief"
+    address: str = Field(min_length=3, max_length=300)
+    incident: str = Field(min_length=3, max_length=500)
+    request: str = Field(default="", max_length=500)
+
+
+class PhoneCheck(BaseModel):
+    """Запрос диспетчера об обстановке после предыдущего доклада."""
+
+    type: Literal["phone.check"] = "phone.check"
+    text: str = Field(min_length=8, max_length=500)
+
+
+class PhoneHangup(BaseModel):
+    type: Literal["phone.hangup"] = "phone.hangup"
+
+
+class PhoneLine(BaseModel):
+    type: Literal["phone.line"] = "phone.line"
+    service: str
+    crew: str
+    speaker: Literal["dispatcher", "crew"]
+    text: str
+    at: datetime
+
+
 class PhoneReport(BaseModel):
     type: Literal["phone.report"] = "phone.report"
     service: str
@@ -548,6 +611,13 @@ class CardReply(BaseModel):
 
 class CardNext(BaseModel):
     type: Literal["card.next"] = "card.next"
+    card_id: UUID
+
+
+class CardOpen(BaseModel):
+    """Открыть одну из уже выданных карточек, не меняя её таймер."""
+
+    type: Literal["card.open"] = "card.open"
     card_id: UUID
 
 
@@ -574,13 +644,14 @@ class CrewArrived(BaseModel):
 
 
 ServerToStation = Annotated[
-    CardReceived | StationState | PhoneReport | TimerTick | SessionEnded | ScoreReady | ErrorEvent,
+    CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded | ScoreReady | ErrorEvent,
     Field(discriminator="type"),
 ]
 
 StationToServer = Annotated[
-    CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | StationFinish
-    | CardReply | CardNext
+    CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | PhoneBrief | PhoneCheck
+    | PhoneHangup | StationFinish
+    | CardReply | CardNext | CardOpen
     | ZoneDecision | CrewDispatched | CrewArrived,
     Field(discriminator="type"),
 ]
@@ -651,6 +722,9 @@ class SessionReport(BaseModel):
     scenario_id: str
     mode: SessionMode
     attempt: int = 1
+    criteria: LessonCriteria
+    failed_metrics: int
+    passed: bool
     transcript: list[TranscriptEntry]
     findings: list[Finding]
     metrics: list[Metric]

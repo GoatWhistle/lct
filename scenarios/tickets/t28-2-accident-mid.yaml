@@ -25,7 +25,7 @@ facts:
     value: "Садовое кольцо, напротив МИД, в сторону Тверской улицы"
     reveal_on: { question: q_address }
   - id: f_what_happened
-    value: "ДТП без пострадавших, без разлива топлива, пежо и фольксваген"
+    value: "ДТП без пострадавших; участвовали пежо и фольксваген"
     reveal_on: { question: q_what_happened }
   - id: f_victims
     value: пострадавших нет
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "Садовое кольцо, напротив МИД"
+  address: "Садовое кольцо, напротив МИД, в сторону Тверской улицы"
   victims: 0
 
 tree:

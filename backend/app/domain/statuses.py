@@ -135,10 +135,44 @@ class PhoneReportRecord(BaseModel):
     at: datetime
 
 
+class PhoneLineRecord(BaseModel):
+    service: str
+    crew: str
+    speaker: str  # dispatcher | crew
+    text: str
+    at: datetime
+
+
+class PhoneCallPending(BaseModel):
+    service: str
+    crew: str
+    phase: str
+
+
 class DdsCardSummary(BaseModel):
     card_id: UUID
     scenario_id: str
     score_auto: float
+
+
+class DdsQueueCard(BaseModel):
+    """Строка общей очереди ДДС; таймер каждой карточки идёт независимо."""
+
+    card_id: UUID
+    scenario_id: str
+    title: str
+    address: str | None = None
+    description: str | None = None
+    incident_type: str | None = None
+    victims_count: int | None = None
+    received_at: datetime
+    managed_service: str | None = None
+    service_status: ServiceStatus
+    card_status: CardStatus
+    elapsed_ms: int
+    limit_ms: int
+    timer_stopped: bool
+    active: bool
 
 
 class StatusError(ValueError):
@@ -208,6 +242,8 @@ class StationSnapshot(BaseModel):
     """
 
     services: list[str]
+    recipient_services: list[str] = []
+    managed_service: str | None = None
     statuses: dict[str, ServiceStatus]
     available: dict[str, list[ServiceStatus]]
     card: CardStatus
@@ -215,8 +251,14 @@ class StationSnapshot(BaseModel):
     crew_options: list[str] = []
     crew_selected: str | None = None
     phone_reports: list[PhoneReportRecord] = []
+    phone_lines: list[PhoneLineRecord] = []
+    phone_pending: PhoneCallPending | None = None
     card_id: UUID | None = None
     card_index: int = 1
     card_total: int = 1
     reply_text: str = ""
     completed_cards: list[DdsCardSummary] = []
+    queue_cards: list[DdsQueueCard] = []
+    pending_cards_count: int = 0
+    next_arrival_in_seconds: int | None = None
+    max_waiting_cards: int = 3

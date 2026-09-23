@@ -1,5 +1,6 @@
 """Экспорт разбора: содержимое, безопасность CSV, кириллица и доступ."""
 
+import asyncio
 import csv
 import io
 from datetime import datetime, timezone
@@ -8,13 +9,14 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from fastapi import HTTPException
 
 from app.api.auth import Principal
 from app.api.http import sessions
 from app.domain.events import SessionReport
 from app.domain.roles import Role
 from app.main import app
-from app.scoring.export import _cell, to_csv, to_pdf
+from app.scoring.export import _cell, certificate_pdf, to_csv, to_pdf
 
 
 def sample_report(*, long: bool = False) -> SessionReport:
@@ -25,6 +27,10 @@ def sample_report(*, long: bool = False) -> SessionReport:
         "scenario_id": "=1+1",
         "mode": "training",
         "attempt": 2,
+        "criteria": {"decision_time_limit_seconds": 45, "allowed_errors": 1,
+                     "require_correct_grammar": True},
+        "failed_metrics": 1,
+        "passed": True,
         "transcript": [
             {"ref": f"u{i}", "speaker": "caller", "text": long_text if i == 0 else "<вопрос> \t=cmd", "at": at}
             for i in range(18 if long else 2)
@@ -82,10 +88,33 @@ def test_pdf_supports_cyrillic_and_spans_pages(tmp_path):
         assert "Заявитель сообщает о дыме" in extracted
 
 
+def test_certificate_pdf_contains_saved_result(tmp_path):
+    data = certificate_pdf(
+        trainee_name="Петров Пётр Сергеевич",
+        trainee_id=uuid4(),
+        group_name="ДДС-17",
+        attempts=4,
+        average_score=87.25,
+        issued_at="2026-09-23",
+    )
+    assert data.startswith(b"%PDF-")
+    path = tmp_path / "certificate.pdf"
+    path.write_bytes(data)
+    import shutil
+    import subprocess
+
+    if shutil.which("pdftotext"):
+        extracted = subprocess.check_output(["pdftotext", str(path), "-"], text=True)
+        assert "СЕРТИФИКАТ" in extracted
+        assert "Петров Пётр Сергеевич" in extracted
+        assert "87.2 из 100" in extracted
+        assert "не заменяет квалификационный документ" in extracted
+
+
 @pytest.fixture
 def client(monkeypatch):
     report = sample_report()
-    state = SimpleNamespace(score={"score_auto": 70}, trainee_id=uuid4())
+    state = SimpleNamespace(score={"score_auto": 70}, trainee_id=uuid4(), owner_login="dev")
     monkeypatch.setattr(sessions, "_live", lambda session_id: (state, object()))
     monkeypatch.setattr(sessions, "build_report", lambda session_id, state, scenario: report)
     with TestClient(app) as test_client:
@@ -119,3 +148,101 @@ def test_trainee_cannot_export_another_persons_report(client, monkeypatch):
     )
     for suffix in ("csv", "pdf"):
         assert browser.get(f"/api/sessions/{report.session_id}/report.{suffix}").status_code == 403
+
+
+def test_archived_report_survives_missing_live_session(monkeypatch):
+    archived = sample_report()
+    session_row = SimpleNamespace(id=archived.session_id, trainee_id=uuid4(), owner_login="teacher")
+    score_row = SimpleNamespace(
+        score_auto=70.0,
+        score_final=82.0,
+        overridden_by="Преподаватель",
+        override_comment="проверено после занятия",
+        report={"full_report": archived.model_dump(mode="json")},
+    )
+
+    class FakeDb:
+        async def get(self, model, key):
+            return session_row
+
+        async def scalar(self, statement):
+            return score_row
+
+    monkeypatch.setattr(sessions, "_live", lambda session_id: (_ for _ in ()).throw(
+        HTTPException(status_code=404, detail="session_not_found")
+    ))
+    monkeypatch.setattr(
+        sessions, "require",
+        lambda request: Principal(login="teacher", full_name="Преподаватель", role=Role.INSTRUCTOR),
+    )
+    restored = asyncio.run(sessions._report_data(archived.session_id, object(), FakeDb()))
+    assert restored.session_id == archived.session_id
+    assert restored.score_auto == 70
+    assert restored.score_final == 82
+    assert restored.override_comment == "проверено после занятия"
+
+
+def test_archived_score_override_updates_json_exports_and_audit(monkeypatch):
+    archived = sample_report()
+    session_row = SimpleNamespace(id=archived.session_id, trainee_id=uuid4(), owner_login="teacher")
+    score_row = SimpleNamespace(
+        score_auto=70.0,
+        score_final=70.0,
+        overridden_by=None,
+        override_comment=None,
+        report={"full_report": archived.model_dump(mode="json")},
+    )
+
+    class FakeDb:
+        def __init__(self):
+            self.added = []
+            self.commits = 0
+
+        async def get(self, model, key):
+            assert key == archived.session_id
+            return session_row
+
+        async def scalar(self, statement):
+            return score_row
+
+        def add(self, row):
+            self.added.append(row)
+
+        async def commit(self):
+            self.commits += 1
+
+    db = FakeDb()
+    monkeypatch.setattr(sessions.hub, "get", lambda session_id: None)
+    monkeypatch.setattr(sessions, "_live", lambda session_id: (_ for _ in ()).throw(
+        HTTPException(status_code=404, detail="session_not_found")
+    ))
+    monkeypatch.setattr(
+        sessions, "require",
+        lambda request, *roles: Principal(login="teacher", full_name="Преподаватель", role=Role.INSTRUCTOR),
+    )
+
+    corrected = asyncio.run(sessions.override(
+        archived.session_id,
+        sessions.ScoreOverride(score_final=84.5, comment="проверена запись переговоров"),
+        object(),
+        db,
+    ))
+
+    assert db.commits == 1, "оценка и аудит должны фиксироваться одной транзакцией"
+    assert score_row.score_auto == 70.0
+    assert score_row.score_final == 84.5
+    assert score_row.overridden_by == "teacher"
+    assert score_row.report["full_report"]["score_final"] == 84.5
+    assert corrected.score_auto == 70.0 and corrected.score_final == 84.5
+    assert corrected.override_comment == "проверена запись переговоров"
+    audit = db.added[0]
+    assert audit.action == "score.override" and audit.actor == "teacher"
+    assert "84.5" in audit.detail and "проверена запись переговоров" in audit.detail
+
+    report = asyncio.run(sessions.report(archived.session_id, object(), db))
+    assert report.score_final == 84.5 and report.score_auto == 70.0
+    csv_response = asyncio.run(sessions.report_csv(archived.session_id, object(), db))
+    assert "84.5" in csv_response.body.decode("utf-8-sig")
+    assert "проверена запись переговоров" in csv_response.body.decode("utf-8-sig")
+    pdf_response = asyncio.run(sessions.report_pdf(archived.session_id, object(), db))
+    assert pdf_response.body.startswith(b"%PDF-")

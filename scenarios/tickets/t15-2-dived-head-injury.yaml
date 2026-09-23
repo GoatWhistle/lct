@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Московская область, Одинцовский район, деревня Сколково, дом 17"
+  address: "Московская область, Одинцовский район, деревня Сколково, дом 17, пруд справа от дома"
   victims: 1
 
 tree:

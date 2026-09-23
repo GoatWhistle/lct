@@ -48,6 +48,12 @@ export function useObserve(sessionId: string | null): ObservedSession {
 
   useEffect(() => {
     if (!sessionId) return;
+    // A report may already be archived when an instructor opens a history link;
+    // the observe socket is then intentionally unavailable after process restart.
+    void fetch(`/api/sessions/${sessionId}/report`, { credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((saved) => { if (saved) setReport(saved as SessionReport); })
+      .catch(() => undefined);
     const channel = observeChannel(sessionId, {
       onStatus: setStatus,
       onEvent: (event) => {

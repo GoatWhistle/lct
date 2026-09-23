@@ -30,8 +30,11 @@ facts:
   - id: f_who
     value: "Соколова Ирина Ивановна, дата рождения 20.05.1979"
     reveal_on: { question: q_who }
+  - id: f_vehicle
+    value: "синий Volkswagen, государственный номер О345ВН 177"
+    reveal_on: { question: q_vehicle }
   - id: f_conscious
-    value: "в сознании, в автомобиле фольксваген синий О345ВН 177"
+    value: "сведения о сознании роженицы не указаны"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: телефон 916 897 5623
@@ -41,13 +44,17 @@ checklist:
   - { id: q_address, fact: f_address }
   - { id: q_what_happened, fact: f_what_happened }
   - { id: q_who, fact: f_who }
+  - id: q_vehicle
+    question: "На какой машине вы едете? Назовите марку, цвет и госномер."
+    examples: ["Какой у вас автомобиль и госномер?", "Назовите марку, цвет машины и номер."]
+    fact: f_vehicle
   - { id: q_conscious, fact: f_conscious }
   - { id: q_caller, fact: f_caller }
 
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: Рублёво-Успенское шоссе за рекой Чеченка
+  address: "Рублёвка от Кутузовского проспекта в сторону посёлка Жуковка, после реки Чеченка, перед автобусной остановкой"
   victims: 1
 
 tree:
