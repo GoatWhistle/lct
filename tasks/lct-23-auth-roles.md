@@ -27,7 +27,7 @@ estimate: "2 дня"
   не тянет платформенных сюрпризов сборки.
 - **Сессия — `starlette.middleware.sessions.SessionMiddleware`, подписанная cookie.**
   Не JWT и не таблица сессий в БД: состояние занятия и так живёт в памяти одного
-  воркера ([CLAUDE.md](../CLAUDE.md)), лишний поход в базу на каждый запрос не нужен.
+  воркера ([AGENTS.md](../AGENTS.md)), лишний поход в базу на каждый запрос не нужен.
   Требует новую зависимость `itsdangerous` — в проекте её ещё нет, добавить в
   `pyproject.toml` (проверено: `SessionMiddleware` в starlette уже есть, `itsdangerous`
   нет).
