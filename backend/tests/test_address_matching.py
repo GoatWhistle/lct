@@ -1,11 +1,10 @@
-from app.api.ws.station import _address_matches
 from app.scoring.address import address_matches
 
 
 def test_street_abbreviation_matches_but_similarly_named_street_does_not():
     expected = "Дубнинская улица, дом 10"
     assert address_matches(expected, "ул. Дубнинская, д. 10")
-    assert not _address_matches(expected, "Дубининская улица, дом 10")
+    assert not address_matches(expected, "Дубининская улица, дом 10")
 
 
 def test_street_type_is_part_of_the_operational_address():
