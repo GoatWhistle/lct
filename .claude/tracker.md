@@ -46,8 +46,17 @@ Issues рабочие, **перед сдачей удаляются**. Отсю�
 
 ## Ветки и PR
 
-Ветка `feat/<что>` от `main` → коммиты → PR в `main` (`create_pull_request`). `Closes #N` —
-в описании PR, GitHub закроет issue при мерже. Прогресс и решения — комментариями в issue.
+**Один issue — одна свежая сессия и свой worktree.** Параллельные сессии не делят рабочую
+копию, а в контексте нет чужих issues.
+
+1. Worktree от свежего `main` (`EnterWorktree`, ляжет в `.claude/worktrees/` — он в игноре),
+   ветка `feat/<slug>` — без номера issue: имя ветки попадает в merge-коммит и переживает
+   чистку истории. Хуки в worktree работают сами — `core.hooksPath` общий на репо.
+2. Коммиты в ветку, push ветки.
+3. PR в `main` — `create_pull_request`, `Closes #N` в описании: GitHub закроет issue при мерже.
+4. Мерж — через PR; worktree после мержа убрать (`ExitWorktree`).
+
+Прогресс и решения по ходу — комментариями в issue, не в чате сессии.
 
 ## Wayfinding operations
 
