@@ -4,7 +4,7 @@
 
 Рабочий контракт между фронтендом и бэкендом. Ниже описано фактически реализованное поведение; неготовые точки вынесены в раздел «Пока не реализовано».
 
-**Источник истины — Pydantic-модели в `backend/app/domain/`.** `make types` гоняет их через JSON Schema в `frontend/src/shared/types/generated.ts`. Если генерация не заводится — типы пишутся руками, но тогда любая правка модели на бэке обязана прийти в PR вместе с правкой TS.
+**Источник истины — Pydantic-модели в `backend/app/domain/`.** `make types` гоняет их через JSON Schema в `frontend/src/shared/types/generated.ts`. Руками `generated.ts` не правится: правка модели без регенерации ловится тестом `test_generated_types_match_models`. Типы HTTP-ответов в генерацию не входят и описаны вручную в `frontend/src/shared/api/http.ts`.
 
 ---
 
@@ -24,7 +24,7 @@
 - Преподаватель смотрит через `observe` и пишет через `control`, и это **разные сокеты**. В `control` нет ни одной команды, меняющей карточку курсанта: преподаватель управляет ситуацией, а не работой обучаемого, иначе оценка перестаёт быть оценкой курсанта.
 - У станции ДДС нет аудио — значит нет ни VAD, ни STT, ни TTS. Голосовой контур она не трогает.
 
-`scenario.start` задаёт две независимые оси: `mode: training | exam | self` ([../product/MODES.md](../product/MODES.md)) и `exercise: call | card | dds` (если поле опущено, модель выбирает `call`). `call` — голосовой приём 112, `card` — оператор 112 заполняет карточку по текстовой вводной без звонка, `dds` — диспетчер получает уже готовую карточку и ведёт реагирование. Для ДДС `scenario_ids` задаёт одновременно выданную очередь до 10 карточек; первый ID равен `scenario_id`, таймер каждой начинается при выдаче. `criteria` фиксирует выбранные преподавателем лимит решения ДДС и допустимое число нарушенных метрик; флаг грамматики применяется к 112, но не к оценке ДДС. Нормативы ГОСТ этим объектом не меняются. Режим виден всем участникам; в `exam` запрещены подсказки.
+`scenario.start` задаёт две независимые оси: `mode: training | exam | self` ([../product/MODES.md](../product/MODES.md)) и `exercise: call | card | dds` (если поле опущено, модель выбирает `call`). Основной путь — `dds`: диспетчер получает уже готовую карточку и ведёт реагирование. `card` — оператор 112 заполняет карточку по текстовой вводной без звонка (уточняющие вопросы заявителю — текстом, `text.turn`); с `handoff_to_dds: true` переданная КИО уходит на АРМ ДДС того же занятия (полный цикл 112 → ДДС). `call` — живой голосовой приём 112, дополнительный режим. Для ДДС `scenario_ids` задаёт очередь до 10 карточек; первый ID равен `scenario_id`, таймер каждой начинается при выдаче. `criteria` фиксирует выбранные преподавателем лимиты (решение ДДС, заполнение КИО, отработка карточки ДДС), допустимое число нарушенных метрик и веса метрик `score_weights`; флаг грамматики (`description_grammar`, описание происшествия оператором 112) к оценке ДДС не применяется. Нормативы ГОСТ этим объектом не меняются. Режим виден всем участникам; в `exam` запрещены подсказки.
 
 ---
 
@@ -35,7 +35,7 @@
 | | Курсант → сервер | Сервер → курсант |
 |---|---|---|
 | Формат | PCM16 моно | PCM16 моно |
-| Частота | **16 000 Гц** (требование GigaAM) | **24 000 Гц** (выход Silero v5) |
+| Частота | **16 000 Гц** (вход Whisper small / GigaAM) | **24 000 Гц** (выход Silero v5) |
 | Кадр | 20 мс = 320 сэмплов = 640 байт | чанк по предложению, переменный |
 
 Ресемплинг в 16 кГц делает фронт в AudioWorklet — не сервер. Так с микрофона не летит 48 кГц лишнего трафика, и сервер получает ровно тот формат, который ждёт модель.
@@ -56,11 +56,12 @@
 | Событие | Payload | Когда |
 |---|---|---|
 | `call.incoming` | `{scenario_id, caller_number, level, mode, required_fields}` | Занятие запущено. UI показывает входящий вызов |
-| `card.briefing` | `{scenario_id, mode, text, required_fields, card?}` | Старт `exercise=card`: текстовая вводная и исходная КИО без эталонных ответов |
+| `card.briefing` | `{scenario_id, mode, text, required_fields, card?, handoff_to_dds}` | Старт `exercise=card`: текстовая вводная и исходная КИО без эталонных ответов |
+| `text.turn.accepted` | `{text, at}` | `exercise=card`: вопрос курсанта принят в транскрипт; ответ заявителя приходит `caller.utterance` |
 | `call.started` | `{started_at}` | Курсант принял. Пошёл таймер опроса |
 | `stt.partial` | `{text}` | Промежуточная расшифровка речи оператора |
 | `stt.final` | `{text, at}` | Финальный чанк после endpointing |
-| `caller.utterance` | `{text, at, mood}` | Реплика звонящего текстом, синхронно с аудио |
+| `caller.utterance` | `{utterance_id, text, at, mood, source: "local_llm"\|"scenario"}` | Реплика звонящего текстом, синхронно с аудио (в `card` — без аудио) |
 | `tts.begin` / `tts.end` | `{utterance_id}` | Рамки реплики звонящего: UI гасит индикатор «говорит» |
 | `tts.cancel` | `{utterance_id, reason: "barge_in"\|"director"}` | Оператор перебил либо преподаватель оборвал связь. **Фронт мгновенно чистит очередь** |
 | `bg.start` / `bg.stop` | `{loop, gain_db}` | Аудио-фон происшествия |
@@ -82,7 +83,7 @@
 
 **Коды канала `error`** — фронт разбирает код, а не текст сообщения (текст предназначен человеку):
 `session_not_found`, `call_not_started`, `hint_denied_in_exam`, `models_warming_up`,
-`directive_needs_network`, `scenario_invalid`, `unsupported_event`, `internal`.
+`directive_needs_network`, `scenario_invalid`, `unsupported_event`, `forbidden`, `internal`.
 
 **`kio.patch` существует в двух формах** и различается направлением, а не полем: от сервера приходит
 с `source` (`auto` — сервер распознал факт из речи, `operator` — эхо чужой правки), от курсанта
@@ -111,6 +112,7 @@ ACK намеренно не dispatch-ился в приложение брауз
 |---|---|---|
 | `call.answer` | `{}` | Снял гарнитуру. Останавливает норматив «ответ ≤8 с» |
 | `card.submit` | `{}` | В `exercise=card` отправляет заполненную КИО, завершает упражнение и запускает оценку |
+| `text.turn` | `{text}` | В `exercise=card`: вопрос заявителю текстом. Какой факт раскрыть, решает слот-автомат, не модель |
 | `kio.patch` | `{fields: {...}}` | Правка карточки. Дебаунс 300 мс, шлётся только дельта |
 | `hint.request` | `{}` | Кнопка «Подсказка». Работает только в `training`/`self`; в `exam` сервер отвечает ошибкой |
 | `self_assessment.submit` | `{missed: [checklist_id], comment}` | Самооценка **до** показа автооценки |
@@ -121,7 +123,7 @@ ACK намеренно не dispatch-ился в приложение брауз
 
 **Правило: таймеры ГОСТ останавливаются событиями, а не таймаутами.** Иначе метрика времени опроса становится недоказуемой, а вся оценка держится на том, что её можно предъявить и проверить.
 
-В `card` сервер принимает только `kio.patch` и `card.submit`; `call.answer`, подсказки и аудиокадры в этом упражнении отклоняются. В `dds` действия курсанта идут через `/ws/station`.
+В `card` сервер принимает только `kio.patch`, `text.turn` и `card.submit`; `call.answer`, подсказки и аудиокадры в этом упражнении отклоняются. В `dds` действия курсанта идут через `/ws/station`.
 
 ## События: сервер → наблюдателям
 
@@ -129,7 +131,7 @@ ACK намеренно не dispatch-ился в приложение брауз
 
 | Событие | Payload |
 |---|---|
-| `session.snapshot` | Полное состояние при подключении: сценарий, режим, `exercise`, КИО, `required_fields`, транскрипт, таймеры, `ended` |
+| `session.snapshot` | Полное состояние при подключении: сценарий, режим, `exercise`, `criteria`, КИО, `required_fields`, транскрипт, таймеры, `ended` |
 | `instructor_note.shown` | `{transcript_ref, text, author}` — пометка преподавателя видна всем, кому виден транскрипт |
 | `reference.started` | `{scenario_id}` — маркер запуска эталона; отдельного серверного аудиопроигрывания пока нет |
 | `transcript.append` | `{entry: {ref, speaker: "caller"\|"operator", text, at, mood}}` — `ref` это якорь реплики: без него пометку преподавателя и отметку разбора некуда повесить |
@@ -148,21 +150,20 @@ ACK намеренно не dispatch-ился в приложение брауз
 
 | Событие | Payload | Применение |
 |---|---|---|
-| `scenario.start` | `{scenario_id, trainee, trainee_id?, group_id?, mode, exercise?, criteria?: {decision_time_limit_seconds, allowed_errors, require_correct_grammar}}` | Запуск занятия; `trainee_id` связывает результат с курсантом, `criteria` сохраняет условия зачёта |
-| `director.inject` | `{directive, mode: "next_turn"\|"immediate"}` | Директива звонящему ([../product/CALL-SIM.md](../product/CALL-SIM.md#преподаватель-режиссёр)) |
+| `scenario.start` | `{scenario_id, scenario_ids?, random_scenario_ids?, dds_arrival_interval_seconds, dds_max_waiting, trainee, trainee_id?, dds_service?, group_id?, mode, exercise?, handoff_to_dds, criteria?: {decision_time_limit_seconds, card_fill_time_limit_seconds, dds_card_work_time_limit_seconds, allowed_errors, require_correct_grammar, score_weights}}` | Запуск занятия; `trainee_id` связывает результат с курсантом, `criteria` сохраняет условия зачёта и переопределяет лимиты `dds_ack`, `card_fill`, `dds_work` |
+| `director.inject` | `{directive, mode: "next_turn"\|"immediate"}` | Директива звонящему, только в `exercise=call` ([../product/CALL-SIM.md](../product/CALL-SIM.md#преподаватель-режиссёр)) |
 | `reference.play` | `{}` | Сейчас только посылает `reference.started` наблюдателям, без проигрывания аудио |
 | `instructor_note.add` | `{transcript_ref, text}` | Пометка к реплике транскрипта |
 | `score.override` | `{session_id, verdict, comment}` | WS-коррекция: числовой `verdict` парсится как итоговый балл; основной HTTP-маршрут — `PATCH /api/sessions/{id}/report` |
-| `scenario.publish` | `{scenario_id}` | **Только в модели событий, обработчик отвечает `unsupported_event`.** Утверждение черновика работает через HTTP `/approve` |
 | `session.stop` | `{}` | Принудительное завершение |
 
-Свободный текст директивы работает только при наличии сети: офлайн-дерево предгенерировано, и произвольную реплику в нём взять неоткуда. Кнопочные пресеты работают всегда.
+Свободный текст директивы работает только при запущенной локальной модели: офлайн-дерево предгенерировано, и произвольную реплику в нём взять неоткуда; без модели сервер отвечает `directive_needs_network` (код исторический, сеть не нужна). Кнопочные пресеты работают всегда.
 
 **`mode: "immediate"` — только для обрыва связи.** Он рвёт TTS на полуслове тем же механизмом, что barge-in. Все остальные директивы применяются со следующей реплики: разговор не должен дёргаться от того, что преподаватель что-то нажал.
 
 ## События: станция ДДС
 
-При `exercise=call` оператор 112 нажимает `dds.dispatch`, и карточка замораживается снимком. При `exercise=dds` готовую учебную карточку система формирует из утверждённого сценария и сразу отдаёт на АРМ ДДС; звонка заявителя в этом упражнении нет. `exercise=card` отправляет карточку через `card.submit`.
+При `exercise=call` оператор 112 нажимает `dds.dispatch`, и карточка замораживается снимком. При `exercise=dds` готовую учебную карточку система формирует из утверждённого сценария и сразу отдаёт на АРМ ДДС; звонка заявителя в этом упражнении нет. `exercise=card` отправляет карточку через `card.submit`; при `handoff_to_dds` она становится первой карточкой очереди ДДС, остальные `scenario_ids` поступают следом.
 
 | Событие | Направление | Payload |
 |---|---|---|
@@ -273,7 +274,9 @@ class KIO(BaseModel):
 | `answer` | Ответ на звонок | ≤ 8 с |
 | `interview` | **Опрос / идентификация ситуации** | **≤ 75 с** |
 | `dds_notify` | Оповещение ДДС | ≤ 60 с |
-| `dds_ack` | Подтверждение получения карточки | ≤ 30 с |
+| `dds_ack` | Подтверждение получения карточки (решение ДДС) | ≤ 30 с, ПП РФ № 1931; лимит занятия — `criteria.decision_time_limit_seconds` |
+| `card_fill` | Заполнение КИО по вводной | 180 с по умолчанию, `criteria.card_fill_time_limit_seconds` |
+| `dds_work` | Отработка карточки ДДС | 180 с по умолчанию, `criteria.dds_card_work_time_limit_seconds` |
 | `zone_check` | Проверка зоны ответственности | ≤ 30 с |
 | `callback` | Обратный дозвон при обрыве | ≤ 10 с набора, 3 попытки |
 | `close` | Снятие с контроля | ≤ 5 мин |
@@ -287,15 +290,23 @@ class KIO(BaseModel):
 ## HTTP API
 
 ```
-GET    /api/scenarios                      опубликованные: id, title, type, level, dds, modes, topics
-GET    /api/scenarios/{id}                 сценарий без facts, ground_truth, tree, checklist
+GET    /api/scenarios                      опубликованные; курсанту только id, title, level, modes и только с режимом self
+GET    /api/scenarios/{id}                 курсанту id, title, level, modes; преподавателю/администратору полностью
 POST   /api/scenarios/drafts/from-template {source_id, title?} → шаблонная копия в статусе draft
+POST   /api/scenarios/drafts/generate      локальный Qwen: вариация опубликованного сценария (ai_variant)
+POST   /api/scenarios/drafts/generate-from-description  новый сюжет внутри каркаса ЕКП (ai_full)
 GET    /api/scenarios/drafts/{id}          тело черновика; только преподавателю
 PATCH  /api/scenarios/drafts/{id}          JSON Merge Patch тела; только преподавателю
+POST   /api/scenarios/drafts/{id}/revise   доработка ИИ-черновика по замечанию
 POST   /api/scenarios/drafts/{id}/validate проверка схемы, связей и эталона
+POST   /api/scenarios/drafts/{id}/grammar-check  языковая диагностика, текст не исправляет
 POST   /api/scenarios/drafts/{id}/approve  утверждение; после него доступен занятию
 DELETE /api/scenarios/{id}                 мягкое архивирование; активный сценарий даёт 409
 POST   /api/scenarios/{id}/restore         восстановление из архива
+
+POST   /api/scenario-submissions           курсант предлагает свой сценарий
+GET    /api/scenario-submissions           курсанту свои, преподавателю/администратору все
+POST   /api/scenario-submissions/{id}/review  решение преподавателя/администратора
 
 GET    /api/materials                      библиотека для преподавателя; только назначения для курсанта
 POST   /api/materials                      текст или локальный файл до 5 МБ; только преподавателю
@@ -309,6 +320,8 @@ POST   /api/materials/{id}/start           запустить назначенн
 GET    /api/materials/{id}/download        вложение только сотруднику или назначенному курсанту
 
 POST   /api/sessions                       {scenario_id, trainee?, group?, mode} → строка сессии
+GET    /api/sessions/active                реестр живых занятий преподавателя; детали — через /ws/observe
+GET    /api/sessions/dds-history           реестр закрытых карточек ДДС курсанта/преподавателя
 GET    /api/sessions/{id}                  строка журнала, не живой снимок занятия
 GET    /api/sessions/{id}/checklist        только после окончания звонка; иначе 409
 GET    /api/sessions/{id}/report           отчёт: метрики, транскрипт, отметки, эталон, самооценка, подсказки
@@ -320,9 +333,11 @@ GET    /api/sessions?trainee=&group=&from=&mode=   история
 
 GET    /api/trainees                       курсанты и группы; преподавателю/администратору
 GET    /api/trainees/{id}/profile          профиль: радар, попытки, дельты, подсказки
+GET    /api/trainees/{id}/certificate.pdf  одностраничный сертификат по сохранённым результатам
 GET    /api/groups                         учебные группы; преподавателю/администратору
 POST   /api/groups                         создать группу; преподавателю/администратору
 PUT    /api/groups/{id}/trainees/{id}      назначить курсанта в группу
+PATCH  /api/groups/{id}/owner              закрепить группу за преподавателем; только администратору
 GET    /api/groups/{id}/analytics          балл, частые ошибки и рекомендации по группе
 POST   /api/groups/{id}/analytics/insight  локальный Qwen-инсайт только по обезличенным агрегатам
 
@@ -337,6 +352,7 @@ PATCH  /api/admin/users/{id}               роль, служба, блокир�
 GET    /api/admin/audit?action=&actor=     журнал действий, только чтение
 GET    /api/admin/audit.csv?action=&actor= потоковый экспорт полного фильтрованного журнала
 GET    /api/admin/status                   состояние компонентов стенда
+GET    /api/admin/config.xml               снимок конфигурации стенда без паролей и ключей
 GET    /api/admin/diagnostics              нагрузка, предупреждения и сбои за 24 часа
 GET    /api/admin/diagnostics.json         скачать тот же отчёт для диагностики
 GET    /api/admin/backups                  список резервных копий
@@ -376,11 +392,11 @@ CSV и PDF доступны после перезапуска backend. До за
 
 **`mode` и необязательное имя `group` в `POST /api/sessions`** позволяют разметить строку журнала. При запуске через WS группа берётся из профиля выбранного курсанта; `group_id` в `scenario.start` пока не используется обработчиком напрямую.
 
-**`GET /api/scenarios/{id}` не отдаёт `facts`, `ground_truth`, `tree` и `checklist`** — иначе курсант откроет DevTools и увидит эталон до упражнения. Подсказки приходят событием `hint.shown`, эталонные вопросы — в разборе. Полное тело доступно только через преподавательский маршрут черновика.
+**Курсант получает из `GET /api/scenarios` и `GET /api/scenarios/{id}` только `id`, `title`, `level`, `modes`** и только сценарии с режимом `self` — иначе он откроет DevTools и увидит эталон до упражнения. Подсказки приходят событием `hint.shown`, эталонные вопросы — в разборе. Преподаватель и администратор получают тело сценария полностью.
 
 **В КИО `incident_code` и `notify` выводятся из `signs` и обстоятельств:** курсант проставляет до трёх признаков, сервер пересчитывает код ЕКП и список оповещения. Эти два поля защищены от `kio.patch` курсанта. Поле `dds` пока остаётся редактируемым для старых сценариев без признаков. Отдельной операции ручного добавления службы в список `notify` сейчас нет.
 
-**Черновик сценария утверждается вручную через HTTP `/approve`.** WS-событие `scenario.publish` пока только объявлено в схеме и не публикует сценарий.
+**Черновик сценария утверждается вручную через HTTP `/approve`.** WS-события публикации нет.
 
 **`GET /api/sessions/{id}/checklist` отвечает только после завершения занятия**, иначе 409. Во время разговора чек-лист — содержимое подсказок; после него курсант может отметить пропущенное. Для курсанта проверяется принадлежность занятия.
 
