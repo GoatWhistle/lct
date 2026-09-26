@@ -18,6 +18,7 @@ from app.api.http import sessions as sessions_http
 from app.main import app
 from app.scenarios import store
 from app.session.hub import hub
+from app.session.store import MemorySessionStore
 
 
 @pytest.fixture
@@ -30,7 +31,7 @@ def client(monkeypatch):
         # Сокеты закрыты ролями (lct-23): тесты входят так же,
         # как `make lesson`, — через dev-token за флагом.
         test_client.post("/api/auth/dev-token")
-        hub.journal = None  # тесты не пишут в БД: проверяется поведение каналов
+        hub.store = MemorySessionStore()  # тесты не пишут в БД: in-memory adapter хранилища
         yield test_client
 
 
@@ -469,46 +470,93 @@ def test_report_shows_missed_questions_and_self_assessment_gap(client):
     assert report["hints_used"], "использованные подсказки попадают в разбор"
 
 
-def test_instructor_correction_keeps_the_automatic_score(client, postgres_access):
-    from app.db.base import get_sessionmaker
-    from app.session.journal import DbJournal
+@pytest.mark.parametrize("path", ["http", "ws"])
+def test_score_override_is_one_operation_for_http_and_ws(client, postgres_access, path):
+    """Правка с пульта и из отчёта даёт одну и ту же строку Score и разбор.
 
-    # Unlike the websocket-only cases above, this regression exercises the
-    # durable HTTP correction endpoint against a real PostgreSQL score row.
-    journal = DbJournal(get_sessionmaker())
+    Раньше WS-путь не трогал `full_report` живой сессии: отчёт показывал
+    старую оценку до перезагрузки.
+    """
+    from sqlalchemy import select
+
+    from app.db.base import get_sessionmaker
+    from app.db.models import Score
+    from app.session.pg_store import PostgresSessionStore
+
+    comment = "связь рвалась не по вине курсанта"
+    hub.store = PostgresSessionStore(get_sessionmaker())
     try:
-        with lesson(client) as (session_id, _):
+        with lesson(client) as (session_id, control), \
+                client.websocket_connect(f"/ws/observe/{session_id}") as observer:
+            state = hub.get(session_id)
             with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
                 trainee.send_json({"type": "call.answer"})
                 trainee.send_json({"type": "call.hangup"})
-                wait_for(lambda: hub.get(session_id).score is not None)
-                # The websocket-only fixture deliberately disables journalling;
-                # persist its computed result before testing the HTTP override.
-                state = hub.get(session_id)
-                client.portal.call(
-                    journal.start_lesson,
-                    session_id,
-                    state.scenario_id,
-                    state.mode.value,
-                    state.trainee_name,
-                    state.trainee_id,
-                    "dev",
-                )
-                client.portal.call(journal.score, session_id, state.score["score_auto"], state.score)
-
+                # score.ready уходит только после commit оценки.
+                read_until(observer, "score.ready", limit=50)
             auto = client.get(f"/api/sessions/{session_id}/report").json()["score_auto"]
-            response = client.patch(
-                f"/api/sessions/{session_id}/report",
-                json={"score_final": 80.0, "comment": "связь рвалась не по вине курсанта"},
-            )
-            assert response.status_code == 200, response.text
-            corrected = response.json()
-    finally:
-        hub.journal = None
 
-    assert corrected["score_final"] == 80.0
-    assert corrected["score_auto"] == auto, "автооценка должна сохраниться рядом"
-    assert corrected["overridden_by"] == "dev"
+            if path == "http":
+                response = client.patch(
+                    f"/api/sessions/{session_id}/report",
+                    json={"score_final": 80.0, "comment": comment},
+                )
+                assert response.status_code == 200, response.text
+            else:
+                control.send_json({
+                    "type": "score.override", "session_id": str(session_id),
+                    "verdict": "80", "comment": comment,
+                })
+                read_until(observer, "score.ready", limit=50)
+            report = client.get(f"/api/sessions/{session_id}/report").json()
+
+        async def score_row():
+            async with get_sessionmaker()() as db:
+                return await db.scalar(select(Score).where(Score.session_id == session_id))
+
+        row = client.portal.call(score_row)
+    finally:
+        hub.store = MemorySessionStore()
+
+    corrected = {"score_final": 80.0, "overridden_by": "dev", "override_comment": comment}
+    assert {key: report[key] for key in corrected} == corrected
+    assert report["score_auto"] == auto, "автооценка должна сохраниться рядом"
+    assert (row.score_auto, row.score_final, row.overridden_by, row.override_comment) == (
+        auto, 80.0, "dev", comment,
+    )
+    assert {key: row.report[key] for key in corrected} == corrected
+    assert {key: row.report["full_report"][key] for key in corrected} == corrected
+    assert row.report["full_report"]["score_auto"] == auto
+    assert {key: state.score["full_report"][key] for key in corrected} == corrected
+
+
+def test_each_lesson_operation_is_exactly_one_store_commit(client):
+    """Раньше реплика, подсказка и финиш шли отдельной транзакцией журнала
+    и ещё одним checkpoint — между ними возможен частичный коммит."""
+    from app.session.store import HintRecorded, LessonEnded, LessonStarted, NoteAdded, ScoreCalculated
+
+    store = hub.store
+    with lesson(client) as (session_id, control):
+        assert len(store.commits) == 1, "запуск: строка занятия и снимок вместе"
+
+        def commits_after(action) -> list:
+            before = len(store.commits)
+            action()
+            wait_for(lambda: len(store.commits) > before)
+            time.sleep(0.05)
+            assert len(store.commits) == before + 1
+            return [type(item) for item in store.commits[-1][1]]
+
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            assert commits_after(lambda: trainee.send_json({"type": "call.answer"})) == [LessonStarted]
+            assert commits_after(lambda: trainee.send_json({"type": "hint.request"})) == [HintRecorded]
+            assert commits_after(lambda: trainee.send_json({"type": "call.hangup"})) == [
+                LessonEnded, ScoreCalculated,
+            ]
+        assert commits_after(lambda: control.send_json({
+            "type": "instructor_note.add", "transcript_ref": "u1", "text": "поздно спросил адрес",
+        })) == [NoteAdded]
+    assert all(committed_id == session_id for committed_id, _ in store.commits)
 
 
 def test_ws_score_override_rejects_other_session_and_invalid_value(client):
@@ -538,13 +586,10 @@ def test_ws_score_override_rejects_other_session_and_invalid_value(client):
         assert state.score["overridden_by"] == "dev"
 
 
-def test_ws_score_override_is_not_applied_when_atomic_persistence_fails(client):
-    class FailedJournal:
-        async def score_override(self, *_args):
-            return False
-
-        async def checkpoint(self, *_args):
-            return None
+def test_ws_score_override_is_not_confirmed_when_commit_fails(client):
+    class FailedStore(MemorySessionStore):
+        async def commit(self, state, records=()):
+            raise OSError("simulated database partition")
 
     with lesson(client) as (session_id, control):
         state = hub.get(session_id)
@@ -553,15 +598,18 @@ def test_ws_score_override_is_not_applied_when_atomic_persistence_fails(client):
             trainee.send_json({"type": "call.hangup"})
             wait_for(lambda: state.score is not None)
 
-        auto = state.score["score_auto"]
-        hub.journal = FailedJournal()
-        control.send_json({
-            "type": "score.override", "session_id": str(session_id),
-            "verdict": "85", "comment": "manual review",
-        })
-        time.sleep(0.1)
-        assert state.score["score_auto"] == auto
-        assert "score_final" not in state.score
+        with client.websocket_connect(f"/ws/observe/{session_id}") as observer:
+            observer.receive_json()
+            hub.store = FailedStore()
+            control.send_json({
+                "type": "score.override", "session_id": str(session_id),
+                "verdict": "85", "comment": "manual review",
+            })
+            message = read_until(observer, "error")
+
+    assert "переподключитесь" in message["message"], "без записи правка не подтверждается"
+    assert state.lease_fenced
+    assert hub.get(session_id) is None
 
 
 def test_soft_directive_changes_how_the_caller_sounds(client):

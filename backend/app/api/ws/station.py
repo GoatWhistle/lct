@@ -8,7 +8,7 @@
 в отчёте и становится сорванным выездом с конкретной причиной.
 
 Правила пульта — в `DdsDesk.apply`; здесь разбор команды, отсев повторов,
-durable transition и рассылка итога.
+операция хранилища и рассылка итога.
 """
 
 import asyncio
@@ -32,6 +32,7 @@ from app.domain.events import (
 from app.domain.roles import Role
 from app.session.finish import finish
 from app.session.hub import LEASE_FENCED_MESSAGE, hub
+from app.session.store import LessonEnded
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -48,8 +49,7 @@ async def _finish_dds(session_id: UUID, state) -> None:
     hub.stop_ticker(session_id)
     hub.to_station(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
     hub.to_observers(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
-    if hub.journal:
-        await hub.journal.session_ended(session_id, ended_at, CallEndReason.COMPLETE.value)
+    hub.record(session_id, LessonEnded(ended_at, CallEndReason.COMPLETE.value))
     await finish(session_id, state)
     hub.to_station(session_id, ScoreReady(session_id=session_id))
 
@@ -65,7 +65,6 @@ async def _handle(session_id: UUID, state, event) -> None:
         await _finish_dds(session_id, state)
     if not outcome.changed:
         return
-    await hub.checkpoint(session_id)
     hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
     hub.to_observers(session_id, state.snapshot())
 
@@ -156,18 +155,13 @@ async def station(ws: WebSocket, session_id: UUID, role: str = "dds") -> None:
                     # Re-ack it without rerunning its business transition.
                     hub.to_station(session_id, CommandAck(command_id=command_id))
                     continue
-                async with hub.durable_transition(session_id):
+                async with hub.operation(session_id):
                     await _handle(session_id, state, event)
                     if command_id is not None:
+                        # ID команды входит в тот же снимок, что и её переход:
+                        # подтверждение уходит только после их общего commit.
                         state.processed_station_commands.append(str(command_id))
                         del state.processed_station_commands[:-512]
-                        # Commit the state+dedupe ID before acknowledging. The
-                        # transition context can have already flushed other
-                        # events; an explicit checkpoint here makes the
-                        # command/ACK boundary independent of that batch state.
-                        await hub.checkpoint(session_id)
-                        # The hub stages non-error events until the checkpoint
-                        # transaction has committed, including this ack.
                         hub.to_station(session_id, CommandAck(command_id=command_id))
         except WebSocketDisconnect:
             return
@@ -178,7 +172,7 @@ async def station(ws: WebSocket, session_id: UUID, role: str = "dds") -> None:
                 "закрытие станционного WebSocket после fencing занятия %s",
                 session_id,
             )
-            # `hub.checkpoint` broadcasts a structured fence event before
+            # `hub.operation` broadcasts a structured fence event before
             # propagating the failed database write. Let the sender deliver
             # that event and close with 1012 instead of an opaque 1006.
             await asyncio.gather(sender, return_exceptions=True)

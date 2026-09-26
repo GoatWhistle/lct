@@ -14,6 +14,7 @@ from app.domain.roles import Role
 from app.main import app
 from app.scenarios import store
 from app.session.hub import hub
+from app.session.store import MemorySessionStore
 from app.session.state import SessionState
 
 
@@ -21,7 +22,7 @@ from app.session.state import SessionState
 def client():
     with TestClient(app) as test_client:
         test_client.post("/api/auth/dev-token")
-        hub.journal = None
+        hub.store = MemorySessionStore()
         yield test_client
 
 
@@ -153,8 +154,8 @@ def test_control_command_checkpoint_failure_returns_fencing_error(monkeypatch):
         mode="training", owner_login="lease-owner",
     )
 
-    class BrokenJournal:
-        async def checkpoint(self, _state):
+    class BrokenStore(MemorySessionStore):
+        async def commit(self, _state, _records=()):
             raise OSError("simulated database partition")
 
     class OneCommandSocket:
@@ -176,8 +177,8 @@ def test_control_command_checkpoint_failure_returns_fencing_error(monkeypatch):
 
     who = Principal(login="lease-owner", full_name="Преподаватель", role=Role.INSTRUCTOR)
     socket = OneCommandSocket()
-    old_journal = hub.journal
-    hub.journal = BrokenJournal()
+    old_store = hub.store
+    hub.store = BrokenStore()
     hub.register(state)
     monkeypatch.setattr(control_module, "websocket_origin_allowed", lambda _ws: True)
     monkeypatch.setattr(control_module, "principal_of", lambda _ws: who)
@@ -193,7 +194,7 @@ def test_control_command_checkpoint_failure_returns_fencing_error(monkeypatch):
             assert "переподключитесь" in event.message
             assert observer_queue.empty(), "uncommitted controller event leaked to observers"
     finally:
-        hub.journal = old_journal
+        hub.store = old_store
         hub.drop(session_id)
 
 

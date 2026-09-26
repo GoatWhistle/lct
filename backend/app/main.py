@@ -28,7 +28,8 @@ from app.monitoring import install_diagnostics
 from app.scenarios import store
 from app.scenarios.loader import ScenarioError
 from app.session.hub import hub
-from app.session.journal import DbJournal, SessionLeaseLost
+from app.session.pg_store import PostgresSessionStore
+from app.session.store import MemorySessionStore, SessionLeaseLost
 from app.voice.models import get_voice_models
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
@@ -77,7 +78,7 @@ async def lifespan(app: FastAPI):
             )
     else:
         logging.getLogger(__name__).warning(
-            "DEMO_NO_DB: занятия и оценки живут только до перезапуска; журнал БД выключен"
+            "DEMO_NO_DB: занятия и оценки живут только до перезапуска; хранилище в памяти"
         )
 
     if not settings.demo_no_db:
@@ -89,16 +90,17 @@ async def lifespan(app: FastAPI):
                 "не удалось загрузить версии полномочий: %s", exc
             )
 
-    # Журнал: всё, что не записано, для оценки не существует.
-    hub.journal = (
-        None if settings.demo_no_db
-        else DbJournal(get_sessionmaker(), node_id=settings.backend_node_id)
+    # Хранилище: всё, что не записано, для оценки не существует. Без БД —
+    # in-memory adapter, занятие живёт до перезапуска.
+    hub.store = (
+        MemorySessionStore() if settings.demo_no_db
+        else PostgresSessionStore(get_sessionmaker(), node_id=settings.backend_node_id)
     )
     app.state.sessions_restored = 0
-    if hub.journal is not None:
+    if hub.store.persistent:
         try:
             async with asyncio.timeout(3):
-                restored = await hub.journal.restore_active()
+                restored = await hub.store.restore_active()
             for state in restored:
                 hub.register(state)
                 hub.start_ticker(state.session_id)
@@ -113,18 +115,16 @@ async def lifespan(app: FastAPI):
             )
 
     lease_task = None
-    if hub.journal is not None and settings.backend_node_id:
+    if hub.store.persistent and settings.backend_node_id:
         async def supervise_session_ownership() -> None:
             while True:
                 await asyncio.sleep(5)
-                journal = hub.journal
-                if journal is None:
-                    return
+                store = hub.store
                 for state in list(hub._sessions.values()):
                     if state.ended or state.lease_fenced:
                         continue
                     try:
-                        await journal.renew(state.session_id)
+                        await store.renew(state.session_id)
                     except SessionLeaseLost:
                         await hub.fence(state)
                     except (SQLAlchemyError, OSError, TimeoutError):
@@ -139,7 +139,7 @@ async def lifespan(app: FastAPI):
                         )
                         await hub.fence(state)
                 try:
-                    restored = await journal.claim_expired()
+                    restored = await store.claim_expired()
                     for state in restored:
                         current = hub._sessions.get(state.session_id)
                         if current is not None and not current.lease_fenced:
@@ -178,11 +178,11 @@ async def lifespan(app: FastAPI):
         with suppress(asyncio.CancelledError):
             await lease_task
 
-    if hub.journal is not None:
+    if hub.store.persistent:
         for state in list(hub._sessions.values()):
-            if not state.ended:
+            if not state.ended and not state.lease_fenced:
                 try:
-                    await hub.journal.checkpoint(state)
+                    await hub.store.commit(state)
                 except Exception:  # noqa: BLE001 — shutdown must release the process
                     logging.getLogger(__name__).exception(
                         "не удалось сохранить checkpoint %s при shutdown", state.session_id

@@ -18,6 +18,7 @@ from app.api.http import admin
 from app.domain.roles import Role
 from app.main import app
 from app.session.hub import hub
+from app.session.store import MemorySessionStore
 
 
 @pytest.mark.parametrize(
@@ -92,7 +93,7 @@ def client():
     # process' in-memory cache.
     auth.prime_generations({})
     with TestClient(app) as test_client:
-        hub.journal = None
+        hub.store = MemorySessionStore()
         yield test_client
 
 

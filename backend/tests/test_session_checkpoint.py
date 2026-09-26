@@ -1,14 +1,11 @@
 """Промежуточное состояние занятия переживает смену backend-процесса."""
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from app.domain.events import (
-    CallStarted,
-    CommandAck,
     Exercise,
     LessonCriteria,
     Metric,
@@ -21,7 +18,6 @@ from app.domain.timers import TimerCode
 from app.scenarios.loader import load_file
 from app.session.checkpoint import dump_state, load_state
 from app.session.dds import prepare_handoff_queue, prepare_queue
-from app.session.hub import LEASE_FENCED_MESSAGE, SessionHub
 from app.session.state import DdsCardRecord, SessionState, now_utc
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
@@ -228,69 +224,3 @@ def test_mixed_handoff_checkpoint_preserves_operator_card_and_generated_queue():
     assert restored.desk.scenarios[1].id == second.id
     assert len(restored.desk.cards) == 2
     assert restored.desk.active_id == state.desk.active_id
-
-
-def test_checkpoint_storage_failure_fences_and_notifies_all_data_channels():
-    class BrokenJournal:
-        async def checkpoint(self, _state):
-            raise OSError("simulated database partition")
-
-    local_hub = SessionHub(journal=BrokenJournal())
-    state = dds_state()
-    local_hub.register(state)
-
-    with local_hub.observer(state.session_id) as observers, \
-         local_hub.trainee(state.session_id) as trainee, \
-         local_hub.station(state.session_id) as station:
-        async def failing_transition():
-            async with local_hub.durable_transition(state.session_id):
-                local_hub.to_trainee(
-                    state.session_id, CallStarted(started_at=now_utc())
-                )
-                assert trainee.empty(), "success event escaped before durable checkpoint"
-
-        with pytest.raises(OSError, match="partition"):
-            asyncio.run(failing_transition())
-
-        assert state.lease_fenced
-        assert local_hub.get(state.session_id) is None
-        for queue in (observers, trainee, station):
-            event = queue.get_nowait()
-            assert event.message == LEASE_FENCED_MESSAGE
-            assert queue.empty(), "uncommitted success event leaked during fencing"
-
-
-def test_durable_transition_publishes_event_only_after_checkpoint_commit():
-    class CommitJournal:
-        committed = False
-
-        async def checkpoint(self, _state):
-            await asyncio.sleep(0)
-            self.committed = True
-
-    journal = CommitJournal()
-    local_hub = SessionHub(journal=journal)
-    state = dds_state()
-    local_hub.register(state)
-
-    command_id = uuid4()
-    with local_hub.trainee(state.session_id) as trainee, \
-         local_hub.station(state.session_id) as station:
-        async def transition():
-            async with local_hub.durable_transition(state.session_id):
-                local_hub.to_trainee(
-                    state.session_id, CallStarted(started_at=now_utc())
-                )
-                local_hub.to_station(
-                    state.session_id, CommandAck(command_id=command_id)
-                )
-                assert trainee.empty()
-                assert station.empty()
-            assert journal.committed
-
-        asyncio.run(transition())
-        event = trainee.get_nowait()
-        assert isinstance(event, CallStarted)
-        ack = station.get_nowait()
-        assert isinstance(ack, CommandAck)
-        assert ack.command_id == command_id

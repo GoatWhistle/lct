@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.api.http import sessions as sessions_http
 from app.main import app
 from app.session.hub import hub
+from app.session.store import MemorySessionStore
 
 
 @pytest.fixture
@@ -21,7 +22,7 @@ def client(monkeypatch):
         # Сокеты закрыты ролями (lct-23): тесты входят так же,
         # как `make lesson`, — через dev-token за флагом.
         test_client.post("/api/auth/dev-token")
-        hub.journal = None
+        hub.store = MemorySessionStore()
         yield test_client
 
 

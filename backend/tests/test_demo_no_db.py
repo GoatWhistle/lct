@@ -9,6 +9,7 @@ from app.api.auth import DEMO_TRAINEE_ID
 from app.config import get_settings
 from app.main import app
 from app.session.hub import hub
+from app.session.store import MemorySessionStore
 
 
 def _wait_for(predicate, timeout=3):
@@ -39,7 +40,7 @@ def test_demo_without_db_starts_dds_and_issues_owned_trainee_cookie(monkeypatch)
             health = client.get("/api/health").json()
             assert health["status"] == "ok" and health["demo_no_db"] is True
             assert health["scenarios_loaded"] > 0
-            assert hub.journal is None
+            assert isinstance(hub.store, MemorySessionStore)
 
             assert client.post("/api/auth/login", json={
                 "login": "demo-instructor", "password": "demo"

@@ -15,12 +15,13 @@ from app.api.auth import Principal
 from app.domain.roles import Role
 from app.main import app
 from app.session.hub import hub
+from app.session.store import MemorySessionStore
 
 
 @pytest.fixture
 def client():
     with TestClient(app) as test_client:
-        hub.journal = None
+        hub.store = MemorySessionStore()
         yield test_client
 
 
