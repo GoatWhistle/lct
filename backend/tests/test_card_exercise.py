@@ -13,6 +13,7 @@ from app.api.ws.call import _text_turn
 from app.scenarios import store
 from app.scoring.grammar import basic_check
 from app.session.hub import hub
+from app.session.store import MemorySessionStore
 
 
 @pytest.fixture
@@ -23,7 +24,7 @@ def client(monkeypatch):
     monkeypatch.setattr(sessions_http, "audit_required", audit_in_memory)
     with TestClient(app) as test_client:
         test_client.post("/api/auth/dev-token")
-        hub.journal = None
+        hub.store = MemorySessionStore()
         yield test_client
 
 
@@ -450,41 +451,25 @@ def test_handoff_report_and_checklist_follow_operator_scenario(client, monkeypat
 
         state.self_assessed = True
         state.self_assessment = {"missed": [checklist[0]["id"]], "comment": ""}
-        asyncio.run(refresh_archived_report(session_id, state))
+        async def refresh():
+            async with hub.operation(session_id):
+                await refresh_archived_report(session_id, state)
+
+        asyncio.run(refresh())
         assert state.score["full_report"]["scenario_id"] == "fire-apartment-l2"
         assert state.score["full_report"]["metrics"] == state.score["metrics"]
 
-        session_row = SimpleNamespace(id=session_id, owner_login="teacher")
-        score_row = SimpleNamespace(
-            score_auto=state.score["score_auto"], score_final=state.score["score_auto"],
-            overridden_by=None, override_comment=None,
-            report={"full_report": state.score["full_report"]},
-        )
-
-        class FakeDb:
-            async def scalar(self, statement):
-                return score_row
-
-            def add(self, row):
-                pass
-
-            async def commit(self):
-                pass
-
-        async def fake_session(db, key):
-            return session_row
-
-        monkeypatch.setattr(sessions_http.repo, "get_session", fake_session)
         monkeypatch.setattr(
             sessions_http, "require",
-            lambda request, *roles: Principal(login="teacher", full_name="Преподаватель",
+            lambda request, *roles: Principal(login=state.owner_login, full_name="Преподаватель",
                                               role=Role.INSTRUCTOR),
         )
         corrected = asyncio.run(sessions_http.override(
             session_id,
             sessions_http.ScoreOverride(score_final=50, comment="проверено"),
-            object(), FakeDb(),
+            object(), None,
         ))
         assert corrected.scenario_id == "fire-apartment-l2"
+        assert state.score["full_report"]["score_final"] == 50
     finally:
         control.__exit__(None, None, None)

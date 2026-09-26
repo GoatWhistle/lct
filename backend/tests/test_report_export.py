@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from app.session.pg_store import PostgresSessionStore
+from app.session.store import MemorySessionStore
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
@@ -129,7 +131,7 @@ def client(monkeypatch):
     with TestClient(app) as test_client:
         # These endpoint tests exercise the in-memory live-report path. Durable
         # report readiness is covered by the isolated PostgreSQL integration suite.
-        monkeypatch.setattr(sessions.hub, "journal", None)
+        monkeypatch.setattr(sessions.hub, "store", MemorySessionStore())
         test_client.post("/api/auth/dev-token")
         yield test_client, state, report
 
@@ -243,10 +245,23 @@ def test_archived_score_override_updates_json_exports_and_audit(monkeypatch):
         def add(self, row):
             self.added.append(row)
 
+        async def flush(self):
+            pass
+
+        async def rollback(self):
+            pass
+
         async def commit(self):
             self.commits += 1
 
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
     db = FakeDb()
+    monkeypatch.setattr(sessions.hub, "store", PostgresSessionStore(lambda: db))
     monkeypatch.setattr(sessions.hub, "get", lambda session_id: None)
     monkeypatch.setattr(sessions, "_live", lambda session_id: (_ for _ in ()).throw(
         HTTPException(status_code=404, detail="session_not_found")

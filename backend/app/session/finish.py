@@ -12,7 +12,7 @@ import logging
 import time
 from uuid import UUID
 
-from app.domain.events import ErrorKind, ErrorEvent, Exercise, Metric, ScoreReady
+from app.domain.events import Exercise, Metric, ScoreReady
 from app.domain.statuses import ServiceStatus, current
 from app.domain.taxonomy import Competency, ErrorCode, Finding, FindingSource
 from app.domain.timers import TimerCode
@@ -29,6 +29,7 @@ from app.scoring.timing import time_credit
 from app.scoring.weights import apply_weights
 from app.session.hub import hub
 from app.session.state import DdsCardRecord, DdsLiveCard, now_utc
+from app.session.store import ScoreArchived, ScoreCalculated, ScoreOverridden, apply_score_override
 
 log = logging.getLogger(__name__)
 
@@ -351,13 +352,9 @@ async def finish(session_id: UUID, state) -> None:
     state.score["full_report"] = build_report(session_id, state, scenario).model_dump(mode="json")
     log.info("сессия %s: оценка %.1f, отметок %d", session_id, result.score, len(result.findings))
 
-    if hub.journal and not await hub.journal.score(session_id, result.score, state.score):
-        hub.to_observers(session_id, ErrorEvent(
-            code=ErrorKind.INTERNAL,
-            message="Не удалось сохранить оценку и аудит; итог не выдан. Обратитесь к преподавателю.",
-        ))
-        return
-
+    # Оценка и аудит уходят в commit операции, завершившей занятие; ScoreReady
+    # ждёт того же commit — без записи итог не выдаётся.
+    hub.record(session_id, ScoreCalculated(result.score, state.score))
     hub.to_observers(session_id, ScoreReady(session_id=session_id))
     await release_score(session_id, state)
 
@@ -370,11 +367,21 @@ async def refresh_archived_report(session_id: UUID, state) -> None:
     if scenario is None:
         return
     state.score["full_report"] = build_report(session_id, state, scenario).model_dump(mode="json")
-    if hub.journal:
-        await hub.journal.score_snapshot(session_id, state.score)
+    hub.record(session_id, ScoreArchived(state.score))
 
 
 async def release_score(session_id: UUID, state) -> None:
     """Отдать оценку курсанту, когда самооценка сдана."""
     if state.score is not None and (state.self_assessed or state.exercise is Exercise.CARD):
         hub.to_trainee(session_id, ScoreReady(session_id=session_id))
+
+
+def override_score(state, override: ScoreOverridden) -> None:
+    """Правка балла преподавателем — одна операция для HTTP и WS.
+
+    Вызывается внутри `hub.operation`: строка `Score`, архивный разбор и аудит
+    пишутся тем же commit, что и снимок с исправленной оценкой.
+    """
+    hub.record(state.session_id, override)
+    state.score = apply_score_override(state.score, override)
+    hub.to_observers(state.session_id, ScoreReady(session_id=state.session_id))

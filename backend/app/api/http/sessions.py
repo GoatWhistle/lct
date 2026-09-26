@@ -20,7 +20,7 @@ from app.api.auth import add_audit_entry, audit, audit_required, require
 from app.config import get_settings
 from app.db import repo
 from app.db.base import get_session
-from app.db.models import AuditLog, Group, Score, Session, Trainee
+from app.db.models import Group, Score, Session, Trainee
 from app.domain.events import Exercise, SessionMode, SessionReport
 from app.domain.roles import Role
 from app.domain.statuses import SERVICE_STATUS_LABELS, StationSnapshot, current
@@ -28,8 +28,9 @@ from app.domain.timers import TimerCode
 from app.scoring.export import to_csv, to_pdf
 from app.scoring.report import build as build_report
 from app.session.checkpoint import load_state
-from app.session.finish import scoring_scenario
+from app.session.finish import override_score, scoring_scenario
 from app.session.hub import hub
+from app.session.store import ScoreOverridden, apply_score_override
 from app.voice.recording import recording_path
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -424,14 +425,14 @@ async def _report_data(
             raise HTTPException(status_code=409, detail="self_assessment_required")
         if state.score is None:
             raise HTTPException(status_code=409, detail="score_not_ready")
-        if hub.journal is not None and isinstance(db, AsyncSession):
+        if hub.store.persistent and isinstance(db, AsyncSession):
             persisted_session = await db.scalar(
                 select(Session.id).where(Session.id == session_id)
             )
             if (persisted_session is not None and await db.scalar(
                 select(Score.session_id).where(Score.session_id == session_id)
             ) is None):
-                # Live state is populated just before the journal transaction commits.
+                # Live state is populated just before the store commit finishes.
                 # Do not expose a report that looks ready but cannot yet be corrected
                 # or retrieved after restart.
                 raise HTTPException(status_code=409, detail="score_not_ready")
@@ -547,85 +548,47 @@ async def override(
     session_id: UUID,
     body: ScoreOverride,
     request: Request,
-    db: AsyncSession = Depends(get_session),
+    db: AsyncSession | None = Depends(optional_session),
 ) -> SessionReport:
     """Тренажёр готовит материал, преподаватель имеет последнее слово.
 
     Администратору сюда нельзя: ТЗ запрещает ему вмешиваться в оценки прямо.
+    Правка идёт тем же путём, что команда `score.override` с пульта.
     """
     who = require(request, Role.INSTRUCTOR)
-    session = await repo.get_session(db, session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="session_not_found")
-    if session.owner_login != who.login:
-        raise HTTPException(status_code=404, detail="session_not_found")
+    correction = ScoreOverridden(
+        score_final=body.score_final, author=who.login, role=who.role.value,
+        comment=body.comment,
+    )
     state = hub.get(session_id)
-    live_ready = state is not None and state.score is not None
-    scenario = scoring_scenario(state) if live_ready else None
-    if live_ready and scenario is None:
-        raise HTTPException(status_code=409, detail="scenario_not_found")
+    if state is not None:
+        if state.owner_login != who.login:
+            raise HTTPException(status_code=404, detail="session_not_found")
+        if state.score is None:
+            raise HTTPException(status_code=409, detail="score_not_ready")
+        scenario = scoring_scenario(state)
+        if scenario is None:
+            raise HTTPException(status_code=409, detail="scenario_not_found")
+        async with hub.operation(session_id):
+            override_score(state, correction)
+        return build_report(session_id, state, scenario)
+
+    # Занятия нет в памяти узла: правка из истории, по архивному разбору.
+    if db is None:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    session = await repo.get_session(db, session_id)
+    if session is None or session.owner_login != who.login:
+        raise HTTPException(status_code=404, detail="session_not_found")
     score = await db.scalar(select(Score).where(Score.session_id == session_id))
     if score is None:
         raise HTTPException(status_code=409, detail="score_not_ready")
     archived = (score.report or {}).get("full_report")
-    if not live_ready and archived is None:
+    if archived is None:
         raise HTTPException(status_code=409, detail="report_not_archived")
-
-    # Persist score and audit entry in the same request transaction: the API
-    # must not report success if either durable record failed to commit.
-    score.score_final = body.score_final
-    score.overridden_by = who.login
-    score.override_comment = body.comment
-    report_payload = dict(score.report or {})
-    if archived is not None:
-        archived_payload = dict(archived)
-        archived_payload.update({
-            "score_auto": score.score_auto,
-            "score_final": body.score_final,
-            "overridden_by": who.login,
-            "override_comment": body.comment,
-        })
-        report_payload["full_report"] = archived_payload
-        score.report = report_payload
-    db.add(AuditLog(
-        actor=who.login,
-        role=who.role.value,
-        action="score.override",
-        object_id=str(session_id),
-        # The actual reason remains attached to the instructor-facing score
-        # report. The durable security audit needs the change and actor, not
-        # a second indefinite copy of free-text that may contain personal data.
-        detail=(f"{score.score_auto} → {body.score_final}; "
-                f"comment_chars={len(body.comment)}"),
-    ))
-    await db.commit()
-
-    if live_ready:
-        assert state is not None and state.score is not None and scenario is not None
-        state.score = {
-            **state.score,
-            "score_final": body.score_final,
-            "overridden_by": who.login,
-            "override_comment": body.comment,
-        }
-        state.score["full_report"] = {
-            **state.score.get("full_report", {}),
-            "score_auto": score.score_auto,
-            "score_final": body.score_final,
-            "overridden_by": who.login,
-            "override_comment": body.comment,
-        }
-        result = build_report(session_id, state, scenario)
-    else:
-        # Historical/archived sessions no longer have a live object in the hub.
-        # Keep score correction available from the instructor's report history.
-        result = SessionReport.model_validate(archived).model_copy(update={
-            "score_auto": score.score_auto,
-            "score_final": body.score_final,
-            "overridden_by": who.login,
-            "override_comment": body.comment,
-        })
-    return result
+    report = apply_score_override(dict(score.report), correction)
+    await db.rollback()  # чтение закончено; запись — одной транзакцией хранилища
+    await hub.store.commit_archived(session_id, [correction])
+    return SessionReport.model_validate(report["full_report"])
 
 
 @router.get("", response_model=list[SessionOut])

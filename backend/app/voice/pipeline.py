@@ -11,7 +11,7 @@ import asyncio
 import hashlib
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -68,7 +68,8 @@ class VoiceSession:
     send_event: Callable[[object], None]
     send_observer: Callable[[object], None]
     send_audio: Callable[[bytes], None]
-    journal: object | None = None
+    #: Сохранить реплику одной операцией хранилища; без него реплика живёт в памяти.
+    persist: Callable[[object], Awaitable[None]] | None = None
 
     timings: list[TurnTiming] = field(default_factory=list)
     _vad: StreamingVad = field(init=False)
@@ -149,8 +150,8 @@ class VoiceSession:
         entry = self.state.append(Speaker.OPERATOR, text)
         self.send_event(SttFinal(text=text, at=entry.at))
         self.send_observer(TranscriptAppend(entry=entry))
-        if self.journal:
-            await self.journal.utterance(self.session_id, entry)
+        if self.persist is not None:
+            await self.persist(entry)
 
         started = time.monotonic()
         line = await self._caller_line(text)
@@ -174,8 +175,8 @@ class VoiceSession:
         entry = self.state.append(Speaker.CALLER, text, mood)
         self.send_event(CallerUtterance(utterance_id=utterance_id, text=text, at=entry.at, mood=mood))
         self.send_observer(TranscriptAppend(entry=entry))
-        if self.journal:
-            await self.journal.utterance(self.session_id, entry)
+        if self.persist is not None:
+            await self.persist(entry)
 
         self.send_event(TtsBegin(utterance_id=utterance_id))
         playback_ends = time.monotonic()

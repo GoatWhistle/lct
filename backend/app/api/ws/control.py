@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from app.api.auth import audit, principal_of, websocket_origin_allowed
+from app.api.auth import principal_of, websocket_origin_allowed
 from app.config import get_settings
 from app.db.base import get_sessionmaker
 from app.db.repo import SessionNodeConflict
@@ -49,7 +49,9 @@ from app.domain.timers import TimerCode
 from app.scenarios import store
 from app.session.dds import prepare_queue
 from app.session.hub import LEASE_FENCED_MESSAGE, hub
+from app.session.finish import finish, override_score
 from app.session.state import SessionState, now_utc
+from app.session.store import LessonEnded, LessonIdentity, LessonRequest, NoteAdded, ScoreOverridden
 from app.voice.models import get_voice_models
 from app.voice.pipeline import FILLERS, prefetch
 
@@ -79,6 +81,70 @@ def card_briefing(state: SessionState) -> CardBriefing:
     )
 
 
+def _build_state(session_id: UUID, event, who, scenario, scenarios,
+                 identity: LessonIdentity) -> SessionState:
+    """Занятие собирается целиком и только потом регистрируется: иначе
+    наблюдатель, подключившийся в эту щель, увидит полусобранное состояние
+    без слот-автомата и звонящего. Снимок пишется в той же транзакции, что
+    и строка занятия."""
+    state = SessionState(
+        session_id=session_id,
+        scenario_id=scenario.id,
+        scenario_title=scenario.title,
+        level=scenario.level.value,
+        mode=event.mode,
+        owner_login=who.login if who is not None else None,
+        backend_fencing_epoch=identity.fencing_epoch,
+        exercise=event.exercise,
+        handoff_to_dds=event.handoff_to_dds,
+        scenario=scenario.model_copy(deep=True),
+        required_fields=scenario.required_fields,
+        trainee_name=event.trainee,
+        trainee_id=identity.trainee_id,
+        dds_service=identity.service or event.dds_service,
+        attempt=identity.attempt,
+        criteria=event.criteria,
+    )
+    state.timers.limits[TimerCode.DDS_ACK] = event.criteria.decision_time_limit_seconds * 1000
+    state.timers.limits[TimerCode.CARD_FILL] = event.criteria.card_fill_time_limit_seconds * 1000
+    state.timers.limits[TimerCode.DDS_WORK] = event.criteria.dds_card_work_time_limit_seconds * 1000
+    if event.exercise is Exercise.CALL:
+        embedder = get_embedder()
+        if embedder is not None:
+            state.slots = SlotMachine(state.scenario, embedder)
+        state.persona = PersonaState(state.scenario.persona)
+        state.caller = build_caller(
+            scenario.id,
+            use_pregenerated=scenario.tree.pregenerated,
+        )
+    elif event.exercise is Exercise.DDS:
+        prepare_queue(
+            state,
+            [item.model_copy(deep=True) for item in scenarios],
+            arrival_interval_seconds=event.dds_arrival_interval_seconds,
+            max_waiting=event.dds_max_waiting,
+        )
+        state.started_at = state.desk.active.dispatched_at if state.desk.active else None
+    else:
+        state.started_at = now_utc()
+        if event.exercise is Exercise.CARD:
+            embedder = get_embedder()
+            if embedder is not None:
+                state.slots = SlotMachine(state.scenario, embedder)
+            state.persona = PersonaState(state.scenario.persona)
+            state.caller = build_caller(
+                scenario.id, use_pregenerated=scenario.tree.pregenerated,
+            )
+            state.on_event("card.start")
+        if event.handoff_to_dds:
+            state.pending_dds_scenarios = [item.model_copy(deep=True) for item in scenarios[1:]]
+            state.desk.arrival_interval_seconds = event.dds_arrival_interval_seconds
+            state.desk.max_waiting = event.dds_max_waiting
+    if event.exercise is Exercise.CALL:
+        state.on_event("call.incoming")
+    return state
+
+
 async def _start(session_id: UUID, event, who=None) -> None:
     if event.handoff_to_dds and event.exercise is not Exercise.CARD:
         hub.to_observers(session_id, ErrorEvent(
@@ -89,7 +155,7 @@ async def _start(session_id: UUID, event, who=None) -> None:
     scenario_ids = list(dict.fromkeys([
         event.scenario_id, *(event.scenario_ids or []), *(event.random_scenario_ids or []),
     ]))
-    if get_settings().demo_no_db or hub.journal is None:
+    if get_settings().demo_no_db or not hub.store.persistent:
         catalog = {
             scenario_id: scenario for scenario_id in scenario_ids
             if (scenario := store.get(scenario_id)) is not None
@@ -207,96 +273,33 @@ async def _start(session_id: UUID, event, who=None) -> None:
     else:
         scenarios = []
 
-    attempt = 1
-    recorded_trainee_id = event.trainee_id
-    recorded_service = None
-    fencing_epoch = 0
-    if hub.journal:
-        try:
-            persisted = await hub.journal.start_lesson(
-                session_id, scenario.id, event.mode.value, event.trainee, event.trainee_id,
-                owner_login=who.login if who is not None else None,
-                backend_node_id=get_settings().backend_node_id,
-            )
-            if persisted is None:
-                hub.to_observers(session_id, ErrorEvent(
-                    code=ErrorKind.INTERNAL,
-                    message="Не удалось записать занятие и аудит; запуск отменён.",
-                ))
-                return
-            attempt, recorded_trainee_id, recorded_service, fencing_epoch = persisted
-        except SessionNodeConflict:
-            hub.to_observers(session_id, ErrorEvent(
-                code=ErrorKind.FORBIDDEN,
-                message="Сессия закреплена за другим backend-узлом; проверьте маршрутизацию proxy",
-            ))
-            return
-        except PermissionError:
-            hub.to_observers(session_id, ErrorEvent(
-                code=ErrorKind.FORBIDDEN,
-                message="Занятие создано другим преподавателем",
-            ))
-            return
-
-    # Занятие собирается целиком и только потом регистрируется: иначе
-    # наблюдатель, подключившийся в эту щель, увидит полусобранное состояние
-    # без слот-автомата и звонящего.
-    state = SessionState(
-        session_id=session_id,
-        scenario_id=scenario.id,
-        scenario_title=scenario.title,
-        level=scenario.level.value,
-        mode=event.mode,
-        owner_login=who.login if who is not None else None,
-        backend_fencing_epoch=fencing_epoch,
-        exercise=event.exercise,
-        handoff_to_dds=event.handoff_to_dds,
-        scenario=scenario.model_copy(deep=True),
-        required_fields=scenario.required_fields,
-        trainee_name=event.trainee,
-        trainee_id=recorded_trainee_id,
-        dds_service=recorded_service or event.dds_service,
-        attempt=attempt,
-        criteria=event.criteria,
-    )
-    state.timers.limits[TimerCode.DDS_ACK] = event.criteria.decision_time_limit_seconds * 1000
-    state.timers.limits[TimerCode.CARD_FILL] = event.criteria.card_fill_time_limit_seconds * 1000
-    state.timers.limits[TimerCode.DDS_WORK] = event.criteria.dds_card_work_time_limit_seconds * 1000
-    if event.exercise is Exercise.CALL:
-        embedder = get_embedder()
-        if embedder is not None:
-            state.slots = SlotMachine(state.scenario, embedder)
-        state.persona = PersonaState(state.scenario.persona)
-        state.caller = build_caller(
-            scenario.id,
-            use_pregenerated=scenario.tree.pregenerated,
-        )
-    elif event.exercise is Exercise.DDS:
-        prepare_queue(
-            state,
-            [item.model_copy(deep=True) for item in scenarios],
-            arrival_interval_seconds=event.dds_arrival_interval_seconds,
-            max_waiting=event.dds_max_waiting,
-        )
-        state.started_at = state.desk.active.dispatched_at if state.desk.active else None
-    else:
-        state.started_at = now_utc()
-        if event.exercise is Exercise.CARD:
-            embedder = get_embedder()
-            if embedder is not None:
-                state.slots = SlotMachine(state.scenario, embedder)
-            state.persona = PersonaState(state.scenario.persona)
-            state.caller = build_caller(
-                scenario.id, use_pregenerated=scenario.tree.pregenerated,
-            )
-            state.on_event("card.start")
-        if event.handoff_to_dds:
-            state.pending_dds_scenarios = [item.model_copy(deep=True) for item in scenarios[1:]]
-            state.desk.arrival_interval_seconds = event.dds_arrival_interval_seconds
-            state.desk.max_waiting = event.dds_max_waiting
+    try:
+        state = await hub.store.open(LessonRequest(
+            session_id=session_id, scenario_id=scenario.id, mode=event.mode.value,
+            trainee_name=event.trainee, trainee_id=event.trainee_id,
+            owner_login=who.login if who is not None else None,
+            backend_node_id=get_settings().backend_node_id,
+        ), lambda identity: _build_state(session_id, event, who, scenario, scenarios, identity))
+    except SessionNodeConflict:
+        hub.to_observers(session_id, ErrorEvent(
+            code=ErrorKind.FORBIDDEN,
+            message="Сессия закреплена за другим backend-узлом; проверьте маршрутизацию proxy",
+        ))
+        return
+    except PermissionError:
+        hub.to_observers(session_id, ErrorEvent(
+            code=ErrorKind.FORBIDDEN,
+            message="Занятие создано другим преподавателем",
+        ))
+        return
+    except Exception as exc:  # noqa: BLE001 — без долговечной истории занятие не стартует
+        log.error("занятие %s не записано (%s)", session_id, type(exc).__name__)
+        hub.to_observers(session_id, ErrorEvent(
+            code=ErrorKind.INTERNAL,
+            message="Не удалось записать занятие и аудит; запуск отменён.",
+        ))
+        return
     hub.register(state)
-    if event.exercise is not Exercise.CALL and hub.journal and state.started_at is not None:
-        await hub.journal.session_started(session_id, state.started_at)
 
     # Первая реплика и филлеры синтезируются, пока курсант не снял трубку:
     # «Алло! Помогите!» должно прозвучать мгновенно (docs/arch/BACKEND.md).
@@ -304,8 +307,6 @@ async def _start(session_id: UUID, event, who=None) -> None:
         models = get_voice_models()
         if models is not None:
             asyncio.create_task(prefetch(models, [scenario.first_line, *FILLERS.values()]))
-        state.on_event("call.incoming")
-    await hub.checkpoint(session_id)
     hub.start_ticker(session_id)
     if event.exercise is Exercise.CALL:
         hub.to_trainee(
@@ -340,7 +341,6 @@ async def _stop(session_id: UUID) -> None:
         await state.voice.close()
     hub.stop_ticker(session_id)
     hub.to_observers(session_id, SessionEnded(reason=CallEndReason.INSTRUCTOR))
-    from app.session.finish import finish
 
     if state.exercise in {Exercise.DDS, Exercise.CARD}:
         if state.exercise is Exercise.DDS or state.handoff_to_dds and state.dispatched_card is not None:
@@ -351,9 +351,97 @@ async def _stop(session_id: UUID) -> None:
             hub.to_station(session_id, ScoreReady(session_id=session_id))
     else:
         hub.to_trainee(session_id, CallEnded(reason=CallEndReason.INSTRUCTOR))
+    hub.record(session_id, LessonEnded(state.ended_at, CallEndReason.INSTRUCTOR.value))
     await finish(session_id, state)
-    if hub.journal:
-        await hub.journal.session_ended(session_id, state.ended_at, CallEndReason.INSTRUCTOR.value)
+
+
+async def _command(session_id: UUID, event, who) -> None:
+    """Команда пульта. Всё, кроме запуска, идёт внутри `hub.operation`."""
+    state = hub.get(session_id)
+    match event.type:
+        case "scenario.start":
+            await _start(session_id, event, who)
+        case "session.stop":
+            await _stop(session_id)
+        case "instructor_note.add":
+            if state is not None:
+                state.notes.append({
+                    "type": "instructor_note.shown",
+                    "transcript_ref": event.transcript_ref,
+                    "text": event.text,
+                    "author": "преподаватель",
+                })
+                hub.record(session_id, NoteAdded(event.transcript_ref, event.text, "преподаватель"))
+            hub.to_observers(
+                session_id,
+                InstructorNoteShown(
+                    transcript_ref=event.transcript_ref,
+                    text=event.text,
+                    author="преподаватель",
+                ),
+            )
+        case "reference.play":
+            if state is not None:
+                hub.to_observers(session_id, ReferenceStarted(scenario_id=state.scenario_id))
+        case "score.override":
+            if event.session_id != session_id:
+                hub.to_observers(session_id, ErrorEvent(
+                    code=ErrorKind.FORBIDDEN,
+                    message="Оценка относится к другому занятию",
+                ))
+                return
+            if state is None or state.score is None:
+                return
+            try:
+                verdict = float(event.verdict)
+            except ValueError:
+                verdict = float("nan")
+            if not math.isfinite(verdict) or not 0 <= verdict <= 100:
+                hub.to_observers(session_id, ErrorEvent(
+                    code=ErrorKind.UNSUPPORTED_EVENT,
+                    message="Оценка должна быть числом от 0 до 100",
+                ))
+                return
+            override_score(state, ScoreOverridden(
+                score_final=verdict, author=who.login, role=who.role.value,
+                comment=event.comment,
+            ))
+        case "director.inject":
+            if state is None:
+                return
+            if state.exercise is not Exercise.CALL:
+                hub.to_observers(session_id, ErrorEvent(
+                    code=ErrorKind.UNSUPPORTED_EVENT,
+                    message="Директивы звонящему доступны только в голосовом упражнении",
+                ))
+                return
+            result = apply_directive(state, event.directive)
+            if result.needs_network:
+                hub.to_observers(session_id, ErrorEvent(
+                    code=ErrorKind.DIRECTIVE_NEEDS_NETWORK,
+                    message="Свободный текст требует локально запущенной модели; без неё доступны кнопки",
+                ))
+                return
+            state.directives.append(event.directive)
+            voice = state.voice
+            if result.drop_line and voice is not None:
+                # Обрыв рвёт звук на полуслове тем же механизмом, что
+                # перебивание, и запускает норматив обратного дозвона.
+                voice.barge_in()
+            if result.drop_line:
+                state.on_event("call.dropped")
+                hub.to_trainee(session_id, CallEnded(reason=CallEndReason.DROPPED))
+                hub.to_observers(session_id, SessionEnded(reason=CallEndReason.DROPPED))
+            elif result.say and voice is not None:
+                voice.speak(result.say, mood_of(state))
+        case _:
+            hub.to_observers(
+                session_id,
+                ErrorEvent(
+                    code=ErrorKind.UNSUPPORTED_EVENT,
+                    message=f"{event.type} ещё не реализовано",
+                ),
+            )
 
 
 async def _reject(ws: WebSocket, message: str) -> None:
@@ -379,10 +467,9 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
     if who is None or who.role not in (Role.INSTRUCTOR,):
         await _reject(ws, "Недостаточно прав для этого экрана")
         return
-    event_stream = hub.begin_event_stream(session_id)
     # Чтение живёт дольше тика опроса: wait_for отменял бы его, а отмена после
     # того, как receive уже забрал кадр, теряет команду или websocket.disconnect.
-    # Команда обрабатывается здесь, в задаче, открывшей event stream.
+    # Команда обрабатывается здесь, одной операцией хранилища.
     read: asyncio.Future | None = None
     try:
         while True:
@@ -422,119 +509,13 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                 ))
                 continue
 
-            match event.type:
-                case "scenario.start":
-                    await _start(session_id, event, who)
-                case "session.stop":
-                    await _stop(session_id)
-                case "instructor_note.add":
-                    state = hub.get(session_id)
-                    if state is not None:
-                        state.notes.append({
-                            "type": "instructor_note.shown",
-                            "transcript_ref": event.transcript_ref,
-                            "text": event.text,
-                            "author": "преподаватель",
-                        })
-                    hub.to_observers(
-                        session_id,
-                        InstructorNoteShown(
-                            transcript_ref=event.transcript_ref,
-                            text=event.text,
-                            author="преподаватель",
-                        ),
-                    )
-                    if hub.journal:
-                        await hub.journal.note(
-                            session_id, event.transcript_ref, event.text, "преподаватель"
-                        )
-                case "reference.play":
-                    state = hub.get(session_id)
-                    if state is not None:
-                        hub.to_observers(session_id, ReferenceStarted(scenario_id=state.scenario_id))
-                case "score.override":
-                    if event.session_id != session_id:
-                        hub.to_observers(session_id, ErrorEvent(
-                            code=ErrorKind.FORBIDDEN,
-                            message="Оценка относится к другому занятию",
-                        ))
-                        continue
-                    state = hub.get(session_id)
-                    if state is not None and state.score is not None:
-                        try:
-                            verdict = float(event.verdict)
-                        except ValueError:
-                            verdict = float("nan")
-                        if not math.isfinite(verdict) or not 0 <= verdict <= 100:
-                            hub.to_observers(session_id, ErrorEvent(
-                                code=ErrorKind.UNSUPPORTED_EVENT,
-                                message="Оценка должна быть числом от 0 до 100",
-                            ))
-                            continue
-                        if hub.journal is not None:
-                            saved = await hub.journal.score_override(
-                                session_id, verdict, who.login, event.comment
-                            )
-                            if not saved:
-                                hub.to_observers(session_id, ErrorEvent(
-                                    code=ErrorKind.INTERNAL,
-                                    message="Не удалось сохранить оценку и запись аудита; изменение отменено",
-                                ))
-                                continue
-                        else:
-                            # Explicit in-memory demo mode has no Score table.
-                            await audit(
-                                who.login, who.role.value, "score.override", str(session_id),
-                                f"{state.score.get('score_auto')} → {verdict}; "
-                                f"comment_chars={len(event.comment)}",
-                            )
-                        # Автооценка остаётся рядом: видно, что скорректировано и кем.
-                        state.score = {
-                            **state.score,
-                            "score_final": verdict,
-                            "overridden_by": who.login,
-                            "override_comment": event.comment,
-                        }
-                        hub.to_observers(session_id, ScoreReady(session_id=session_id))
-                case "director.inject":
-                    state = hub.get(session_id)
-                    if state is None:
-                        continue
-                    if state.exercise is not Exercise.CALL:
-                        hub.to_observers(session_id, ErrorEvent(
-                            code=ErrorKind.UNSUPPORTED_EVENT,
-                            message="Директивы звонящему доступны только в голосовом упражнении",
-                        ))
-                        continue
-                    result = apply_directive(state, event.directive)
-                    if result.needs_network:
-                        hub.to_observers(session_id, ErrorEvent(
-                            code=ErrorKind.DIRECTIVE_NEEDS_NETWORK,
-                            message="Свободный текст требует локально запущенной модели; без неё доступны кнопки",
-                        ))
-                        continue
-                    state.directives.append(event.directive)
-                    voice = state.voice
-                    if result.drop_line and voice is not None:
-                        # Обрыв рвёт звук на полуслове тем же механизмом, что
-                        # перебивание, и запускает норматив обратного дозвона.
-                        voice.barge_in()
-                    if result.drop_line:
-                        state.on_event("call.dropped")
-                        hub.to_trainee(session_id, CallEnded(reason=CallEndReason.DROPPED))
-                        hub.to_observers(session_id, SessionEnded(reason=CallEndReason.DROPPED))
-                    elif result.say and voice is not None:
-                        voice.speak(result.say, mood_of(state))
-                case _:
-                    hub.to_observers(
-                        session_id,
-                        ErrorEvent(
-                            code=ErrorKind.UNSUPPORTED_EVENT,
-                            message=f"{event.type} ещё не реализовано",
-                        ),
-                    )
+            if event.type == "scenario.start":
+                # Запуск пишется своей транзакцией в `store.open`: до неё занятия нет.
+                await _command(session_id, event, who)
+                continue
             try:
-                await hub.checkpoint(session_id)
+                async with hub.operation(session_id):
+                    await _command(session_id, event, who)
             except Exception:
                 if hub.is_lease_fenced(session_id):
                     await ws.send_text(ErrorEvent(
@@ -551,4 +532,3 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
     finally:
         if read is not None:
             read.cancel()
-        await hub.end_event_stream(event_stream)

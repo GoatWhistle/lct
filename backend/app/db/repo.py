@@ -40,6 +40,7 @@ async def create_session(
     owner_login: str | None = None,
     backend_node_id: str | None = None,
     before_commit: BeforeSessionCommit | None = None,
+    commit: bool = True,
 ) -> Session:
     session = Session(
         scenario_id=scenario_id,
@@ -56,7 +57,10 @@ async def create_session(
     if before_commit is not None:
         await db.flush()
         before_commit(db, session)
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     return session
 
 
@@ -72,6 +76,7 @@ async def ensure_session(
     owner_login: str | None = None,
     backend_node_id: str | None = None,
     before_commit: BeforeSessionCommit | None = None,
+    commit: bool = True,
 ) -> Session:
     """Занятие, запущенное с пульта, должно иметь строку в журнале.
 
@@ -98,8 +103,7 @@ async def ensure_session(
             changed = True
         if before_commit is not None:
             before_commit(db, existing)
-            await db.commit()
-        elif changed:
+        if commit and (before_commit is not None or changed):
             await db.commit()
         return existing
 
@@ -123,6 +127,7 @@ async def ensure_session(
         owner_login=owner_login,
         backend_node_id=backend_node_id,
         before_commit=before_commit,
+        commit=commit,
     )
 
 

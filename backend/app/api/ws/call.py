@@ -47,6 +47,13 @@ from app.session.dds import prepare_handoff_queue
 from app.session.finish import finish, refresh_archived_report, release_score
 from app.session.hub import LEASE_FENCED_MESSAGE, hub
 from app.session.state import now_utc
+from app.session.store import (
+    HintRecorded,
+    LessonEnded,
+    LessonStarted,
+    SelfAssessed,
+    UtteranceAppended,
+)
 from app.voice.models import TTS_RATE, get_voice_models
 from app.voice.pipeline import VoiceSession
 from app.voice.recording import start_recording
@@ -213,8 +220,7 @@ async def _handle(session_id: UUID, state, event) -> None:
             accepted = TextTurnAccepted(text=event.text, at=operator_entry.at)
             hub.to_trainee(session_id, accepted)
             hub.to_observers(session_id, TranscriptAppend(entry=operator_entry))
-            if hub.journal:
-                await hub.journal.utterance(session_id, operator_entry)
+            hub.record(session_id, UtteranceAppended(operator_entry))
             try:
                 slots = state.slots if state.slots is not None else _TextSlotView(state)
                 line = await state.caller.reply(turn, state.persona, slots)
@@ -232,8 +238,7 @@ async def _handle(session_id: UUID, state, event) -> None:
                 at=caller_entry.at, mood=line.mood, source=line.source,
             ))
             hub.to_observers(session_id, TranscriptAppend(entry=caller_entry))
-            if hub.journal:
-                await hub.journal.utterance(session_id, caller_entry)
+            hub.record(session_id, UtteranceAppended(caller_entry))
         case "card.submit":
             state.on_event("card.submit")
             state.kio.registered_at = state.started_at or now_utc()
@@ -260,18 +265,14 @@ async def _handle(session_id: UUID, state, event) -> None:
                 hub.to_observers(session_id, state.snapshot())
             else:
                 hub.to_observers(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
-                if hub.journal:
-                    await hub.journal.session_ended(
-                        session_id, state.ended_at, CallEndReason.COMPLETE.value
-                    )
+                hub.record(session_id, LessonEnded(state.ended_at, CallEndReason.COMPLETE.value))
                 await finish(session_id, state)
         case "call.answer":
             first_answer = state.started_at is None
             if first_answer:
                 state.on_event("call.answer")
                 state.started_at = now_utc()
-                if hub.journal:
-                    await hub.journal.session_started(session_id, state.started_at)
+                hub.record(session_id, LessonStarted(state.started_at))
             hub.to_trainee(session_id, CallStarted(started_at=state.started_at))
             hub.to_observers(session_id, state.snapshot())
             if state.recorder is None:
@@ -313,8 +314,7 @@ async def _handle(session_id: UUID, state, event) -> None:
             state.hints_log.append((checklist_id, now_utc()))
             shown = HintShown(checklist_id=checklist_id, question=question)
             hub.broadcast(session_id, shown)
-            if hub.journal:
-                await hub.journal.hint(session_id, checklist_id, question, now_utc())
+            hub.record(session_id, HintRecorded(checklist_id, question, now_utc()))
 
         case "dds.dispatch":
             if event.service is None and not (state.kio.incident_code or state.kio.notify):
@@ -354,14 +354,7 @@ async def _handle(session_id: UUID, state, event) -> None:
             state.on_event("callback.dial")
 
         case "self_assessment.submit":
-            if hub.journal and not await hub.journal.self_assessment(
-                session_id, event.missed, event.comment, now_utc()
-            ):
-                hub.to_trainee(session_id, ErrorEvent(
-                    code=ErrorKind.INTERNAL,
-                    message="Не удалось сохранить самооценку и аудит; итог пока не выдан.",
-                ))
-                return
+            hub.record(session_id, SelfAssessed(list(event.missed), event.comment, now_utc()))
             state.self_assessed = True
             state.self_assessment = {"missed": event.missed, "comment": event.comment}
             await refresh_archived_report(session_id, state)
@@ -376,13 +369,8 @@ async def _handle(session_id: UUID, state, event) -> None:
             hub.stop_ticker(session_id)
             hub.to_trainee(session_id, CallEnded(reason=CallEndReason.HANGUP))
             hub.to_observers(session_id, SessionEnded(reason=CallEndReason.HANGUP))
-            if hub.journal:
-                await hub.journal.session_ended(
-                    session_id, state.ended_at, CallEndReason.HANGUP.value
-                )
+            hub.record(session_id, LessonEnded(state.ended_at, CallEndReason.HANGUP.value))
             await finish(session_id, state)
-
-    await hub.checkpoint(session_id)
 
 
 def _start_voice(session_id: UUID, state, *, initial_statement: bool = True) -> None:
@@ -403,7 +391,7 @@ def _start_voice(session_id: UUID, state, *, initial_statement: bool = True) -> 
         send_event=lambda event: hub.to_trainee(session_id, event),
         send_observer=lambda event: hub.to_observers(session_id, event),
         send_audio=send_audio,
-        journal=hub.journal,
+        persist=lambda entry: hub.commit(session_id, UtteranceAppended(entry)),
     )
     if scenario.background:
         event = BgStart(loop=scenario.background.loop, gain_db=scenario.background.gain_db)
@@ -540,7 +528,7 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
                         ErrorEvent(code=ErrorKind.UNSUPPORTED_EVENT, message=str(payload)[:200]),
                     )
                     continue
-                async with hub.durable_transition(session_id):
+                async with hub.operation(session_id):
                     await _handle(session_id, state, event)
         except WebSocketDisconnect:
             return

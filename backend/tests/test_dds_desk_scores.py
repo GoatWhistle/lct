@@ -24,12 +24,19 @@ from app.scenarios.loader import load_file
 from app.session import finish as finish_module
 from app.session.dds import prepare_handoff_queue, prepare_queue
 from app.session.hub import hub
+from app.session.store import MemorySessionStore
 from app.session.state import SessionState
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
 GOLDEN = Path(__file__).parent / "golden" / "dds_desk_scores.json"
 COMMENT = "Основание: доклад старшего.\nСведения: карточка принята, адресат — дежурный."
 _events = TypeAdapter(StationToServer)
+
+
+async def finish_in_operation(state):
+    """finish() пишет оценку в commit операции, завершившей занятие."""
+    async with hub.operation(state.session_id):
+        await finish_module.finish(state.session_id, state)
 
 
 @pytest.fixture(autouse=True)
@@ -42,7 +49,7 @@ def offline_finish(monkeypatch):
         return NoCoaching()
 
     monkeypatch.setattr(finish_module, "coach", no_coach)
-    monkeypatch.setattr(hub, "journal", None)
+    monkeypatch.setattr(hub, "store", MemorySessionStore())
 
 
 def scenario(name: str):
@@ -51,7 +58,13 @@ def scenario(name: str):
 
 def station(state: SessionState, **payload) -> None:
     hub.register(state)
-    asyncio.run(station_ws._handle(state.session_id, state, _events.validate_python(payload)))
+    event = _events.validate_python(payload)
+
+    async def command():
+        async with hub.operation(state.session_id):
+            await station_ws._handle(state.session_id, state, event)
+
+    asyncio.run(command())
 
 
 def active_id(state: SessionState):
@@ -167,7 +180,7 @@ def call_with_live_dispatcher() -> SessionState:
     state.dispatch()
     work_card(state)
     state.ended_at = state.dispatched_at
-    asyncio.run(finish_module.finish(state.session_id, state))
+    asyncio.run(finish_in_operation(state))
     return state
 
 

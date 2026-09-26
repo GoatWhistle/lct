@@ -15,12 +15,13 @@ from app.api.http import sessions
 from app.api.ws import call as call_ws
 from app.api.ws import observe as observe_ws
 from app.api.ws import station as station_ws
-from app.domain.events import Exercise, SessionMode
+from app.domain.events import Exercise, SessionMode, Speaker
 from app.domain.roles import Role
 from app.session.checkpoint import dump_state
 from app.session.hub import SessionHub
 from app.session.state import SessionState
-from app.session.journal import DbJournal
+from app.session.pg_store import PostgresSessionStore
+from app.session.store import LessonRequest, UtteranceAppended
 
 
 def request() -> Request:
@@ -28,7 +29,7 @@ def request() -> Request:
 
 
 @pytest.mark.asyncio
-async def test_journal_write_failure_does_not_log_user_text(caplog):
+async def test_store_commit_failure_does_not_log_user_text(caplog):
     private_text = "private caller address and medical detail"
 
     class FakeDb:
@@ -38,11 +39,16 @@ async def test_journal_write_failure_does_not_log_user_text(caplog):
         async def __aexit__(self, *_args):
             return None
 
-    async def fail_write(_db, text):
-        raise RuntimeError(text)
+        def add(self, _row):
+            raise RuntimeError(private_text)
 
-    journal = DbJournal(lambda: FakeDb())
-    await journal._write(fail_write, private_text)
+    state = SessionState(
+        session_id=uuid4(), scenario_id="case", scenario_title="Сессия", level="L1",
+        mode=SessionMode.TRAINING,
+    )
+    entry = state.append(Speaker.CALLER, private_text)
+    with pytest.raises(RuntimeError):
+        await PostgresSessionStore(lambda: FakeDb()).commit(state, [UtteranceAppended(entry)])
     assert private_text not in caplog.text
     assert "RuntimeError" in caplog.text
 
@@ -480,10 +486,13 @@ async def test_unassigned_existing_session_is_claimed_once():
 
 
 @pytest.mark.asyncio
-async def test_journal_assigns_new_lesson_to_its_backend_node(monkeypatch):
+async def test_store_opens_new_lesson_on_its_backend_node(monkeypatch):
     seen = {}
     trainee_id = uuid4()
-    row = SimpleNamespace(attempt=3, trainee_id=trainee_id)
+    row = SimpleNamespace(
+        id=uuid4(), attempt=3, trainee_id=trainee_id, backend_fencing_epoch=0,
+        backend_lease_until=None, started_at=None, live_state=None, checkpoint_at=None,
+    )
 
     async def ensure(_db, **kwargs):
         seen.update(kwargs)
@@ -501,18 +510,38 @@ async def test_journal_assigns_new_lesson_to_its_backend_node(monkeypatch):
         async def scalar(self, _query):
             return "01"
 
-    journal = DbJournal(lambda: FakeDb(), node_id="node-a")
-    result = await journal.start_lesson(
-        uuid4(), "case", "training", "Курсант", trainee_id,
-        owner_login="teacher-a",
+        def add(self, item):
+            added.append(item)
+
+        async def commit(self):
+            committed.append(True)
+
+    added, committed, identities = [], [], []
+
+    def build(identity):
+        identities.append(identity)
+        return SessionState(
+            session_id=row.id, scenario_id="case", scenario_title="Сессия", level="L1",
+            mode=SessionMode.TRAINING,
+        )
+
+    store = PostgresSessionStore(lambda: FakeDb(), node_id="node-a")
+    await store.open(LessonRequest(
+        session_id=row.id, scenario_id="case", mode="training", trainee_name="Курсант",
+        trainee_id=trainee_id, owner_login="teacher-a", backend_node_id=None,
+    ), build)
+    identity = identities[0]
+    assert (identity.attempt, identity.trainee_id, identity.service, identity.fencing_epoch) == (
+        3, trainee_id, "01", 1,
     )
-    assert result == (3, trainee_id, "01", 1)
     assert seen["backend_node_id"] == "node-a"
-    assert callable(seen["before_commit"]), "session creation must carry its audit into commit"
+    assert seen["commit"] is False, "строка, аудит и снимок коммитятся вместе"
+    assert [item.action for item in added] == ["lesson.start"]
+    assert row.live_state is not None and committed == [True]
 
 
 @pytest.mark.asyncio
-async def test_journal_restores_checkpoint_owned_by_this_node():
+async def test_store_restores_checkpoint_owned_by_this_node():
     owner = "teacher-a"
     state = SessionState(
         session_id=uuid4(),
@@ -562,8 +591,8 @@ async def test_journal_restores_checkpoint_owned_by_this_node():
                 return Rows([])
             return Rows([row])
 
-    journal = DbJournal(lambda: FakeDb(), node_id="node-a")
-    restored = await journal.restore_active()
+    store = PostgresSessionStore(lambda: FakeDb(), node_id="node-a")
+    restored = await store.restore_active()
     assert len(restored) == 1
     assert restored[0].session_id == state.session_id
     assert restored[0].owner_login == owner

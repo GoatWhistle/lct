@@ -12,9 +12,16 @@ from app.scenarios.loader import load_file
 from app.session import finish as finish_module
 from app.session.dds import prepare_handoff_queue, prepare_queue
 from app.session.hub import hub
+from app.session.store import MemorySessionStore
 from app.session.state import SessionState
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
+
+
+async def finish_in_operation(state):
+    """finish() пишет оценку в commit операции, завершившей занятие."""
+    async with hub.operation(state.session_id):
+        await finish_module.finish(state.session_id, state)
 
 
 @pytest.fixture(autouse=True)
@@ -27,7 +34,7 @@ def offline_finish(monkeypatch):
         return NoCoaching()
 
     monkeypatch.setattr(finish_module, "coach", no_coach)
-    monkeypatch.setattr(hub, "journal", None)
+    monkeypatch.setattr(hub, "store", MemorySessionStore())
 
 
 def accept_active_card(state: SessionState) -> None:
@@ -59,7 +66,7 @@ def test_dds_finish_reports_status_of_active_card_not_last_scored():
     accept_active_card(state)
     active_status = state.station_snapshot().card
 
-    asyncio.run(finish_module.finish(state.session_id, state))
+    asyncio.run(finish_in_operation(state))
 
     assert_active_card_kept(state, active_id, active_status)
 
@@ -83,6 +90,6 @@ def test_handoff_finish_reports_status_of_active_card_not_last_scored():
     accept_active_card(state)
     active_status = state.station_snapshot().card
 
-    asyncio.run(finish_module.finish(state.session_id, state))
+    asyncio.run(finish_in_operation(state))
 
     assert_active_card_kept(state, active_id, active_status)

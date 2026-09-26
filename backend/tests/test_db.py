@@ -27,16 +27,57 @@ from app.db.models import (
     Score, SelfAssessment, Session, Trainee, User, Utterance,
 )
 from app.db.repo import SessionNodeConflict, ensure_session
-from app.domain.events import Exercise, SessionMode
+from app.domain.events import Exercise, SessionMode, Speaker
 from app.domain.roles import Role
 from app.main import LIBRARY, app
 from app.scenarios import store
 from app.session.checkpoint import load_state
 from app.session.dds import build_card
 from app.session.hub import hub
-from app.session.journal import DbJournal, SessionLeaseLost
+from app.session.pg_store import PostgresSessionStore
+from app.session.store import (
+    LessonRequest,
+    ScoreCalculated,
+    ScoreOverridden,
+    SelfAssessed,
+    SessionLeaseLost,
+    UtteranceAppended,
+)
 from app.session.state import SessionState
 from app.session.timers import SessionTimers
+
+
+def _state(session_id, scenario, **fields) -> SessionState:
+    return SessionState(
+        session_id=session_id, scenario_id=scenario.id, scenario_title=scenario.title,
+        level=scenario.level, mode=SessionMode.TRAINING, **fields,
+    )
+
+
+async def _open(store, scenario, session_id, trainee_name, trainee_id=None, owner_login=None):
+    """Открыть занятие и вернуть его идентичность — как делает пульт."""
+    seen = {}
+
+    def build(identity):
+        seen["identity"] = identity
+        return _state(
+            session_id, scenario, owner_login=owner_login, trainee_id=identity.trainee_id,
+            attempt=identity.attempt, backend_fencing_epoch=identity.fencing_epoch,
+        )
+
+    state = await store.open(LessonRequest(
+        session_id=session_id, scenario_id=scenario.id, mode="training",
+        trainee_name=trainee_name, trainee_id=trainee_id, owner_login=owner_login,
+        backend_node_id=None,
+    ), build)
+    return state, seen["identity"]
+
+
+def _entry(text):
+    from app.domain.events import Speaker, TranscriptEntry
+
+    return TranscriptEntry(ref="u1", speaker=Speaker.CALLER, text=text,
+                           at=datetime.now(timezone.utc))
 
 
 @pytest.fixture
@@ -340,16 +381,9 @@ async def test_station_command_ids_survive_a_real_postgres_checkpoint(db, scenar
         db, scenario_id=scenario.id, mode="training", session_id=uuid4(),
     )
     command_id = str(uuid4())
-    state = SessionState(
-        session_id=session.id,
-        scenario_id=scenario.id,
-        scenario_title=scenario.title,
-        level=scenario.level,
-        mode=SessionMode.TRAINING,
-        processed_station_commands=[command_id],
-    )
-    journal = DbJournal(async_sessionmaker(db.bind, expire_on_commit=False))
-    await journal.checkpoint(state)
+    state = _state(session.id, scenario, processed_station_commands=[command_id])
+    pg = PostgresSessionStore(async_sessionmaker(db.bind, expire_on_commit=False))
+    await pg.commit(state)
 
     observer_engine = create_async_engine(get_settings().database_url)
     try:
@@ -406,24 +440,22 @@ async def test_security_audit_older_than_six_months_remains_queryable(db, monkey
 
 
 async def test_websocket_score_override_and_audit_commit_atomically(db, scenario):
-    from app.session.journal import DbJournal
-
     session = await repo.create_session(
         db, scenario_id=scenario.id, mode="training", owner_login="score-teacher"
     )
     score = Score(
         session_id=session.id, score_auto=70, score_final=70,
-        report={"full_report": {"score_auto": 70, "score_final": 70}},
+        report={"score_auto": 70, "full_report": {"score_auto": 70, "score_final": 70}},
     )
     db.add(score)
     await db.commit()
-    maker = async_sessionmaker(db.bind, expire_on_commit=False)
-    journal = DbJournal(maker)
+    pg = PostgresSessionStore(async_sessionmaker(db.bind, expire_on_commit=False))
+    state = _state(session.id, scenario, owner_login="score-teacher")
 
     # Force the audit insert to fail after the score row is staged. PostgreSQL
-    # must roll back both, and the websocket handler can then refuse the change.
-    saved = await journal.score_override(session.id, 85, "x" * 81, "manual review")
-    assert not saved
+    # must roll back both, and the commit must fail the whole operation.
+    with pytest.raises(Exception):
+        await pg.commit(state, [ScoreOverridden(85, "x" * 81, "instructor", "manual review")])
     await db.refresh(score)
     assert score.score_final == 70
     assert score.overridden_by is None
@@ -433,14 +465,12 @@ async def test_websocket_score_override_and_audit_commit_atomically(db, scenario
         )
     ) is None
 
-    saved = await journal.score_override(
-        session.id, 85, "score-teacher", "manual review"
-    )
-    assert saved
+    await pg.commit(state, [ScoreOverridden(85, "score-teacher", "instructor", "manual review")])
     await db.refresh(score)
     assert score.score_auto == 70
     assert score.score_final == 85
     assert score.overridden_by == "score-teacher"
+    assert score.report["score_final"] == 85
     assert score.report["full_report"]["score_final"] == 85
     audit_row = await db.scalar(
         select(AuditLog).where(
@@ -455,16 +485,16 @@ async def test_websocket_score_override_and_audit_commit_atomically(db, scenario
 
 
 async def test_initial_result_and_calculation_audit_commit_atomically(db, scenario):
-    from app.session.journal import DbJournal
-
     session = await repo.create_session(
         db, scenario_id=scenario.id, mode="training", owner_login="score-teacher"
     )
-    journal = DbJournal(async_sessionmaker(db.bind, expire_on_commit=False))
+    pg = PostgresSessionStore(async_sessionmaker(db.bind, expire_on_commit=False))
+    state = _state(session.id, scenario, owner_login="score-teacher")
 
     # Invalid JSON makes PostgreSQL reject the score transaction; no orphaned
     # calculation-audit row may remain (or vice versa).
-    assert not await journal.score(session.id, 71, {"bad": object()})
+    with pytest.raises(Exception):
+        await pg.commit(state, [ScoreCalculated(71, {"bad": object()})])
     assert await db.scalar(
         select(Score.id).where(Score.session_id == session.id)
     ) is None
@@ -472,7 +502,7 @@ async def test_initial_result_and_calculation_audit_commit_atomically(db, scenar
         AuditLog.action == "score.calculate", AuditLog.object_id == str(session.id)
     )) is None
 
-    assert await journal.score(session.id, 71, {"full_report": {"score_auto": 71}})
+    await pg.commit(state, [ScoreCalculated(71, {"full_report": {"score_auto": 71}})])
     score = await db.scalar(select(Score).where(Score.session_id == session.id))
     audit_row = await db.scalar(select(AuditLog).where(
         AuditLog.action == "score.calculate", AuditLog.object_id == str(session.id)
@@ -574,12 +604,9 @@ async def test_websocket_lesson_start_cannot_claim_foreign_group_trainee(db, sce
     await db.commit()
 
     session_id = uuid4()
-    journal = DbJournal(async_sessionmaker(db.bind, expire_on_commit=False))
+    pg = PostgresSessionStore(async_sessionmaker(db.bind, expire_on_commit=False))
     with pytest.raises(PermissionError, match="другой учебной групп"):
-        await journal.start_lesson(
-            session_id, scenario.id, "training", trainee.name, trainee.id,
-            owner_login=teacher,
-        )
+        await _open(pg, scenario, session_id, trainee.name, trainee.id, owner_login=teacher)
     assert await db.get(Session, session_id) is None
     assert await db.scalar(select(AuditLog.id).where(
         AuditLog.action == "lesson.start", AuditLog.object_id == str(session_id)
@@ -592,14 +619,13 @@ async def test_websocket_lesson_start_cannot_claim_foreign_group_trainee(db, sce
 
 async def test_websocket_lesson_start_audit_is_committed_with_session(db, scenario):
     session_id = uuid4()
-    journal = DbJournal(async_sessionmaker(db.bind, expire_on_commit=False))
-    result = await journal.start_lesson(
-        session_id, scenario.id, "training", "Курсант", owner_login="lesson-teacher"
-    )
-    assert result is not None and result[0] == 1 and result[1] is not None
-    assert result[2] is None
-    assert result[3] == 1
+    pg = PostgresSessionStore(async_sessionmaker(db.bind, expire_on_commit=False))
+    _, identity = await _open(pg, scenario, session_id, "Курсант", owner_login="lesson-teacher")
+    assert identity.attempt == 1 and identity.trainee_id is not None
+    assert identity.service is None
+    assert identity.fencing_epoch == 1
     persisted = await db.get(Session, session_id)
+    assert persisted.live_state is not None, "первый снимок пишется вместе со строкой занятия"
     audit_row = await db.scalar(select(AuditLog).where(
         AuditLog.action == "lesson.start", AuditLog.object_id == str(session_id)
     ))
@@ -609,25 +635,67 @@ async def test_websocket_lesson_start_audit_is_committed_with_session(db, scenar
     await db.commit()
 
 
+async def test_store_commit_is_one_transaction_with_one_fencing_check(db, scenario):
+    """Реплика, финиш и оценка — одна транзакция и один `(node_id, epoch)`-чек."""
+    from sqlalchemy import event
+
+    from app.session.store import LessonEnded
+
+    session_id = uuid4()
+    maker = async_sessionmaker(db.bind, expire_on_commit=False)
+    opened = []
+
+    def counting_maker():
+        opened.append(True)
+        return maker()
+
+    pg = PostgresSessionStore(counting_maker, node_id="node-a")
+    state, _ = await _open(pg, scenario, session_id, "Курсант", owner_login="lesson-teacher")
+    statements = []
+
+    def seen(_conn, _cursor, statement, *_args):
+        statements.append(statement)
+
+    event.listen(db.bind.sync_engine, "before_cursor_execute", seen)
+    opened.clear()
+    try:
+        entry = state.append(Speaker.CALLER, "адрес: Ленина, 14")
+        state.ended_at = datetime.now(timezone.utc)
+        await pg.commit(state, [
+            UtteranceAppended(entry),
+            LessonEnded(state.ended_at, "complete"),
+            ScoreCalculated(71, {"score_auto": 71}),
+        ])
+    finally:
+        event.remove(db.bind.sync_engine, "before_cursor_execute", seen)
+
+    assert len(opened) == 1, "одна операция — одна транзакция"
+    fence_checks = [sql for sql in statements
+                    if sql.startswith("UPDATE sessions SET backend_lease_until")]
+    assert len(fence_checks) == 1
+    row = await db.get(Session, session_id)
+    await db.refresh(row)
+    assert row.end_reason == "complete" and row.live_state is None
+    assert await db.scalar(select(Utterance.text).where(Utterance.session_id == session_id)) == (
+        "адрес: Ленина, 14"
+    )
+    await db.execute(delete(AuditLog).where(AuditLog.object_id == str(session_id)))
+    await db.execute(delete(Session).where(Session.id == session_id))
+    await db.commit()
+
+
 async def test_old_backend_fencing_epoch_cannot_append_transcript(db, scenario):
     session_id = uuid4()
-    journal = DbJournal(async_sessionmaker(db.bind, expire_on_commit=False), node_id="node-a")
-    started = await journal.start_lesson(
-        session_id, scenario.id, "training", "Курсант", owner_login="lesson-teacher"
-    )
-    assert started is not None
+    pg = PostgresSessionStore(async_sessionmaker(db.bind, expire_on_commit=False), node_id="node-a")
+    state, identity = await _open(pg, scenario, session_id, "Курсант", owner_login="lesson-teacher")
     await db.execute(
         update(Session)
         .where(Session.id == session_id)
-        .values(backend_node_id="node-b", backend_fencing_epoch=started[3] + 1)
+        .values(backend_node_id="node-b", backend_fencing_epoch=identity.fencing_epoch + 1)
     )
     await db.commit()
-    entry = SimpleNamespace(
-        ref="u1", speaker=SimpleNamespace(value="caller"), text="проверка fencing",
-        at=datetime.now(timezone.utc), mood=None,
-    )
     with pytest.raises(SessionLeaseLost):
-        await journal.utterance(session_id, entry)
+        await pg.commit(state, [UtteranceAppended(_entry("проверка fencing"))])
     assert await db.scalar(select(Utterance.id).where(Utterance.session_id == session_id)) is None
     await db.execute(delete(AuditLog).where(AuditLog.object_id == str(session_id)))
     await db.execute(delete(Session).where(Session.id == session_id))
@@ -636,44 +704,28 @@ async def test_old_backend_fencing_epoch_cannot_append_transcript(db, scenario):
 
 async def test_expired_backend_lease_is_atomically_claimed_and_restored(db, scenario):
     session_id = uuid4()
-    old = DbJournal(async_sessionmaker(db.bind, expire_on_commit=False), node_id="node-a")
-    initial = await old.start_lesson(
-        session_id, scenario.id, "training", "Курсант", owner_login="lease-teacher"
-    )
-    assert initial is not None
-    snapshot = SessionState(
-        session_id=session_id,
-        scenario_id=scenario.id,
-        scenario_title=scenario.title,
-        level=scenario.level,
-        mode=SessionMode.TRAINING,
-        owner_login="lease-teacher",
-        exercise=Exercise.DDS,
-        backend_fencing_epoch=initial[3],
-    )
-    await old.checkpoint(snapshot)
+    old = PostgresSessionStore(async_sessionmaker(db.bind, expire_on_commit=False), node_id="node-a")
+    snapshot, identity = await _open(old, scenario, session_id, "Курсант", owner_login="lease-teacher")
+    snapshot.exercise = Exercise.DDS
+    await old.commit(snapshot)
     row = await db.get(Session, session_id)
     assert row is not None
     row.backend_lease_until = datetime.now(timezone.utc) - timedelta(seconds=1)
     await db.commit()
 
-    new = DbJournal(async_sessionmaker(db.bind, expire_on_commit=False), node_id="node-b")
+    new = PostgresSessionStore(async_sessionmaker(db.bind, expire_on_commit=False), node_id="node-b")
     restored = await new.claim_expired(session_id)
     assert len(restored) == 1
     assert restored[0].session_id == session_id
-    assert restored[0].backend_fencing_epoch == initial[3] + 1
+    assert restored[0].backend_fencing_epoch == identity.fencing_epoch + 1
     persisted = await db.get(Session, session_id)
     assert persisted is not None
     await db.refresh(persisted)
     assert persisted.backend_node_id == "node-b"
-    assert persisted.backend_fencing_epoch == initial[3] + 1
+    assert persisted.backend_fencing_epoch == identity.fencing_epoch + 1
 
-    entry = SimpleNamespace(
-        ref="u1", speaker=SimpleNamespace(value="caller"), text="stale owner",
-        at=datetime.now(timezone.utc), mood=None,
-    )
     with pytest.raises(SessionLeaseLost):
-        await old.utterance(session_id, entry)
+        await old.commit(snapshot, [UtteranceAppended(_entry("stale owner"))])
     assert await db.scalar(select(Utterance.id).where(Utterance.session_id == session_id)) is None
     await db.execute(delete(AuditLog).where(AuditLog.object_id == str(session_id)))
     await db.execute(delete(Session).where(Session.id == session_id))
@@ -681,23 +733,21 @@ async def test_expired_backend_lease_is_atomically_claimed_and_restored(db, scen
 
 
 async def test_self_assessment_and_audit_commit_atomically(db, scenario):
-    from app.session.journal import DbJournal
-
     trainee = await repo.ensure_trainee(db, f"reflection-{uuid4().hex[:12]}")
     session = await repo.create_session(
         db, scenario_id=scenario.id, mode="training", trainee_id=trainee.id,
         owner_login="reflection-teacher",
     )
-    journal = DbJournal(async_sessionmaker(db.bind, expire_on_commit=False))
+    pg = PostgresSessionStore(async_sessionmaker(db.bind, expire_on_commit=False))
+    state = _state(session.id, scenario, trainee_id=trainee.id)
 
     class InvalidText:
         def __len__(self):
             return 12
 
     # Let the DB reject the staged assessment, and verify its audit rolls back too.
-    assert not await journal.self_assessment(
-        session.id, ["q_address"], InvalidText(), datetime.now(timezone.utc)
-    )
+    with pytest.raises(Exception):
+        await pg.commit(state, [SelfAssessed(["q_address"], InvalidText(), datetime.now(timezone.utc))])
     assert await db.scalar(select(SelfAssessment.id).where(
         SelfAssessment.session_id == session.id
     )) is None
@@ -705,9 +755,9 @@ async def test_self_assessment_and_audit_commit_atomically(db, scenario):
         AuditLog.action == "self_assessment.submit", AuditLog.object_id == str(session.id)
     )) is None
 
-    assert await journal.self_assessment(
-        session.id, ["q_address"], "адрес уточнил поздно", datetime.now(timezone.utc)
-    )
+    await pg.commit(state, [SelfAssessed(
+        ["q_address"], "адрес уточнил поздно", datetime.now(timezone.utc),
+    )])
     assessment = await db.scalar(select(SelfAssessment).where(
         SelfAssessment.session_id == session.id
     ))

@@ -23,11 +23,18 @@ from app.session import timers as timers_module
 from app.session.checkpoint import dump_state, load_state
 from app.session.dds import prepare_handoff_queue, prepare_queue
 from app.session.hub import hub
+from app.session.store import MemorySessionStore
 from app.session.state import SessionState
 from app.session.timers import now_utc
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
 _events = TypeAdapter(StationToServer)
+
+
+async def finish_in_operation(state):
+    """finish() пишет оценку в commit операции, завершившей занятие."""
+    async with hub.operation(state.session_id):
+        await finish_module.finish(state.session_id, state)
 
 
 @pytest.fixture(autouse=True)
@@ -40,7 +47,7 @@ def offline_finish(monkeypatch):
         return NoCoaching()
 
     monkeypatch.setattr(finish_module, "coach", no_coach)
-    monkeypatch.setattr(hub, "journal", None)
+    monkeypatch.setattr(hub, "store", MemorySessionStore())
 
 
 def fire():
@@ -150,7 +157,7 @@ def test_call_checkpoint_keeps_dispatcher_work_on_shared_timers():
     assert snapshot.queue_cards == []
 
     state.ended_at = now_utc()
-    asyncio.run(finish_module.finish(state.session_id, state))
+    asyncio.run(finish_in_operation(state))
 
     crew = next(item for item in state.score["metrics"] if item["key"] == "dds_crew")
     assert crew["passed"] and crew["fact"] == card.crew_selected
@@ -189,7 +196,7 @@ def test_finish_scores_every_card_without_switching_active(name):
     unscored = {card.card_id for card in state.desk.cards.values()}
 
     state.ended_at = now_utc()
-    asyncio.run(finish_module.finish(state.session_id, state))
+    asyncio.run(finish_in_operation(state))
 
     assert state.desk.active is active
     assert {record.card_id for record in state.desk.completed} == unscored

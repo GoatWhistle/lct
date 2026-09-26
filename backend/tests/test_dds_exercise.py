@@ -17,6 +17,7 @@ from app.domain.timers import TimerCode
 from app.main import app
 from app.scenarios import store
 from app.session.hub import hub
+from app.session.store import MemorySessionStore
 
 
 @pytest.fixture
@@ -42,11 +43,10 @@ def client(monkeypatch):
         optional_session_override,
     )
     monkeypatch.setattr(sessions_http, "audit_required", audit_override)
-    monkeypatch.setattr("app.api.ws.control.audit", audit_override)
     try:
         with TestClient(app) as test_client:
             test_client.post("/api/auth/dev-token")
-            hub.journal = None
+            hub.store = MemorySessionStore()
             yield test_client
     finally:
         get_settings.cache_clear()
@@ -995,3 +995,32 @@ def test_each_dds_card_uses_its_own_scenario_weights():
         next(item.weight for item in second_record.metrics if item.key == "dds_primary")
         == 2.0
     )
+
+
+def test_dds_station_command_and_finish_are_one_store_commit_each(client):
+    """Команда пульта ДДС и её подтверждение фиксируются одним commit."""
+    from app.session.store import LessonEnded, ScoreCalculated
+
+    session_id, control = start(client)
+    store = hub.store
+    try:
+        with client.websocket_connect(f"/ws/station/{session_id}") as station:
+            read_until(station, "card.received")
+            service = read_until(station, "station.state")["snapshot"]["services"][0]
+            before = len(store.commits)
+            command_id = str(uuid4())
+            station.send_json({
+                "type": "card.status", "service": service, "status": "accepted",
+                "comment": "Основание: профиль полномочий ДДС.\nСведения: карточка принята.",
+                "_command_id": command_id,
+            })
+            read_until(station, "command.ack")
+            assert len(store.commits) == before + 1
+            assert command_id in store.snapshot(session_id)["processed_station_commands"]
+
+            station.send_json({"type": "station.finish"})
+            read_until(station, "score.ready")
+            assert len(store.commits) == before + 2
+            assert [type(item) for item in store.commits[-1][1]] == [LessonEnded, ScoreCalculated]
+    finally:
+        control.__exit__(None, None, None)

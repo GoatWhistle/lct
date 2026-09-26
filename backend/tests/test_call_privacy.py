@@ -7,6 +7,7 @@ import pytest
 from app.api.ws import call
 from app.dialog.slots import TurnResult
 from app.domain.events import Exercise, TranscriptEntry
+from app.session.store import MemorySessionStore
 
 
 @pytest.mark.asyncio
@@ -24,7 +25,7 @@ async def test_text_dialogue_provider_error_does_not_log_prompt_or_provider_body
         def revealed_facts(self):
             return []
 
-    monkeypatch.setattr(call.hub, "journal", None)
+    monkeypatch.setattr(call.hub, "store", MemorySessionStore())
     monkeypatch.setattr(call.hub, "to_trainee", lambda *_args: None)
     monkeypatch.setattr(call.hub, "to_observers", lambda *_args: None)
     state = SimpleNamespace(
@@ -41,7 +42,9 @@ async def test_text_dialogue_provider_error_does_not_log_prompt_or_provider_body
         ),
     )
 
-    await call._handle(uuid4(), state, SimpleNamespace(type="text.turn", text="where is the incident"))
+    session_id = uuid4()
+    async with call.hub.operation(session_id):
+        await call._handle(session_id, state, SimpleNamespace(type="text.turn", text="where is the incident"))
 
     assert secret not in caplog.text
     assert "RuntimeError" in caplog.text
