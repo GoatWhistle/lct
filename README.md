@@ -145,6 +145,22 @@ git config core.hooksPath .claude/git-hooks
 `.claude/scripts/scrub-history.sh` — `uvx`. Задачи в сообщениях — по id карточки
 (`lct-12`), не `#N`: issues перед сдачей удаляются.
 
+Issues и PR агенты ведут через MCP-сервер GitHub (операции — `.claude/tracker.md`).
+Подключается у каждого своим токеном, один раз:
+
+1. Токен: fine-grained PAT на репозиторий `GoatWhistle/lct-hack` с правами Issues,
+   Pull requests и Contents — read/write. Если fine-grained на чужой репо выпустить нельзя —
+   classic PAT со scope `repo`.
+2. Регистрация на уровне пользователя — токен не попадает в репо:
+
+   ```
+   claude mcp add --transport http --scope user github https://api.githubcopilot.com/mcp \
+     -H "Authorization: Bearer <токен>"
+   ```
+
+3. Проверка: `/mcp` в сессии показывает `github` подключённым; ошибка `403` — токену не
+   хватает прав на репозиторий.
+
 Блок между маркерами `scrub:start` / `scrub:end` вырезается из всей истории при сдаче.
 <!-- scrub:end -->
 
