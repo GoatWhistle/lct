@@ -22,7 +22,7 @@ first_line: "Здравствуйте, мне стало плохо, я нахо
 
 facts:
   - id: f_address
-    value: "улица Красный Казанец, дом 19Б, напротив дома, на стоянке"
+    value: "Москва, улица Красный Казанец, дом 19Б, напротив дома, на стоянке"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "стало плохо, находится в автомобиле форд синего цвета А284ТК 777"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Красный Казанец, дом 19Б, напротив дома, на стоянке"
+  address: "Москва, улица Красный Казанец, дом 19Б, напротив дома, на стоянке"
   victims: 1
 
 tree:

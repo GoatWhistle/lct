@@ -89,11 +89,11 @@ class SlotMachine:
         # не раскрываются никогда — только подходом.
         self._reveals: dict[str, list[str]] = {}
         for item in self._items:
-            if item.fact and not self._facts[item.fact].hidden:
+            if item.fact:
                 self._reveals.setdefault(item.id, []).append(item.fact)
         for fact in scenario.facts:
             question = fact.reveal_on.question if fact.reveal_on else None
-            if question and not fact.hidden and fact.id not in self._reveals.get(question, []):
+            if question and fact.id not in self._reveals.get(question, []):
                 self._reveals.setdefault(question, []).append(fact.id)
 
         # Какой пункт чек-листа какой факт уточняет: «это точно Москва?» меняет
@@ -171,16 +171,6 @@ class SlotMachine:
                     self.revealed.append(fact_id)
                     result.revealed.append(fact_id)
         return result
-
-    def reveal_by_approach(self, fact_id: str) -> bool:
-        """Скрытый факт раскрывается подходом оператора, а не вопросом.
-        Решение «создал ли оператор подход» принимает LLM (temperature=0) —
-        автомат только фиксирует результат."""
-        fact = self._facts.get(fact_id)
-        if fact is None or fact_id in self.revealed:
-            return False
-        self.revealed.append(fact_id)
-        return True
 
     def invalidate(self, fact_id: str) -> None:
         """Директива «адрес оказался неточным»: оператор обязан переспросить."""

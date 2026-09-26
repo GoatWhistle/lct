@@ -3,6 +3,17 @@
 // Контракт: docs/arch/CONTRACT.md
 
 
+export interface AICoaching {
+  status: "ready" | "unavailable" | "disabled" | "not_needed";
+  model?: string | null;
+  recommendations?: Array<AIRecommendation>;
+}
+
+export interface AIRecommendation {
+  metric_key: string;
+  text: string;
+}
+
 /** Аудио-фон происшествия. Файл лежит в сборке фронта, трафика фон не создаёт. */
 export interface BgStart {
   type: "bg.start";
@@ -63,11 +74,13 @@ export interface CallerUtterance {
   text: string;
   at: string;
   mood: Mood;
+  source?: "local_llm" | "scenario";
 }
 
 /** Останавливает норматив `dds_ack` (≤ 30 с). */
 export interface CardAck {
   type: "card.ack";
+  comment: string;
 }
 
 /** Возврат на уточнение: неполнота КИО становится сорванным выездом. */
@@ -122,6 +135,12 @@ export interface CardSubmit {
   type: "card.submit";
 }
 
+/** Durable confirmation for a station command, safe to replay by ID. */
+export interface CommandAck {
+  type: "command.ack";
+  command_id: string;
+}
+
 /** Шесть осей радара. Проекция уже посчитанных метрик, без пересчёта весов. */
 export type Competency = "intake" | "interview" | "card" | "routing" | "norms" | "communication";
 
@@ -163,6 +182,14 @@ export interface DdsCardReport {
   findings: Array<Finding>;
   actions?: Array<Record<string, unknown>>;
   duration_ms?: number;
+  title?: string | null;
+  address?: string | null;
+  description?: string | null;
+  incident_type?: string | null;
+  victims_count?: number | null;
+  received_at?: string | null;
+  managed_service?: string | null;
+  recipient_services?: Array<string>;
 }
 
 export interface DdsCardSummary {
@@ -242,8 +269,8 @@ export interface Finding {
   at?: string | null;
 }
 
-/** Кто выставил отметку. `judge` — единственный недетерминированный источник. */
-export type FindingSource = "slots" | "dispatcher" | "ground_truth" | "timers" | "kio" | "chain" | "judge" | "instructor";
+/** Источник объяснимой отметки; `judge` оставлен для старых отчётов. */
+export type FindingSource = "slots" | "dispatcher" | "ground_truth" | "timers" | "kio" | "chain" | "grammar" | "judge" | "instructor";
 
 /** Уточняющие поля 01 — МЧС. */
 export interface FireDetails {
@@ -348,9 +375,11 @@ export interface KioState {
   kio: KIO;
 }
 
-/** Настраиваемые преподавателем условия именно этого занятия. Нормативы ГОСТ для приёма вызова сюда не входят. Меняется учебный лимит решения ДДС и порог успешности, которые ТЗ прямо отдаёт преподавателю. */
+/** Настраиваемые преподавателем условия именно этого занятия. Нормативы ГОСТ для приёма вызова сюда не входят. Для занятия меняются учебные лимиты первичной реакции и полного цикла карточки ДДС, заполнения КИО, порог успешности и веса метрик; веса сценария остаются базовыми, настройки занятия могут их переопределить. */
 export interface LessonCriteria {
   decision_time_limit_seconds?: number;
+  card_fill_time_limit_seconds?: number;
+  dds_card_work_time_limit_seconds?: number;
   allowed_errors?: number;
   require_correct_grammar?: boolean;
   score_weights?: Record<string, number>;
@@ -368,7 +397,7 @@ export interface MedicalDetails {
   age?: number | null;
 }
 
-/** Метрика оценки: факт против норматива со ссылкой. Не балл, а обоснование. */
+/** Факт против норматива со ссылкой; `credit` задаёт частичный вклад времени. */
 export interface Metric {
   key: string;
   title: string;
@@ -377,6 +406,7 @@ export interface Metric {
   ref?: string | null;
   passed: boolean;
   weight?: number;
+  credit?: number | null;
 }
 
 export interface ModeSet {
@@ -486,15 +516,11 @@ export type ResponseStatus = "registered" | "transferred" | "in_progress" | "clo
 
 export type Role = "admin" | "instructor" | "trainee";
 
-export interface ScenarioPublish {
-  type: "scenario.publish";
-  scenario_id: string;
-}
-
 export interface ScenarioStart {
   type: "scenario.start";
   scenario_id: string;
   scenario_ids?: Array<string> | null;
+  random_scenario_ids?: Array<string> | null;
   dds_arrival_interval_seconds?: number;
   dds_max_waiting?: number;
   trainee: string;
@@ -564,6 +590,7 @@ export interface SessionReport {
   session_id: string;
   scenario_id: string;
   mode: SessionMode;
+  exercise?: Exercise;
   attempt?: number;
   criteria: LessonCriteria;
   failed_metrics: number;
@@ -571,6 +598,7 @@ export interface SessionReport {
   transcript: Array<TranscriptEntry>;
   findings: Array<Finding>;
   metrics: Array<Metric>;
+  ai_coaching?: AICoaching | null;
   card_results?: Array<DdsCardReport>;
   competencies: Array<CompetencyScore>;
   reference_questions: Array<HintShown>;
@@ -626,6 +654,7 @@ export interface StationSnapshot {
   log: Array<StatusEntry>;
   crew_options?: Array<string>;
   crew_selected?: string | null;
+  zone_decision?: boolean | null;
   phone_reports?: Array<PhoneReportRecord>;
   phone_lines?: Array<PhoneLineRecord>;
   phone_pending?: PhoneCallPending | null;
@@ -635,9 +664,9 @@ export interface StationSnapshot {
   reply_text?: string;
   completed_cards?: Array<DdsCardSummary>;
   queue_cards?: Array<DdsQueueCard>;
-  pending_cards_count: number;
-  next_arrival_in_seconds: number | null;
-  max_waiting_cards: number;
+  pending_cards_count?: number;
+  next_arrival_in_seconds?: number | null;
+  max_waiting_cards?: number;
 }
 
 /** Состояние АРМ ДДС после каждой отметки: что стоит и что доступно дальше. */
@@ -666,8 +695,19 @@ export interface SttPartial {
   text: string;
 }
 
+export interface TextTurn {
+  type: "text.turn";
+  text: string;
+}
+
+export interface TextTurnAccepted {
+  type: "text.turn.accepted";
+  text: string;
+  at: string;
+}
+
 /** Коды одинаковы на бэке, фронте и в отчёте. */
-export type TimerCode = "answer" | "interview" | "dds_notify" | "dds_ack" | "zone_check" | "callback" | "close";
+export type TimerCode = "answer" | "interview" | "dds_notify" | "dds_ack" | "dds_work" | "card_fill" | "zone_check" | "callback" | "close";
 
 /** Один таймер в событии `timer.tick`. */
 export interface TimerSnapshot {
@@ -735,15 +775,15 @@ export interface ZoneDecision {
 
 // Союзы по каналам — смотри docs/arch/CONTRACT.md#каналы
 
-export type ServerToTrainee = CallIncoming | CardBriefing | CallStarted | SttPartial | SttFinal | CallerUtterance | TtsBegin | TtsEnd | TtsCancel | BgStart | BgStop | EraData | KioPatchOut | HintShown | TimerTick | CallEnded | ScoreReady | ErrorEvent;
+export type ServerToTrainee = CallIncoming | CardBriefing | TextTurnAccepted | CallStarted | SttPartial | SttFinal | CallerUtterance | TtsBegin | TtsEnd | TtsCancel | BgStart | BgStop | EraData | KioPatchOut | HintShown | TimerTick | CallEnded | ScoreReady | ErrorEvent;
 
-export type TraineeToServer = CallAnswer | CardSubmit | KioPatchIn | HintRequest | SelfAssessmentSubmit | DdsDispatch | CallResolve | CallHangup | CallbackDial;
+export type TraineeToServer = CallAnswer | CardSubmit | TextTurn | KioPatchIn | HintRequest | SelfAssessmentSubmit | DdsDispatch | CallResolve | CallHangup | CallbackDial;
 
 export type ServerToObserver = SessionSnapshot | TranscriptAppend | KioState | TimerTick | ModeSet | HintShown | BgStart | BgStop | CallerUtterance | SessionEnded | ScoreReady | InstructorNoteShown | ReferenceStarted | ErrorEvent;
 
-export type InstructorToServer = ScenarioStart | DirectorInject | ReferencePlay | InstructorNoteAdd | ScoreOverride | ScenarioPublish | SessionStop;
+export type InstructorToServer = ScenarioStart | DirectorInject | ReferencePlay | InstructorNoteAdd | ScoreOverride | SessionStop;
 
-export type ServerToStation = CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded | ScoreReady | ErrorEvent;
+export type ServerToStation = CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded | ScoreReady | CommandAck | ErrorEvent;
 
 export type StationToServer = CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | PhoneBrief | PhoneCheck | PhoneHangup | StationFinish | CardReply | CardNext | CardOpen | ZoneDecision | CrewDispatched | CrewArrived;
 
@@ -767,6 +807,7 @@ export type EventName =
   | "card.reply"
   | "card.status"
   | "card.submit"
+  | "command.ack"
   | "crew.arrived"
   | "crew.dispatched"
   | "crew.select"
@@ -789,7 +830,6 @@ export type EventName =
   | "phone.report"
   | "reference.play"
   | "reference.started"
-  | "scenario.publish"
   | "scenario.start"
   | "score.override"
   | "score.ready"
@@ -801,6 +841,8 @@ export type EventName =
   | "station.state"
   | "stt.final"
   | "stt.partial"
+  | "text.turn"
+  | "text.turn.accepted"
   | "timer.tick"
   | "transcript.append"
   | "tts.begin"

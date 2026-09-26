@@ -1,5 +1,6 @@
-# Билет 22, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
-# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+# Билет 22, вызов 3 (docs/spec/TICKETS.md). Сообщение содержит намерение,
+# но не факт попытки/приготовления; звонящая не может попасть в квартиру.
+# Поэтому точный признак ЕКП без домысла выбрать нельзя.
 id: t22-3-suicide-sms
 title: Знакомый прислал СМС о намерении покончить с собой
 ticket: 22
@@ -10,7 +11,7 @@ topics: [police]
 modes: [training, exam, self]
 
 extends: checklists/police.yaml
-signs: [Суицид]
+signs: []
 
 persona:
   base: worried
@@ -22,7 +23,7 @@ first_line: "Знакомый СМС прислал, пишет, что пове
 
 facts:
   - id: f_address
-    value: "улица Белозерская, дом 11Б, квартира 5, подъезд 1, этаж 2"
+    value: "Москва, улица Белозерская, дом 11Б, квартира 5, подъезд 1, этаж 2"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "прислал СМС о намерении повеситься, доступа в квартиру нет"
@@ -43,7 +44,7 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description]
 
 ground_truth:
-  address: "улица Белозерская, дом 11Б, квартира 5, подъезд 1, этаж 2"
+  address: "Москва, улица Белозерская, дом 11Б, квартира 5, подъезд 1, этаж 2"
   victims: 1
 
 tree:

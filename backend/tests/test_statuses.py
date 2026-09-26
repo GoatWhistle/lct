@@ -34,22 +34,22 @@ def mark(service: str, status: ServiceStatus, comment: str = "", minute: int = 0
 
 
 def test_only_primary_statuses_are_available_at_first():
-    check([], "Служба 101", ServiceStatus.ACCEPTED, "")
+    check([], "Служба 101", ServiceStatus.ACCEPTED, "Принято в работу")
     check([], "Служба 101", ServiceStatus.DECLINED, "не обслуживаем, передано в УК")
     with pytest.raises(StatusError):
         check([], "Служба 101", ServiceStatus.ARRIVED, "")
 
 
 def test_accepted_opens_the_rest():
-    log = [mark("Служба 101", ServiceStatus.ACCEPTED)]
-    check(log, "Служба 101", ServiceStatus.RESPONDING, "")
-    check(log, "Служба 101", ServiceStatus.COMPLETED, "")
+    log = [mark("Служба 101", ServiceStatus.ACCEPTED, "Принято в работу")]
+    check(log, "Служба 101", ServiceStatus.RESPONDING, "Бригада выехала")
+    check(log, "Служба 101", ServiceStatus.COMPLETED, "Работы завершены")
 
 
 def test_declined_leads_only_back_to_accepted():
     """Служба может передумать, но не может отказаться дважды по-разному."""
     log = [mark("Служба 101", ServiceStatus.DECLINED, "не наш адрес")]
-    check(log, "Служба 101", ServiceStatus.ACCEPTED, "")
+    check(log, "Служба 101", ServiceStatus.ACCEPTED, "Повторно принято")
     with pytest.raises(StatusError):
         check(log, "Служба 101", ServiceStatus.RESPONDING, "")
 
@@ -113,9 +113,10 @@ def test_alarming_statuses_are_the_three_from_the_memo():
 # ── ошибки диспетчера ──
 
 
-def _codes(entries, services=SERVICES, elapsed=45_000):
+def _codes(entries, services=SERVICES, elapsed=45_000, crew_assignments=None):
     findings = evaluate_dispatcher(
-        entries=entries, services=services, deadline_ms=30_000, elapsed_ms=elapsed
+        entries=entries, services=services, crew_assignments=crew_assignments,
+        deadline_ms=30_000, elapsed_ms=elapsed
     )
     return [finding.code for finding in findings]
 
@@ -156,13 +157,17 @@ def test_clean_work_has_no_findings():
     log = []
     for service in SERVICES:
         log += [
-            mark(service, ServiceStatus.ACCEPTED),
-            mark(service, ServiceStatus.RESPONDING, minute=1),
-            mark(service, ServiceStatus.ARRIVED, minute=4),
-            mark(service, ServiceStatus.WORKING, minute=5),
-            mark(service, ServiceStatus.COMPLETED, minute=20),
+            mark(service, ServiceStatus.ACCEPTED, "Основание: доклад бригады.\nСведения: принято."),
+            mark(service, ServiceStatus.RESPONDING, "Основание: доклад бригады.\nСведения: выезд.", minute=1),
+            mark(service, ServiceStatus.ARRIVED, "Основание: доклад бригады.\nСведения: прибытие.", minute=4),
+            mark(service, ServiceStatus.WORKING, "Основание: доклад бригады.\nСведения: начало работ.", minute=5),
+            mark(service, ServiceStatus.COMPLETED, "Основание: доклад бригады.\nСведения: завершение работ.", minute=20),
         ]
-    assert _codes(log) == []
+    assert _codes(
+        log,
+        elapsed=10_000,
+        crew_assignments={service: "дежурная бригада" for service in SERVICES},
+    ) == []
 
 
 def test_every_finding_carries_its_reason():

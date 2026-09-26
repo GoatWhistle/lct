@@ -34,7 +34,7 @@ class ErrorCode(StrEnum):
 
 
 class FindingSource(StrEnum):
-    """Кто выставил отметку. `judge` — единственный недетерминированный источник."""
+    """Источник объяснимой отметки; `judge` оставлен для старых отчётов."""
 
     SLOTS = "slots"
     DISPATCHER = "dispatcher"
@@ -42,6 +42,8 @@ class FindingSource(StrEnum):
     TIMERS = "timers"
     KIO = "kio"
     CHAIN = "chain"
+    GRAMMAR = "grammar"
+    # Legacy value: historical saved reports may still contain it.
     JUDGE = "judge"
     INSTRUCTOR = "instructor"
 
@@ -74,9 +76,9 @@ ERRORS: dict[ErrorCode, ErrorSpec] = {
     ),
     ErrorCode.E4: ErrorSpec(
         code=ErrorCode.E4,
-        title="Коммуникативная ошибка",
-        detail="Тон, эмпатия, управление диалогом, лишние вопросы, игнорирование паники",
-        source=FindingSource.JUDGE,
+        title="Грамматическая ошибка",
+        detail="Нарушен включённый критерий грамматики описания КИО",
+        source=FindingSource.GRAMMAR,
     ),
     ErrorCode.E5: ErrorSpec(
         code=ErrorCode.E5,
@@ -117,8 +119,8 @@ ERRORS: dict[ErrorCode, ErrorSpec] = {
     ErrorCode.D5: ErrorSpec(
         code=ErrorCode.D5,
         title="Неполный комментарий",
-        detail="Не указано, куда передана информация и что сделал диспетчер",
-        source=FindingSource.JUDGE,
+        detail="В комментарии не назван получатель переданных сведений",
+        source=FindingSource.DISPATCHER,
     ),
     ErrorCode.D6: ErrorSpec(
         code=ErrorCode.D6,

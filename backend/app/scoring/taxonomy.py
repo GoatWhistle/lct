@@ -23,6 +23,8 @@ METRIC_MAP: dict[str, tuple[ErrorCode, Competency]] = {
     "required_fields": (ErrorCode.E5, Competency.CARD),
     "dds_primary": (ErrorCode.D1, Competency.CARD),
     "dds_ack": (ErrorCode.D1, Competency.NORMS),
+    "card_fill_time": (ErrorCode.E3, Competency.NORMS),
+    "dds_work_time": (ErrorCode.E3, Competency.NORMS),
     "dds_decision": (ErrorCode.D3, Competency.ROUTING),
     "dds_crew": (ErrorCode.D2, Competency.ROUTING),
     "dds_contact": (ErrorCode.D6, Competency.COMMUNICATION),
@@ -30,6 +32,7 @@ METRIC_MAP: dict[str, tuple[ErrorCode, Competency]] = {
     "dds_completion": (ErrorCode.D6, Competency.CARD),
     "dds_reply": (ErrorCode.D5, Competency.COMMUNICATION),
     "dds_grammar": (ErrorCode.D5, Competency.COMMUNICATION),
+    "description_grammar": (ErrorCode.E4, Competency.COMMUNICATION),
 }
 
 #: Вес метрики в детерминированной оценке.
@@ -53,9 +56,7 @@ METRIC_WEIGHTS: dict[str, float] = {
     "answer_time": 1.0,
     "callback": 1.0,
     "dds_chain": 2.0,
+    "description_grammar": 1.0,
+    "card_fill_time": 1.5,
+    "dds_work_time": 1.5,
 }
-
-#: Вес детерминированного слоя в итоговой оценке. Остальное — LLM-судья
-#: на мягкие критерии (E4), и не больше (docs/arch/BACKEND.md).
-DETERMINISTIC_WEIGHT = 0.6
-JUDGE_WEIGHT = 0.4

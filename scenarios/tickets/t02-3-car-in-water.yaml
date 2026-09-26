@@ -1,5 +1,6 @@
 # Билет 2, вызов 3 (docs/spec/TICKETS.md). Адрес — только ориентир на набережной:
-# ни дома, ни улицы, и уточнять придётся по ориентирам.
+# ни дома, ни улицы. В источнике не сказано, был ли кто-то в машине/воде;
+# в ЕКП нет признака только для падения машины в воду, поэтому код не угадываем.
 id: t02-3-car-in-water
 title: "Автомашина упала в воду"
 ticket: 2
@@ -10,7 +11,7 @@ topics: [rescue, address]
 modes: [training, exam, self]
 
 extends: checklists/police.yaml
-signs: ["Человек в воде, на льдине", "Падение автомашины в воду"]
+signs: []
 
 persona:
   base: panic
@@ -23,7 +24,7 @@ first_line: "Автомобиль упал в воду!"
 
 facts:
   - id: f_address
-    value: "набережная Яузы, в сторону области"
+    value: "Москва, набережная Яузы, в сторону области"
     refined: "набережная Яузы, в сторону области, напротив Большого Нижнего пруда"
     reveal_on: { question: q_address }
     refine_on: q_address_check
@@ -31,7 +32,7 @@ facts:
     value: "автомашина упала в воду"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "заявитель не знает, были ли в машине люди"
+    value: "в исходном билете не указано, находились ли люди в автомобиле"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "Иванова Елена Сергеевна, телефон 916 896 3254"
@@ -47,7 +48,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "набережная Яузы, в сторону области, напротив Большого Нижнего пруда"
+  address: "Москва, набережная Яузы, в сторону области, напротив Большого Нижнего пруда"
   victims: null
 
 tree:

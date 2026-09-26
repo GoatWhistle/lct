@@ -22,7 +22,7 @@ first_line: "У входа на стадион толпа тумбу ломае�
 
 facts:
   - id: f_address
-    value: дворец спорта Мегаспорт на Ходынском поле
+    value: "Москва, дворец спорта Мегаспорт на Ходынском поле, Ходынский бульвар, дом 3"
     refined: "Ходынский бульвар, дом 3"
     reveal_on: { question: q_address }
     refine_on: q_address_check
@@ -50,7 +50,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "Ходынский бульвар, дом 3"
+  address: "Москва, Ходынский бульвар, дом 3"
   victims: 0
 
 tree:

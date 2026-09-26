@@ -1,0 +1,21 @@
+{
+  "checked_at": "2026-09-26T11:36:07Z",
+  "frontend": "https://127.0.0.1:39016",
+  "extensions": [
+    "6101",
+    "6102"
+  ],
+  "registered_clients": 2,
+  "registered_ms": 2037.063,
+  "call_connected_ms": 2569.414,
+  "remote_audio_tracks": [
+    1,
+    1
+  ],
+  "browser_errors": [],
+  "new_recordings": {
+    "20260926-113605-6101-6102-1790422565.0.wav": 16044
+  },
+  "passed": true,
+  "scope": "two isolated Chromium contexts; WSS/SIP Digest; WebRTC audio tracks; Asterisk MixMonitor"
+}

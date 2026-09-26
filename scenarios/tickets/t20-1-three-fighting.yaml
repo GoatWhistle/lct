@@ -22,7 +22,7 @@ first_line: "Тут трое дерутся, за домом на дорожке
 
 facts:
   - id: f_address
-    value: "Олонецкий проезд, дом 4, за домом, дорожка в сторону кладбища"
+    value: "Москва, Олонецкий проезд, дом 4, за домом, дорожка в сторону кладбища"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: дерутся трое человек
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "Олонецкий проезд, дом 4, за домом, дорожка в сторону кладбища"
+  address: "Москва, Олонецкий проезд, дом 4, за домом, дорожка в сторону кладбища"
   victims: 0
 
 tree:

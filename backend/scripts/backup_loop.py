@@ -73,7 +73,9 @@ def run_forever() -> None:
             log.error("цикл резервного копирования не завершён: %s; повтор через %s с", exc, retry)
             time.sleep(retry)
             continue
-        time.sleep(interval)
+        # Re-evaluate the age of the completed copy at the top of the loop.
+        # Sleeping a full interval here would make the real gap
+        # (dump duration + interval) and could exceed the 24-hour requirement.
 
 
 if __name__ == "__main__":

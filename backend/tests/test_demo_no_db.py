@@ -53,8 +53,9 @@ def test_demo_without_db_starts_dds_and_issues_owned_trainee_cookie(monkeypatch)
                 {"id": str(DEMO_TRAINEE_ID), "name": "Демо-курсант", "group": None,
                  "service": "Служба 101"}
             ]
-            # БД-зависимые экраны получают быстрый и явный отказ, не ждут TCP timeout.
-            assert client.get("/api/sessions").json()["detail"] == "database_disabled_demo"
+            # Пустая volatile-история доступна в демо без PostgreSQL.
+            assert client.get("/api/sessions").status_code == 200
+            assert client.get("/api/sessions").json() == []
 
             session_id = uuid4()
             with client.websocket_connect(f"/ws/control/{session_id}") as control:
@@ -65,6 +66,9 @@ def test_demo_without_db_starts_dds_and_issues_owned_trainee_cookie(monkeypatch)
                 })
                 state = _wait_for(lambda: hub.get(session_id))
                 assert state.trainee_id == DEMO_TRAINEE_ID
+                listed = client.get("/api/sessions").json()
+                assert len(listed) == 1 and listed[0]["session_id"] == str(session_id)
+                assert listed[0]["scenario_id"] == "fire-apartment-l2"
                 who = client.post("/api/auth/login", json={
                     "login": "demo-trainee", "password": "demo"
                 }).json()

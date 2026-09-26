@@ -23,7 +23,7 @@ first_line: "Горит! На девятом этаже окно, а рядом 
 
 facts:
   - id: f_address
-    value: "улица Цюрупы, дом 12, корпус 6, подъезд единственный, балкон со стороны подъезда"
+    value: "Москва, улица Цюрупы, дом 12, корпус 6, подъезд единственный, балкон со стороны подъезда"
     reveal_on: { question: q_address }
   - id: f_what_burns
     value: "горит одно окно на девятом этаже, открытое пламя"
@@ -31,6 +31,9 @@ facts:
   - id: f_people
     value: "рядом на балконе двое людей, кричат о помощи"
     reveal_on: { question: q_people }
+  - id: f_observer
+    value: "заявитель наблюдает за пожаром с улицы"
+    reveal_on: { question: q_observer }
   - id: f_gas
     value: "дом не газифицирован, этажность семнадцать"
     reveal_on: { question: q_gas }
@@ -42,13 +45,14 @@ checklist:
   - { id: q_address, fact: f_address }
   - { id: q_what_burns, fact: f_what_burns }
   - { id: q_people, fact: f_people }
+  - { id: q_observer, question: "Откуда вы наблюдаете пожар?", fact: f_observer }
   - { id: q_gas, fact: f_gas }
   - { id: q_caller, fact: f_caller }
 
 required_fields: [address, floor, incident_type, description, victims_count]
 
 ground_truth:
-  address: "улица Цюрупы, дом 12, корпус 6, единственный подъезд, балкон со стороны подъезда"
+  address: "Москва, улица Цюрупы, дом 12, корпус 6, единственный подъезд, балкон со стороны подъезда"
   victims: 2
 
 tree:

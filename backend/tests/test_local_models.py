@@ -14,8 +14,10 @@ from app.dialog.persona import PersonaState
 from app.scoring.grammar import assess, basic_check
 from app.dialog.slots import SlotMachine
 from app.voice.models import WhisperRecognizer
+from scripts import local_llms
 from scripts import local_stt
 from tests.test_slots import SCENARIO, StemEmbedder
+from tests.test_refinement import SCENARIO as REFINED_SCENARIO
 
 
 @pytest.fixture(autouse=True)
@@ -42,10 +44,11 @@ def test_offline_model_address_must_be_literal_loopback():
 
 
 @pytest.mark.asyncio
-async def test_local_llm_uses_loopback_without_api_key(monkeypatch):
+@pytest.mark.parametrize("api_key", ["", "leftover-cloud-key"])
+async def test_local_llm_never_sends_an_api_key(monkeypatch, api_key):
     monkeypatch.setenv("OFFLINE", "true")
     monkeypatch.setenv("LLM_PROVIDER", "local")
-    monkeypatch.setenv("LLM_API_KEY", "")
+    monkeypatch.setenv("LLM_API_KEY", api_key)
     requests = []
 
     def answer(request):
@@ -112,6 +115,58 @@ async def test_malformed_local_answer_falls_back_instead_of_crashing(monkeypatch
             await client.complete(LlmRequest(messages=[], model="Qwen3-1.7B"), use_cache=False)
     finally:
         await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_llm_error_does_not_expose_provider_body(monkeypatch):
+    monkeypatch.setenv("OFFLINE", "true")
+    monkeypatch.setenv("LLM_PROVIDER", "local")
+    client = LlmClient(transport=httpx.MockTransport(
+        lambda _: httpx.Response(500, text="private incident address: 17 Example Street")
+    ))
+    try:
+        with pytest.raises(LlmUnavailable) as raised:
+            await client.complete(
+                LlmRequest(messages=[{"role": "user", "content": "redacted prompt"}],
+                           model="Qwen3-1.7B"),
+                use_cache=False,
+            )
+        assert "HTTP 500" in str(raised.value)
+        assert "Example Street" not in str(raised.value)
+        assert "redacted prompt" not in str(raised.value)
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_llm_cache_write_failure_does_not_log_prompt_or_response(caplog):
+    class FakeDb:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def add(self, _row):
+            return None
+
+        async def commit(self):
+            raise RuntimeError("sensitive prompt echoed by database driver")
+
+    request = LlmRequest(
+        messages=[{"role": "user", "content": "private caller address"}],
+        model="Qwen3-1.7B",
+    )
+    client = LlmClient(sessionmaker=FakeDb)
+    try:
+        await client._to_cache("hash", request, "private caller response")
+    finally:
+        await client.aclose()
+
+    assert "sensitive prompt" not in caplog.text
+    assert "private caller address" not in caplog.text
+    assert "private caller response" not in caplog.text
+    assert "RuntimeError" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -243,6 +298,37 @@ async def test_rejected_qwen_turn_does_not_poison_next_turn():
     assert all("99" not in message["content"] for message in client.requests[1].messages)
 
 
+@pytest.mark.asyncio
+async def test_address_correction_discards_old_value_from_qwen_context():
+    old_address = "улица Станционная, дом 28"
+    new_address = "Королёв, улица Станционная, дом 28"
+
+    class FakeClient:
+        def __init__(self):
+            self.requests = []
+            self.answers = iter([old_address, new_address])
+
+        async def complete(self, request):
+            self.requests.append(request)
+            return next(self.answers)
+
+    client = FakeClient()
+    caller = LlmCaller(client, "Qwen3-1.7B")
+    slots = SlotMachine(REFINED_SCENARIO, StemEmbedder(), floor=0.5)
+    persona = PersonaState(REFINED_SCENARIO.persona)
+
+    first = await caller.reply(slots.hear("Назовите адрес"), persona, slots)
+    assert first.source == "local_llm"
+    refined_turn = slots.hear("Это точно Москва город?")
+    second = await caller.reply(refined_turn, persona, slots)
+
+    assert refined_turn.refined == ["f_address"]
+    assert second.source == "local_llm"
+    assert second.text == new_address
+    assert len(client.requests[1].messages) == 2  # system + current user turn; no stale dialogue history
+    assert client.requests[1].messages[-1]["content"] == "Это точно Москва город?"
+
+
 def test_whisper_cpp_uses_loopback_wav_only():
     requests = []
 
@@ -274,3 +360,44 @@ def test_whisper_cpp_command_is_local_and_uses_downloaded_weight(tmp_path, monke
     assert "127.0.0.1" in argv
     assert "18082" in argv
     assert "ggml-small-q5_1.bin" in " ".join(argv)
+
+
+def test_windows_llama_runner_uses_explicit_exe_and_ignores_bundled_macos(
+    tmp_path, monkeypatch,
+):
+    mac_binary = tmp_path / "models" / "bin" / "llama-b10934" / "llama-server"
+    mac_binary.parent.mkdir(parents=True)
+    mac_binary.write_bytes(b"Mach-O test fixture")
+    windows_binary = tmp_path / "llama-server.exe"
+    windows_binary.write_bytes(b"Windows test fixture")
+    monkeypatch.setattr(local_llms, "ROOT", tmp_path)
+    monkeypatch.setattr(local_llms.sys, "platform", "win32")
+    monkeypatch.setattr(local_llms.shutil, "which", lambda _name: None)
+    monkeypatch.setenv("LLAMA_SERVER_BIN", str(windows_binary))
+    assert local_llms.binary_path() == str(windows_binary)
+
+    monkeypatch.delenv("LLAMA_SERVER_BIN")
+    with pytest.raises(RuntimeError, match="llama-server"):
+        local_llms.binary_path()
+
+
+def test_windows_whisper_runner_uses_explicit_exe_and_ignores_bundled_macos(
+    tmp_path, monkeypatch,
+):
+    mac_binary = (
+        tmp_path / "models" / "bin" / "whisper.cpp-1.9.4" / "build" / "bin"
+        / "whisper-server"
+    )
+    mac_binary.parent.mkdir(parents=True)
+    mac_binary.write_bytes(b"Mach-O test fixture")
+    windows_binary = tmp_path / "whisper-server.exe"
+    windows_binary.write_bytes(b"Windows test fixture")
+    monkeypatch.setattr(local_stt, "ROOT", tmp_path)
+    monkeypatch.setattr(local_stt.sys, "platform", "win32")
+    monkeypatch.setattr(local_stt.shutil, "which", lambda _name: None)
+    monkeypatch.setenv("WHISPER_SERVER_BIN", str(windows_binary))
+    assert local_stt.binary_path() == str(windows_binary)
+
+    monkeypatch.delenv("WHISPER_SERVER_BIN")
+    with pytest.raises(RuntimeError, match="whisper-server"):
+        local_stt.binary_path()

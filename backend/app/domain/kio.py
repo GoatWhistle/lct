@@ -133,8 +133,29 @@ class KIO(BaseModel):
 
 #: Поля, которые курсант не редактирует: их проставляет система.
 READ_ONLY_FIELDS: frozenset[str] = frozenset(
-    {"card_id", "registered_at", "caller_number", "response_status", "incident_code", "notify"}
+    {
+        "card_id", "registered_at", "caller_number", "response_status",
+        "incident_code", "notify", "dispatch_order_at", "arrival_at",
+    }
 )
+
+# Поля, которые реально можно заполнить в форме курсантского КИО. Держим
+# отдельный allowlist: наличие атрибута в модели ещё не означает, что форма
+# умеет его показать и отправить (например, coords или служебные timestamps).
+EDITABLE_KIO_FIELDS: frozenset[str] = frozenset({
+    "caller_name", "caller_contact", "phone_on_scene", "language",
+    "okato", "address", "street", "building", "entrance", "floor",
+    "intercom_code", "description", "incident_group", "signs",
+    "incident_type", "victims_count", "is_emergency", "life_threat",
+    "evacuation_needed", "dds",
+    "fire.fire_nature", "fire.object_kind", "fire.floors", "fire.gasified",
+    "fire.people_inside", "fire.smoke_spread",
+    "police.offence_kind", "police.suspects", "police.suspect_fled",
+    "police.vehicle",
+    "medical.reason", "medical.conscious", "medical.breathing",
+    "medical.can_move", "medical.age",
+    "utility.failure_kind", "utility.scale", "utility.threat_to_residents",
+})
 
 
 def get_field(card: KIO, path: str) -> Any:

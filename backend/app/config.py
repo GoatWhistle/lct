@@ -1,6 +1,9 @@
 """Настройки. Нормативы ГОСТ — в миллисекундах и из конфига, не из кода."""
 
+import platform
 from functools import lru_cache
+from typing import Literal
+from urllib.parse import unquote, urlsplit
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -11,8 +14,23 @@ from app.domain.timers import NORMATIVES, TimerCode
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # `production` activates fail-closed checks for session signing and cookies.
+    app_env: Literal["development", "production"] = "development"
+
     # Данные
     database_url: str = "postgresql+asyncpg://lct:lct@localhost:5432/lct"
+    # HTTP auth and WebSocket handshakes both validate against PostgreSQL.
+    # Keep enough warm slots for concurrent classroom joins without tying up
+    # the whole server's PostgreSQL connection budget.
+    db_pool_size: int = Field(default=20, ge=1, le=100)
+    db_pool_max_overflow: int = Field(default=10, ge=0, le=100)
+    # Unique and stable per backend process/container. Cluster deployments
+    # should set this explicitly so a restart retains its session ownership.
+    backend_node_id: str = Field(
+        default_factory=lambda: platform.node() or "local",
+        min_length=1,
+        max_length=128,
+    )
     # Только локальная демонстрация: живые занятия и отчёты в памяти, без
     # Postgres и без долговременного журнала. Не включать на учебном стенде.
     demo_no_db: bool = False
@@ -63,6 +81,7 @@ class Settings(BaseSettings):
     llm_control_base_url: str = "http://127.0.0.1:18081/v1"
     llm_model_control: str = "Vikhr-1B"
     grammar_llm_enabled: bool = False
+    assessment_feedback_enabled: bool = True
     dialogue_model_mode: str = "dialogue"  # dialogue | russian_control
     # Docker Desktop даёт контейнеру специальное имя хоста. Оно разрешается
     # только явным флагом: обычный OFFLINE по-прежнему принимает лишь literal
@@ -79,11 +98,52 @@ class Settings(BaseSettings):
     #: Вход без пароля для `make lesson` и тестов. На стенде выключен.
     dev_auth_bypass: bool = False
 
+    # Необязательная интеграция с локальным AD/LDAP-каталогом. Пароль
+    # сервисной учётки никогда не показывается в диагностиках/config repr.
+    # LDAP без TLS намеренно не поддерживается: используйте ldaps:// либо
+    # ldap:// с обязательным StartTLS.
+    ldap_enabled: bool = False
+    ldap_url: str = ""
+    ldap_base_dn: str = ""
+    ldap_bind_dn: str = ""
+    ldap_bind_password: str = Field(default="", repr=False)
+    ldap_user_filter: str = "(objectClass=person)"
+    ldap_login_attribute: str = "sAMAccountName"
+    ldap_role_groups: dict[str, str] = {}
+    ldap_service_groups: dict[str, str] = {}
+    ldap_ca_certs_file: str = ""
+    ldap_connect_timeout_seconds: int = Field(default=5, ge=1, le=30)
+
     # Нормативы: переопределяют значения по умолчанию из domain/timers.py
     timer_limits_ms: dict[TimerCode, int] = {}
 
     def limit_ms(self, code: TimerCode) -> int:
         return self.timer_limits_ms.get(code, NORMATIVES[code].limit_ms)
+
+    def validate_deployment_security(self) -> None:
+        """Reject known development authentication defaults on a production app."""
+        if self.app_env != "production":
+            return
+        problems: list[str] = []
+        if self.demo_no_db:
+            problems.append("DEMO_NO_DB must be disabled")
+        if self.dev_auth_bypass:
+            problems.append("DEV_AUTH_BYPASS must be disabled")
+        if not self.offline:
+            problems.append("OFFLINE must be enabled for the local training deployment")
+        if self.llm_provider != "local":
+            problems.append("LLM_PROVIDER must be local for the local training deployment")
+        if self.session_secret == "dev-secret-поменять-на-стенде" or len(self.session_secret) < 32:
+            problems.append("SESSION_SECRET must be a unique value of at least 32 characters")
+        database_password = unquote(urlsplit(self.database_url).password or "")
+        if (len(database_password) < 32
+                or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._~-"
+                       for char in database_password)):
+            problems.append("PostgreSQL password must contain at least 32 URL-safe characters")
+        if not self.secure_cookies:
+            problems.append("SECURE_COOKIES must be enabled (HTTPS/WSS required)")
+        if problems:
+            raise ValueError("unsafe production security configuration: " + "; ".join(problems))
 
 
 @lru_cache

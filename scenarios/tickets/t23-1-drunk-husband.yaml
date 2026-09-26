@@ -22,7 +22,7 @@ first_line: "У соседей скандал, женщине нужна ско�
 
 facts:
   - id: f_address
-    value: "улица Тихомирова, дом 15, корпус 1, квартира 79, подъезд 2, этаж 4, код 80В"
+    value: "Москва, улица Тихомирова, дом 15, корпус 1, квартира 79, подъезд 2, этаж 4, код 80В"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "скандал с пьяным мужем, требуется скорая"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description, victims_count]
 
 ground_truth:
-  address: "улица Тихомирова, дом 15, корпус 1, квартира 79, подъезд 2, этаж 4, код домофона 80В"
+  address: "Москва, улица Тихомирова, дом 15, корпус 1, квартира 79, подъезд 2, этаж 4, код 80В"
   victims: 1
 
 tree:

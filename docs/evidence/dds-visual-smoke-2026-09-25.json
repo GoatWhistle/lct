@@ -1,0 +1,41 @@
+{
+  "date": "2026-09-25",
+  "test": "DDS register/card visual smoke",
+  "frontend": "current Vite workspace, Chromium headless",
+  "backend": "DEMO_NO_DB on 127.0.0.1; one synthetic fire-apartment-l2 session",
+  "viewport": "1920x1080",
+  "checks": {
+    "active_incident_visible_in_register": true,
+    "register_row_opens_card": true,
+    "card_back_returns_to_register": true,
+    "advanced_status_filter_works": true,
+    "page_size_selector_works": true,
+    "all_recipient_service_tabs_rendered": true,
+    "only_assigned_service_tab_is_actionable": true,
+    "dispatcher_actions_stay_visible_beside_overflowing_recipient_tabs": true,
+    "mobile_dock_has_no_horizontal_page_overflow": true,
+    "duplicate_app_header_removed": true,
+    "card_action_dock_visible": true
+  },
+  "screenshots": {
+    "register": "dds-registry-visual-smoke-2026-09-25.png",
+    "advanced_search": "dds-registry-advanced-search-2026-09-25.png",
+    "card": "dds-card-visual-smoke-2026-09-25.png",
+    "card_mobile": "dds-card-mobile-visual-smoke-2026-09-25.png"
+  },
+  "multi_service_dock": {
+    "recipient_tabs": 18,
+    "assigned_actionable_tabs": 1,
+    "desktop_recipient_scroll_width_px": 2745,
+    "desktop_recipient_visible_width_px": 1468,
+    "desktop_action_dock_right_px": 1920,
+    "mobile_viewport_and_document_width_px": [390, 390]
+  },
+  "result": "passed: fresh local capture and manual visual review; not a pixel-diff pass",
+  "limitations": [
+    "synthetic in-memory demo data; no PostgreSQL or external integrations",
+    "comparison excludes customer Windows/browser chrome",
+    "advanced search filters only the active session's in-memory queue; no durable historical register or notification feed is claimed",
+    "customer-specific sorting/filtering and exact pixel match are not yet reproduced"
+  ]
+}

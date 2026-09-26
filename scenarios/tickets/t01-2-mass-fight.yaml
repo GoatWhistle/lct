@@ -23,7 +23,7 @@ first_line: "Алло! Тут десять-пятнадцать человек �
 
 facts:
   - id: f_address
-    value: "рядом с посольством Азербайджана, на тротуаре"
+    value: "Москва, рядом с посольством Азербайджана, на тротуаре"
     refined: "Леонтьевский переулок, дом 16, строение 1"
     reveal_on: { question: q_address }
     refine_on: q_address_check
@@ -51,7 +51,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Леонтьевский переулок, дом 16, строение 1"
+  address: "Москва, Леонтьевский переулок, дом 16, строение 1"
   victims: 5
 
 tree:

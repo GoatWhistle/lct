@@ -22,7 +22,7 @@ first_line: "Сыну плохо, голова кружится, сознани�
 
 facts:
   - id: f_address
-    value: "улица Беломорская, дом 10, корпус 2, на дворовой дороге"
+    value: "Москва, улица Беломорская, дом 10, корпус 2, на дворовой дороге"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "головокружение, теряет сознание"
@@ -31,7 +31,7 @@ facts:
     value: "Легкодушев Дмитрий Константинович, дата рождения 31.05.2011"
     reveal_on: { question: q_who }
   - id: f_conscious
-    value: "теряет сознание; не знаю, приходит ли в себя"
+    value: "теряет сознание; в исходной карточке не указано, приходит ли в себя"
     reveal_on: { question: q_conscious }
   - id: f_caller
     value: "вызывает отец, Максимов Олег Иванович, телефон 916 897 5623"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Беломорская, дом 10, корпус 2, на дворовой дороге"
+  address: "Москва, улица Беломорская, дом 10, корпус 2, на дворовой дороге"
   victims: 1
 
 tree:

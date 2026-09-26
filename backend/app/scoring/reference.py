@@ -53,7 +53,6 @@ def build(scenario: Scenario) -> ReferenceDialog:
                 # звонке: эталон должен звучать так же, а не литературно.
                 answer=REVEAL[mood].format(fact=fact.value) if fact else None,
                 required=bool(fact and fact.id in required),
-                hidden=bool(fact and fact.hidden),
             )
         )
     return ReferenceDialog(scenario_id=scenario.id, first_line=scenario.first_line, steps=steps)

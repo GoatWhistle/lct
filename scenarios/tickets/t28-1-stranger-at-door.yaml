@@ -22,7 +22,7 @@ first_line: "У подъезда молодой человек стоит, ко�
 
 facts:
   - id: f_address
-    value: "улица Матвеевская, дом 28, корпус 1, подъезд 5, код 100"
+    value: "Москва, улица Матвеевская, дом 28, корпус 1, подъезд 5, код 100"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "стоит у домофона, в подъезд не заходит, причину присутствия старшей по подъезду не пояснил"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, entrance, incident_type, description]
 
 ground_truth:
-  address: "улица Матвеевская, дом 28, корпус 1, подъезд 5, код домофона 100"
+  address: "Москва, улица Матвеевская, дом 28, корпус 1, подъезд 5, код 100"
   victims: null
 
 tree:

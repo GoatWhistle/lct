@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description]
 
 ground_truth:
-  address: "Московская область, Красногорск, улица Пионерская, дом 19, квартира 5, подъезд 1, этаж 2, код домофона 5В"
+  address: "Московская область, Красногорск, улица Пионерская, дом 19, квартира 5, подъезд 1, этаж 2, код 5В"
   victims: 1
 
 tree:

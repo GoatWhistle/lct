@@ -1,6 +1,6 @@
 """Сводка ошибок и рекомендаций учебной группы для преподавателя."""
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -8,7 +8,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import audit, require
+from app.api.auth import add_audit_entry, audit_required, require
 from app.db.base import get_session
 from app.db.models import Group, Score, Session, Trainee, User
 from app.domain.roles import Role
@@ -113,14 +113,16 @@ async def create(
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="group_name_required")
-    group = Group(name=name, owner_login=who.login if who.role is Role.INSTRUCTOR else None)
+    group = Group(
+        id=uuid4(), name=name, owner_login=who.login if who.role is Role.INSTRUCTOR else None
+    )
     db.add(group)
+    add_audit_entry(db, who.login, who.role.value, "group.create", str(group.id), group.name)
     try:
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail="group_exists") from exc
-    await audit(who.login, who.role.value, "group.create", str(group.id), group.name)
     return GroupOut(id=group.id, name=group.name)
 
 
@@ -142,14 +144,11 @@ async def transfer_ownership(
             raise HTTPException(status_code=422, detail="active_instructor_required")
     previous_owner = group.owner_login
     group.owner_login = body.owner_login
-    await db.commit()
-    await audit(
-        who.login,
-        who.role.value,
-        "group.transfer",
-        str(group.id),
+    add_audit_entry(
+        db, who.login, who.role.value, "group.transfer", str(group.id),
         f"{previous_owner or 'admin'} -> {body.owner_login or 'admin'}",
     )
+    await db.commit()
     return GroupOut(id=group.id, name=group.name)
 
 
@@ -174,8 +173,8 @@ async def assign_trainee(
         if current_group is None or current_group.owner_login != who.login:
             raise HTTPException(status_code=409, detail="trainee_in_other_instructor_group")
     trainee.group_id = group_id
+    add_audit_entry(db, who.login, who.role.value, "group.assign", str(group.id), str(trainee_id))
     await db.commit()
-    await audit(who.login, who.role.value, "group.assign", str(group.id), str(trainee_id))
     return GroupOut(id=group.id, name=group.name)
 
 
@@ -204,5 +203,7 @@ async def ai_insight(
         raise HTTPException(status_code=503, detail=f"локальная модель недоступна: {exc}") from exc
     except InsightInvalid as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    await audit(who.login, who.role.value, "group.ai_insight", str(group_id), "aggregated_only")
+    await audit_required(
+        who.login, who.role.value, "group.ai_insight", str(group_id), "aggregated_only"
+    )
     return GroupInsightOut(**insight)

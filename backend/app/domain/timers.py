@@ -19,6 +19,8 @@ class TimerCode(StrEnum):
     INTERVIEW = "interview"
     DDS_NOTIFY = "dds_notify"
     DDS_ACK = "dds_ack"
+    DDS_WORK = "dds_work"
+    CARD_FILL = "card_fill"
     ZONE_CHECK = "zone_check"
     CALLBACK = "callback"
     CLOSE = "close"
@@ -61,6 +63,18 @@ NORMATIVES: dict[TimerCode, Normative] = {
         title="Подтверждение получения карточки",
         limit_ms=30_000,
         ref="ПП РФ № 1931",
+    ),
+    TimerCode.CARD_FILL: Normative(
+        code=TimerCode.CARD_FILL,
+        title="Заполнение карточки КИО",
+        limit_ms=180_000,
+        ref="ТЗ задачи № 9; сессия вопросов и ответов 16.09.2026",
+    ),
+    TimerCode.DDS_WORK: Normative(
+        code=TimerCode.DDS_WORK,
+        title="Отработка карточки ДДС",
+        limit_ms=180_000,
+        ref="ТЗ задачи № 9; сессия вопросов и ответов 16.09.2026",
     ),
     TimerCode.ZONE_CHECK: Normative(
         code=TimerCode.ZONE_CHECK, title="Проверка зоны ответственности", limit_ms=30_000

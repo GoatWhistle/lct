@@ -79,6 +79,7 @@ def build(session_id: UUID, state, scenario: Scenario) -> SessionReport:
                      if state.exercise is Exercise.DDS and state.dds_scenarios
                      else scenario.id),
         mode=state.mode,
+        exercise=state.exercise,
         attempt=state.attempt,
         criteria=state.criteria,
         failed_metrics=failed_metrics,

@@ -47,6 +47,7 @@ export function SelfAssessment({
             <td>
               <input
                 type="text"
+                aria-label="Комментарий к самооценке"
                 value={comment}
                 placeholder="например: запнулся на адресе, растерялся"
                 onChange={(event) => setComment(event.target.value)}

@@ -4,12 +4,18 @@
 профиль читается по HTTP. Без Postgres пропускается.
 """
 
+import asyncio
 import time
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from app.config import get_settings
+from app.api.auth import Principal
+from app.api.http import trainees as trainees_api
+from app.domain.roles import Role
 from app.main import app
 from app.session.hub import hub
 
@@ -25,7 +31,7 @@ def client():
     try:
         socket.create_connection((url.hostname or "localhost", url.port or 5432), timeout=2).close()
     except OSError as exc:
-        pytest.skip(f"Postgres недоступен ({exc}) — подними `make dev`")
+        pytest.skip(f"Postgres недоступен ({exc}) — запусти `make test-db`")
     with TestClient(app) as test_client:
         # Сокеты закрыты ролями (lct-23): тесты входят так же,
         # как `make lesson`, — через dev-token за флагом.
@@ -86,6 +92,102 @@ def test_profile_shows_attempts_and_delta(client):
     if delta["facts_got"] is not None:
         assert delta["facts_got"] >= 0, "во второй попытке фактов добыто не меньше"
 
+    # Личный совет должен отражать последнюю оценённую попытку, а не копить
+    # нарушения за всю историю и не раскрывать неизвестные коды таксономии.
+    latest_scored = next(item for item in reversed(profile["attempts"]) if item["score"] is not None)
+    latest_codes = latest_scored["codes"]
+    from app.scoring.group import RECOMMENDATIONS
+
+    recommendations = profile["recommendations"]
+    assert len(recommendations) <= 5
+    expected_codes = {
+        code for code, count in latest_codes.items()
+        if code in RECOMMENDATIONS and isinstance(count, int) and count > 0
+    }
+    assert {item["code"] for item in recommendations} == expected_codes
+    for item in recommendations:
+        assert item["occurrences"] == latest_codes[item["code"]]
+        assert item["title"] and item["recommendation"]
+
 
 def test_profile_of_unknown_trainee_is_404(client):
     assert client.get(f"/api/trainees/{uuid4()}/profile").status_code == 404
+
+
+def test_personal_recommendations_are_explainable_and_limited_to_known_codes():
+    from app.api.http.trainees import _personal_recommendations
+
+    result = _personal_recommendations({"D6": 1, "E1": 3, "unknown": 99, "D2": 0})
+    assert [item.code for item in result] == ["E1", "D6"]
+    assert result[0].title == "Пропущенный факт"
+    assert result[0].recommendation
+    assert result[0].occurrences == 3
+
+
+def test_profile_read_is_audited_without_copying_profile_data(monkeypatch):
+    trainee_id = uuid4()
+    trainee = SimpleNamespace(id=trainee_id, name="Курсант Петров", group_id=None)
+    who = Principal(
+        login="trainee-login", full_name=trainee.name, role=Role.TRAINEE,
+        trainee_id=trainee_id,
+    )
+
+    class Rows:
+        def __iter__(self):
+            return iter(())
+
+    class Database:
+        async def get(self, model, key):
+            assert key == trainee_id
+            return trainee
+
+        async def execute(self, _statement):
+            return Rows()
+
+    events = []
+
+    async def capture(actor, role, action, object_id=None, detail=""):
+        events.append((actor, role, action, object_id, detail))
+
+    monkeypatch.setattr(trainees_api, "require", lambda *_args, **_kwargs: who)
+    monkeypatch.setattr(trainees_api, "audit_required", capture)
+    result = asyncio.run(trainees_api.profile(trainee_id, object(), Database()))
+
+    assert result.trainee.name == "Курсант Петров"
+    assert events == [("trainee-login", "trainee", "trainee.profile.read", str(trainee_id), "")]
+
+
+def test_certificate_export_is_audited_before_response(monkeypatch):
+    trainee_id = uuid4()
+    trainee = SimpleNamespace(id=trainee_id, name="Курсант Петров", group_id=None)
+    who = Principal(login="teacher", full_name="Преподаватель", role=Role.INSTRUCTOR)
+
+    class Result:
+        def one(self):
+            return 1, 90.0, datetime(2026, 9, 26, tzinfo=timezone.utc)
+
+    class Database:
+        async def scalar(self, _statement):
+            return uuid4()
+
+        async def get(self, model, key):
+            assert key == trainee_id
+            return trainee
+
+        async def execute(self, _statement):
+            return Result()
+
+    events = []
+
+    async def capture(actor, role, action, object_id=None, detail=""):
+        events.append((actor, role, action, object_id, detail))
+
+    monkeypatch.setattr(trainees_api, "require", lambda *_args, **_kwargs: who)
+    monkeypatch.setattr(trainees_api, "audit_required", capture)
+    monkeypatch.setattr(trainees_api, "certificate_pdf", lambda **_kwargs: b"%PDF-test")
+    response = asyncio.run(trainees_api.certificate(trainee_id, object(), Database()))
+
+    assert response.body == b"%PDF-test"
+    assert events == [
+        ("teacher", "instructor", "trainee.certificate.export.pdf", str(trainee_id), "")
+    ]

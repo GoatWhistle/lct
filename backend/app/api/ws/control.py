@@ -11,18 +11,23 @@
 import asyncio
 import logging
 import math
+import secrets
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from app.api.auth import audit, principal_of
+from app.api.auth import audit, principal_of, websocket_origin_allowed
+from app.config import get_settings
+from app.db.base import get_sessionmaker
+from app.db.repo import SessionNodeConflict
 from app.dialog.director import apply as apply_directive
 from app.dialog.director import mood_of
 from app.dialog.factory import build_caller
 from app.dialog.persona import PersonaState
 from app.dialog.runtime import get_embedder
 from app.dialog.slots import SlotMachine
+from app.domain.classifiers import Outcome
 from app.domain.events import (
     CallEnded,
     CallEndReason,
@@ -43,7 +48,7 @@ from app.domain.roles import Role
 from app.domain.timers import TimerCode
 from app.scenarios import store
 from app.session.dds import prepare_queue
-from app.session.hub import hub
+from app.session.hub import LEASE_FENCED_MESSAGE, hub
 from app.session.state import SessionState, now_utc
 from app.voice.models import get_voice_models
 from app.voice.pipeline import FILLERS, prefetch
@@ -54,21 +59,16 @@ router = APIRouter()
 _adapter = TypeAdapter(InstructorToServer)
 
 
-def card_briefing(state: SessionState) -> CardBriefing:
-    """Учебная текстовая вводная — исходные реплики, а не эталон карточки.
+def _dds_ineligible_scenarios(scenarios):
+    """Консультация и передача региона не являются готовыми карточками ДДС."""
+    return [scenario for scenario in scenarios if scenario.outcome is not Outcome.CARD]
 
-    В отсутствие диалога факты раскрываются сразу. Если факт уточняется,
-    показываем и уточнение: иначе правильно заполнить карточку невозможно.
-    """
+
+def card_briefing(state: SessionState) -> CardBriefing:
+    """Первую реплику показывает курсант; факты раскрываются только в ответах."""
     scenario = state.scenario
-    lines = ["Учебная текстовая вводная: сведения заявителя приведены ниже.",
-             scenario.first_line]
-    for fact in scenario.facts:
-        lines.append(f"• {fact.value}")
-        if fact.refined:
-            lines.append(f"  Уточнено: {fact.refined}")
     return CardBriefing(
-        scenario_id=scenario.id, mode=state.mode, text="\n".join(lines),
+        scenario_id=scenario.id, mode=state.mode, text=scenario.first_line,
         required_fields=([field for field in state.required_fields if field != "dds"]
                          if scenario.ground_truth.incident_code else list(state.required_fields)),
         card=state.kio,
@@ -83,26 +83,122 @@ async def _start(session_id: UUID, event, who=None) -> None:
             message="Передача в ДДС доступна только для текстовой карточки 112",
         ))
         return
-    scenario = store.get(event.scenario_id)
+    scenario_ids = list(dict.fromkeys([
+        event.scenario_id, *(event.scenario_ids or []), *(event.random_scenario_ids or []),
+    ]))
+    if get_settings().demo_no_db or hub.journal is None:
+        catalog = {
+            scenario_id: scenario for scenario_id in scenario_ids
+            if (scenario := store.get(scenario_id)) is not None
+        }
+        hidden_scenario_ids = (
+            await store.scenario_ids_owned_by_other(None, who.login)
+            if who is not None else set()
+        )
+    else:
+        try:
+            async with get_sessionmaker()() as db:
+                catalog, hidden_scenario_ids = await store.published_catalog(
+                    db, scenario_ids, who.login if who is not None else None,
+                )
+        except Exception as exc:
+            # Avoid serializing scenario facts or SQL bind values into application logs.
+            log.error("не удалось разрешить сценарий из общей библиотеки (%s)", type(exc).__name__)
+            hub.to_observers(session_id, ErrorEvent(
+                code=ErrorKind.INTERNAL,
+                message="Не удалось проверить сценарий в общей библиотеке; запуск отменён.",
+            ))
+            return
+    scenario = catalog.get(event.scenario_id)
     if scenario is None:
         hub.to_observers(
             session_id,
             ErrorEvent(code=ErrorKind.SCENARIO_INVALID, message=f"Нет сценария {event.scenario_id}"),
         )
         return
+    if scenario.id in hidden_scenario_ids:
+        hub.to_observers(session_id, ErrorEvent(
+            code=ErrorKind.SCENARIO_INVALID,
+            message="Сценарий не найден или недоступен этому преподавателю",
+        ))
+        return
+
+    if event.random_scenario_ids:
+        if len(event.random_scenario_ids) > 96:
+            hub.to_observers(session_id, ErrorEvent(
+                code=ErrorKind.SCENARIO_INVALID,
+                message="Случайный отбор ограничен 96 карточками",
+            ))
+            return
+        pool_ids = list(dict.fromkeys(event.random_scenario_ids))
+        pool = [catalog.get(scenario_id) for scenario_id in pool_ids]
+        if any(item is None for item in pool):
+            hub.to_observers(session_id, ErrorEvent(
+                code=ErrorKind.SCENARIO_INVALID,
+                message="В случайном отборе есть неизвестный сценарий",
+            ))
+            return
+        if hidden_scenario_ids.intersection(pool_ids):
+            hub.to_observers(session_id, ErrorEvent(
+                code=ErrorKind.SCENARIO_INVALID,
+                message="Сценарий не найден или недоступен этому преподавателю",
+            ))
+            return
+        ineligible_pool = _dds_ineligible_scenarios(pool)
+        if ineligible_pool:
+            hub.to_observers(session_id, ErrorEvent(
+                code=ErrorKind.SCENARIO_INVALID,
+                message="Случайный отбор должен содержать только готовые карточки ДДС",
+            ))
+            return
+        scenario = secrets.choice(pool)
 
     scenario_ids = event.scenario_ids or [event.scenario_id]
-    if event.exercise is Exercise.DDS:
-        if not scenario_ids or scenario_ids[0] != event.scenario_id or len(scenario_ids) > 96:
+    if event.exercise is Exercise.DDS or event.handoff_to_dds:
+        if (not scenario_ids or scenario_ids[0] != event.scenario_id
+                or len(scenario_ids) > 96):
             hub.to_observers(session_id, ErrorEvent(
                 code=ErrorKind.SCENARIO_INVALID,
                 message="Очередь ДДС должна начинаться с scenario_id и содержать не более 96 карточек",
             ))
             return
-        scenarios = [store.get(scenario_id) for scenario_id in scenario_ids]
+        if event.random_scenario_ids:
+            extra_ids = list(dict.fromkeys(
+                item for item in scenario_ids[1:] if item != scenario.id
+            ))
+            extras = [catalog.get(item) for item in extra_ids]
+            remaining_random = [item for item in pool if item.id != scenario.id
+                                and item.id not in extra_ids]
+            randomized_tail = secrets.SystemRandom().sample(
+                remaining_random, k=len(remaining_random)
+            )
+            scenarios = [scenario, *extras, *randomized_tail]
+        else:
+            scenarios = [catalog.get(scenario_id) for scenario_id in scenario_ids]
+        if len(scenarios) > 96:
+            hub.to_observers(session_id, ErrorEvent(
+                code=ErrorKind.SCENARIO_INVALID,
+                message="Очередь ДДС не может содержать более 96 карточек",
+            ))
+            return
         if any(item is None for item in scenarios):
             hub.to_observers(session_id, ErrorEvent(
                 code=ErrorKind.SCENARIO_INVALID, message="В очереди ДДС есть неизвестный сценарий",
+            ))
+            return
+        if any(item.id in hidden_scenario_ids for item in scenarios):
+            hub.to_observers(session_id, ErrorEvent(
+                code=ErrorKind.SCENARIO_INVALID,
+                message="Сценарий не найден или недоступен этому преподавателю",
+            ))
+            return
+        ineligible = _dds_ineligible_scenarios(scenarios)
+        if ineligible:
+            titles = ", ".join(item.title for item in ineligible)
+            hub.to_observers(session_id, ErrorEvent(
+                code=ErrorKind.SCENARIO_INVALID,
+                message=("В очередь ДДС можно добавить только готовые карточки с исходом "
+                         f"«карточка и передача в ДДС». Исключите: {titles}"),
             ))
             return
     else:
@@ -111,12 +207,27 @@ async def _start(session_id: UUID, event, who=None) -> None:
     attempt = 1
     recorded_trainee_id = event.trainee_id
     recorded_service = None
+    fencing_epoch = 0
     if hub.journal:
         try:
-            attempt, recorded_trainee_id, recorded_service = await hub.journal.start_lesson(
+            persisted = await hub.journal.start_lesson(
                 session_id, scenario.id, event.mode.value, event.trainee, event.trainee_id,
                 owner_login=who.login if who is not None else None,
+                backend_node_id=get_settings().backend_node_id,
             )
+            if persisted is None:
+                hub.to_observers(session_id, ErrorEvent(
+                    code=ErrorKind.INTERNAL,
+                    message="Не удалось записать занятие и аудит; запуск отменён.",
+                ))
+                return
+            attempt, recorded_trainee_id, recorded_service, fencing_epoch = persisted
+        except SessionNodeConflict:
+            hub.to_observers(session_id, ErrorEvent(
+                code=ErrorKind.FORBIDDEN,
+                message="Сессия закреплена за другим backend-узлом; проверьте маршрутизацию proxy",
+            ))
+            return
         except PermissionError:
             hub.to_observers(session_id, ErrorEvent(
                 code=ErrorKind.FORBIDDEN,
@@ -134,6 +245,7 @@ async def _start(session_id: UUID, event, who=None) -> None:
         level=scenario.level.value,
         mode=event.mode,
         owner_login=who.login if who is not None else None,
+        backend_fencing_epoch=fencing_epoch,
         exercise=event.exercise,
         handoff_to_dds=event.handoff_to_dds,
         scenario=scenario.model_copy(deep=True),
@@ -145,6 +257,8 @@ async def _start(session_id: UUID, event, who=None) -> None:
         criteria=event.criteria,
     )
     state.timers.limits[TimerCode.DDS_ACK] = event.criteria.decision_time_limit_seconds * 1000
+    state.timers.limits[TimerCode.CARD_FILL] = event.criteria.card_fill_time_limit_seconds * 1000
+    state.timers.limits[TimerCode.DDS_WORK] = event.criteria.dds_card_work_time_limit_seconds * 1000
     if event.exercise is Exercise.CALL:
         embedder = get_embedder()
         if embedder is not None:
@@ -165,6 +279,19 @@ async def _start(session_id: UUID, event, who=None) -> None:
         state.started_at = state.dispatched_at
     else:
         state.started_at = now_utc()
+        if event.exercise is Exercise.CARD:
+            embedder = get_embedder()
+            if embedder is not None:
+                state.slots = SlotMachine(state.scenario, embedder)
+            state.persona = PersonaState(state.scenario.persona)
+            state.caller = build_caller(
+                scenario.id, use_pregenerated=scenario.tree.pregenerated,
+            )
+            state.on_event("card.start")
+        if event.handoff_to_dds:
+            state.pending_dds_scenarios = [item.model_copy(deep=True) for item in scenarios[1:]]
+            state.dds_arrival_interval_seconds = event.dds_arrival_interval_seconds
+            state.dds_max_waiting = event.dds_max_waiting
     hub.register(state)
     if event.exercise is not Exercise.CALL and hub.journal and state.started_at is not None:
         await hub.journal.session_started(session_id, state.started_at)
@@ -178,19 +305,6 @@ async def _start(session_id: UUID, event, who=None) -> None:
         state.on_event("call.incoming")
     await hub.checkpoint(session_id)
     hub.start_ticker(session_id)
-    if who is not None:
-        # Запуск занятия меняет чужой результат — значит попадает в журнал
-        # аудита (ТЗ, хранение не менее шести месяцев).
-        # Сохраняем до продолжения сценария, чтобы завершение процесса не
-        # потеряло событие. ФИО курсанта в долгоживущий журнал не дублируем.
-        await audit(
-            who.login,
-            who.role.value,
-            "lesson.start",
-            str(session_id),
-            f"{scenario.id}, режим {event.mode.value}",
-        )
-
     if event.exercise is Exercise.CALL:
         hub.to_trainee(
             session_id,
@@ -217,6 +331,8 @@ async def _stop(session_id: UUID) -> None:
     if state is None or state.ended:
         return
     state.ended_at = now_utc()
+    if state.exercise is Exercise.CARD and state.dispatched_card is None:
+        state.on_event("card.end")
     state.end_reason = CallEndReason.INSTRUCTOR
     if state.voice is not None:
         await state.voice.close()
@@ -248,6 +364,12 @@ async def _reject(ws: WebSocket, message: str) -> None:
 
 @router.websocket("/ws/control/{session_id}")
 async def control(ws: WebSocket, session_id: UUID) -> None:
+    if not websocket_origin_allowed(ws):
+        await ws.close(code=1008)
+        return
+    if hub.is_lease_fenced(session_id):
+        await ws.close(code=1012)
+        return
     await ws.accept()
 
     # Пульт преподавателя: управление занятием доступно только ему.
@@ -255,9 +377,19 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
     if who is None or who.role not in (Role.INSTRUCTOR,):
         await _reject(ws, "Недостаточно прав для этого экрана")
         return
+    event_stream = hub.begin_event_stream(session_id)
     try:
         while True:
-            payload = await ws.receive_json()
+            try:
+                payload = await asyncio.wait_for(ws.receive_json(), timeout=1)
+            except TimeoutError:
+                if hub.is_lease_fenced(session_id):
+                    await ws.send_text(ErrorEvent(
+                        code=ErrorKind.INTERNAL, message=LEASE_FENCED_MESSAGE
+                    ).model_dump_json())
+                    await ws.close(code=1012)
+                    return
+                continue
             try:
                 event = _adapter.validate_python(payload)
             except ValidationError:
@@ -331,6 +463,23 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                                 message="Оценка должна быть числом от 0 до 100",
                             ))
                             continue
+                        if hub.journal is not None:
+                            saved = await hub.journal.score_override(
+                                session_id, verdict, who.login, event.comment
+                            )
+                            if not saved:
+                                hub.to_observers(session_id, ErrorEvent(
+                                    code=ErrorKind.INTERNAL,
+                                    message="Не удалось сохранить оценку и запись аудита; изменение отменено",
+                                ))
+                                continue
+                        else:
+                            # Explicit in-memory demo mode has no Score table.
+                            await audit(
+                                who.login, who.role.value, "score.override", str(session_id),
+                                f"{state.score.get('score_auto')} → {verdict}; "
+                                f"comment_chars={len(event.comment)}",
+                            )
                         # Автооценка остаётся рядом: видно, что скорректировано и кем.
                         state.score = {
                             **state.score,
@@ -338,14 +487,6 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                             "overridden_by": who.login,
                             "override_comment": event.comment,
                         }
-                        if hub.journal:
-                            await hub.journal.score_override(
-                                session_id, verdict, who.login, event.comment
-                            )
-                        await audit(
-                            who.login, who.role.value, "score.override", str(session_id),
-                            f"{state.score.get('score_auto')} → {verdict}: {event.comment}",
-                        )
                         hub.to_observers(session_id, ScoreReady(session_id=session_id))
                 case "director.inject":
                     state = hub.get(session_id)
@@ -384,6 +525,20 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                             message=f"{event.type} ещё не реализовано",
                         ),
                     )
-            await hub.checkpoint(session_id)
+            try:
+                await hub.checkpoint(session_id)
+            except Exception:
+                if hub.is_lease_fenced(session_id):
+                    await ws.send_text(ErrorEvent(
+                        code=ErrorKind.INTERNAL, message=LEASE_FENCED_MESSAGE
+                    ).model_dump_json())
+                    await ws.close(code=1012)
+                    return
+                raise
+            if hub.is_lease_fenced(session_id):
+                await ws.close(code=1012)
+                return
     except WebSocketDisconnect:
         return
+    finally:
+        await hub.end_event_stream(event_stream)

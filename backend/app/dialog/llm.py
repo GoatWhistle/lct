@@ -136,7 +136,12 @@ class LlmClient:
         try:
             response = await self._client.post(
                 f"{self._base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self._key}"} if self._key else {},
+                # В локальном/offline-режиме ключ не нужен и не должен
+                # утекать даже в заголовок запроса к loopback-процессу.
+                headers=(
+                    {"Authorization": f"Bearer {self._key}"}
+                    if self._key and not self._local_only else {}
+                ),
                 json={
                     "model": request.model,
                     "messages": request.messages,
@@ -153,8 +158,9 @@ class LlmClient:
             raise LlmUnavailable(f"{type(exc).__name__}") from exc
 
         if response.status_code != 200:
-            # Тело ошибки в лог, ключ в заголовке — не логируется.
-            raise LlmUnavailable(f"HTTP {response.status_code}: {response.text[:200]}")
+            # Не включать тело провайдера: оно может повторить персональные
+            # факты из промпта и затем попасть в системный журнал вызывающего кода.
+            raise LlmUnavailable(f"HTTP {response.status_code}")
 
         try:
             message = response.json()["choices"][0]["message"]
@@ -181,8 +187,8 @@ class LlmClient:
                 return await db.scalar(
                     select(LlmCache.response).where(LlmCache.context_hash == key)
                 )
-        except Exception:  # noqa: BLE001 — без кэша занятие идёт, без базы тоже
-            log.exception("кэш LLM: чтение не удалось")
+        except Exception as exc:  # noqa: BLE001 — без кэша занятие идёт, без базы тоже
+            log.warning("кэш LLM: чтение не удалось (%s)", type(exc).__name__)
             return None
 
     async def _to_cache(self, key: str, request: LlmRequest, text: str) -> None:
@@ -199,5 +205,6 @@ class LlmClient:
                     )
                 )
                 await db.commit()
-        except Exception:  # noqa: BLE001
-            log.exception("кэш LLM: запись не удалась")
+        except Exception as exc:  # noqa: BLE001
+            # DB exception traces can include the cached prompt and response.
+            log.warning("кэш LLM: запись не удалась (%s)", type(exc).__name__)

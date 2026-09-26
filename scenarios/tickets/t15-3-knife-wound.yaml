@@ -22,7 +22,7 @@ first_line: "Сожитель ударил ножом в ногу, идёт кр
 
 facts:
   - id: f_address
-    value: "улица Зверенецкая, дом 22, квартира 7, подъезд 1, этаж 2, код 7В"
+    value: "Москва, улица Зверенецкая, дом 22, квартира 7, подъезд 1, этаж 2, код 7В"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "сожитель ударил ножом в ногу, кровотечение"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description, victims_count]
 
 ground_truth:
-  address: "улица Зверенецкая, дом 22, квартира 7, подъезд 1, этаж 2, код домофона 7В"
+  address: "Москва, улица Зверенецкая, дом 22, квартира 7, подъезд 1, этаж 2, код 7В"
   victims: 1
 
 tree:

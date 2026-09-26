@@ -1,0 +1,5 @@
+[general]
+rtpstart=${SIP_RTP_START}
+rtpend=${SIP_RTP_END}
+strictrtp=yes
+icesupport=yes

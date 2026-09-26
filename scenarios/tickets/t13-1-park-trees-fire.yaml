@@ -22,7 +22,7 @@ first_line: "В парке деревья горят, площадь метро�
 
 facts:
   - id: f_address
-    value: Кусковский лесопарк
+    value: "Москва, Кусковский лесопарк"
     refined: "Кусковский лесопарк, рядом со стадионом Фрезер, вход со стороны аллеи Первой Маёвки"
     reveal_on: { question: q_address }
     refine_on: q_address_check
@@ -46,7 +46,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "Кусковский лесопарк, рядом со стадионом Фрезер, вход со стороны аллеи Первой Маёвки"
+  address: "Москва, Кусковский лесопарк, рядом со стадионом Фрезер, вход со стороны аллеи Первой Маёвки"
   victims: 0
 
 tree:

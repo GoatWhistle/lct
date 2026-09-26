@@ -22,7 +22,7 @@ first_line: "Машину угнали прямо при мне! Только ч
 
 facts:
   - id: f_address
-    value: улица Большая Ордынка на пересечении с Пыжевским переулком
+    value: "Москва, улица Большая Ордынка на пересечении с Пыжевским переулком"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: угон машины на глазах владельца
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: улица Большая Ордынка на пересечении с Пыжевским переулком
+  address: "Москва, улица Большая Ордынка на пересечении с Пыжевским переулком"
   victims: null
 
 tree:

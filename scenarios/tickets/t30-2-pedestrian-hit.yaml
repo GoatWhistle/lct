@@ -22,7 +22,7 @@ first_line: "Человека сбили! Лежит без сознания!"
 
 facts:
   - id: f_address
-    value: улица Тюменская на пересечении с Тюменским проездом
+    value: "Москва, улица Тюменская на пересечении с Тюменским проездом"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "наезд на пешехода, мужчина без сознания"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: улица Тюменская на пересечении с Тюменским проездом
+  address: "Москва, улица Тюменская на пересечении с Тюменским проездом"
   victims: 1
 
 tree:

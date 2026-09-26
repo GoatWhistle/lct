@@ -1,12 +1,11 @@
-"""Детерминированный слой оценки — 60% веса, считается кодом.
+"""Метрики опроса и КИО — объяснимые правила, считаются кодом.
 
 Воспроизводится стопроцентно: один и тот же ход занятия даёт один и тот же
-результат. Каждая метрика — «факт против норматива со ссылкой», а не балл:
-«опрос 94 с при нормативе 75 с (ГОСТ Р 22.7.03-2021)» можно предъявить
-и проверить руками (docs/product/DEBRIEF.md).
+результат. Каждая метрика — «факт против норматива со ссылкой». Для временных
+метрик к двоичному признаку нарушения добавлен прозрачный непрерывный вклад,
+описанный в docs/product/METHODOLOGY.md.
 """
 
-import re
 from dataclasses import dataclass, field
 
 from app.domain import ekp
@@ -16,6 +15,7 @@ from app.domain.kio import KIO, missing_fields
 from app.domain.taxonomy import ERRORS, Competency, Finding, FindingSource
 from app.domain.timers import GOST_REF, NORMATIVES, TimerCode
 from app.scenarios.schema import Scenario
+from app.scoring.address import address_matches
 from app.scoring.taxonomy import METRIC_MAP, METRIC_WEIGHTS
 from app.session.timers import SessionTimers
 
@@ -42,22 +42,13 @@ class GostResult:
         total = sum(metric.weight for metric in self.metrics)
         if not total:
             return 0.0
-        passed = sum(metric.weight for metric in self.metrics if metric.passed)
+        passed = sum(metric.weight * (metric.credit if metric.credit is not None
+                                      else float(metric.passed)) for metric in self.metrics)
         return round(100 * passed / total, 1)
 
 
 def _seconds(ms: int) -> str:
     return f"{round(ms / 1000)} с"
-
-
-def _normalize_address(text: str | None) -> set[str]:
-    """Слова адреса без служебных: «ул. Ленина д. 14» и «улица Ленина, 14»
-    должны совпасть, иначе курсанта штрафуют за сокращение."""
-    if not text:
-        return set()
-    noise = {"улица", "ул", "дом", "д", "проспект", "пр", "переулок", "пер", "г", "город", "москва"}
-    words = re.findall(r"[\w-]+", text.lower().replace("ё", "е"))
-    return {word for word in words if word not in noise}
 
 
 class _Builder:
@@ -271,11 +262,10 @@ def evaluate(
         return build.result
     if truth.address:
         written = kio.address or " ".join(filter(None, [kio.street, kio.building]))
-        expected = _normalize_address(truth.address)
         build.add(
             "address", "Адрес",
             written or "не заполнен", truth.address,
-            passed=bool(expected) and expected <= _normalize_address(written),
+            passed=address_matches(truth.address, written),
             ref="ground_truth сценария",
             finding=f"Адрес в карточке «{written or 'пусто'}», верный — «{truth.address}»",
         )

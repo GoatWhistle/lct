@@ -1,0 +1,31 @@
+{
+  "date": "2026-09-25",
+  "test": "live backend-owner crash and session takeover",
+  "environment": "isolated local Docker Compose project; PostgreSQL 16; two backend processes; TLS Nginx proxy; loopback ports; temporary synthetic users and lesson",
+  "migration_head": "f5a7d2c9b3e1",
+  "initial_owner": "backend-b",
+  "takeover_owner": "backend-a",
+  "old_fencing_epoch": 1,
+  "new_fencing_epoch": 2,
+  "takeover_seconds": 17.79,
+  "checkpoint_restored": true,
+  "rest_reconnect_attempts": 5,
+  "websocket_reconnect_attempts": {
+    "control": 1,
+    "call": 1,
+    "observe": 1,
+    "station": 1
+  },
+  "checks": {
+    "owner_changed": true,
+    "fencing_epoch_incremented": true,
+    "checkpoint_restored": true,
+    "session_rest": true,
+    "ws_control": true,
+    "ws_call": true,
+    "ws_observe": true,
+    "ws_station": true
+  },
+  "pass": true,
+  "scope_and_limits": "The previous owner container was killed, then restarted by the smoke script. REST needed five client attempts while Nginx workers converged after initial 502 responses; all four WebSocket channels connected on the first post-takeover attempt. This did not simulate a live network partition of the old process, did not replay the full DDS action flow, and did not test target 6-core/32-GB hardware or 20 sessions/100 users during failover. Test users, session, and audit rows were removed by the script. Repeat using scripts/test_cluster_failover.py."
+}

@@ -4,12 +4,19 @@
 // шрифт, высокий контраст, минимум деталей. Никакого взаимодействия — экран висит
 // и показывает (docs/arch/FRONTEND.md).
 
-import { Debrief } from "@/features/debrief/Debrief";
+import { lazy, Suspense } from "react";
+
 import { KioCard } from "@/features/kio-card/KioCard";
 import { ModeBanner } from "@/features/mode-banner/ModeBanner";
 import { InterviewTimer } from "@/features/timers/Timers";
 import { useObserve } from "@/features/observe/useObserve";
 import { sessionIdFromUrl } from "@/shared/api/session";
+
+// Большинство внешних мониторов открывают во время занятия. Не загружаем
+// отчёт, радар и его тяжёлые зависимости, пока оценка ещё не готова.
+const Debrief = lazy(() => import("@/features/debrief/Debrief").then((module) => ({
+  default: module.Debrief,
+})));
 
 export function Wall() {
   const sessionId = sessionIdFromUrl();
@@ -29,7 +36,9 @@ export function Wall() {
       <main className="page wall">
         <ModeBanner mode={session.mode} />
         <h1>{session.title} · разбор</h1>
-        <Debrief report={session.report} big />
+        <Suspense fallback={<p role="status">Готовим разбор занятия…</p>}>
+          <Debrief report={session.report} big />
+        </Suspense>
       </main>
     );
   }

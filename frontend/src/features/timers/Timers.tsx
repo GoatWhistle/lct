@@ -13,6 +13,8 @@ const TITLES: Record<string, string> = {
   interview: "Опрос",
   dds_notify: "Оповещение ДДС",
   dds_ack: "Подтверждение ДДС",
+  dds_work: "Отработка карточки ДДС",
+  card_fill: "Заполнение карточки КИО",
   zone_check: "Зона ответственности",
   callback: "Обратный дозвон",
   close: "Снятие с контроля",

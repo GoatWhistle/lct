@@ -42,14 +42,30 @@ def _merge_checklist(base: list[dict], local: list[dict]) -> list[ChecklistItem]
     return [ChecklistItem.model_validate(item) for item in merged.values()]
 
 
+def _assert_unique_checklist_ids(items: list[dict], source: str) -> None:
+    ids = [
+        item["id"] for item in items
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    ]
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for item_id in ids:
+        if item_id in seen:
+            duplicates.add(item_id)
+        seen.add(item_id)
+    if duplicates:
+        raise ScenarioError(
+            f"{source}: повторяются id пунктов чек-листа: {', '.join(sorted(duplicates))}"
+        )
+
+
 def _derive_ground_truth(scenario: Scenario) -> Scenario:
     """Эталон собирается кодом. Из YAML берутся только нормализованные
     адрес и число пострадавших — остальное перезаписывается."""
-    hidden = {fact.id for fact in scenario.facts if fact.hidden}
     required = [
         item.fact
         for item in scenario.checklist
-        if item.fact and item.fact not in hidden
+        if item.fact
     ]
     scenario.ground_truth.incident_type = scenario.type
     scenario.ground_truth.dds = DDS_BY_INCIDENT[scenario.type]
@@ -114,6 +130,7 @@ def load_file(path: Path, root: Path) -> Scenario:
         )
 
     own = raw.get("checklist", [])
+    _assert_unique_checklist_ids(own, path.name)
     base = _common_checklist(root, {item.get("id") for item in own})
     extends = raw.get("extends")
     if extends:
@@ -121,6 +138,7 @@ def load_file(path: Path, root: Path) -> Scenario:
         if not base_path.exists():
             raise ScenarioError(f"{path.name}: чек-лист {extends} не найден")
         base = base + _read_yaml(base_path).get("checklist", [])
+    _assert_unique_checklist_ids(base, f"{path.name}: подключённые чек-листы")
     if base:
         raw["checklist"] = [
             item.model_dump(exclude_none=True) for item in _merge_checklist(base, own)

@@ -18,7 +18,7 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "У нас в зале дым повалил, сильный!"
+first_line: "В зале ресторана сильное задымление, о пострадавших точной информации нет."
 
 facts:
   - id: f_address

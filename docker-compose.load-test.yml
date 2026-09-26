@@ -1,0 +1,11 @@
+# Isolated image tags for the opt-in 20-session / 100-user browser acceptance
+# run. Volumes are isolated by the unique Compose project name.
+services:
+  backend:
+    image: lct-hack-backend:load-test
+  frontend:
+    image: lct-hack-frontend:load-test
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./frontend/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./frontend/nginx.tls.conf.template:/etc/nginx/templates-tls/default.conf.template:ro

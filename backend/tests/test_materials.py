@@ -141,16 +141,24 @@ def test_unassigned_trainee_cannot_download_resource(client):
 
 def test_archive_hides_material_from_trainee_but_keeps_record(client):
     _instructor(client)
-    seeded = client.get("/api/materials").json()[0]
-    archived = client.delete(f"/api/materials/{seeded['id']}")
+    created = client.post("/api/materials", json={
+        "title": "Архивируемая памятка",
+        "kind": "text",
+        "body": "Уникальный тестовый материал для проверки архивации.",
+    })
+    assert created.status_code == 201, created.text
+    material_id = created.json()["id"]
+
+    archived = client.delete(f"/api/materials/{material_id}")
     assert archived.status_code == 200
     assert archived.json()["active"] is False
-    assert client.get("/api/materials").json() == []
+    assert all(item["id"] != material_id for item in client.get("/api/materials").json())
     archived_list = client.get("/api/materials?include_archived=true").json()
-    assert len(archived_list) == 1 and archived_list[0]["active"] is False
+    archived_item = next(item for item in archived_list if item["id"] == material_id)
+    assert archived_item["active"] is False
 
     _trainee(client)
-    assert client.get("/api/materials").json() == []
+    assert all(item["id"] != material_id for item in client.get("/api/materials").json())
 
 
 def test_trainee_starts_assigned_practice_in_self_mode(client):

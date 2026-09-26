@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/precompress-assets.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "typecheck": "tsc --noEmit && node scripts/check-kio-fields.mjs",
-    "check:kio": "node scripts/check-kio-fields.mjs"
+    "typecheck": "tsc --noEmit && node scripts/check-kio-fields.mjs && node scripts/check-accessible-controls.mjs",
+    "check:kio": "node scripts/check-kio-fields.mjs",
+    "check:a11y": "node scripts/check-accessible-controls.mjs",
+    "test:ws-outbox": "node scripts/test-ws-outbox.mjs",
+    "test:dds-history": "node scripts/test-dds-history.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.103.1",
@@ -21,6 +24,7 @@
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "esbuild": "^0.21.3",
     "typescript": "^5.5.4",
     "vite": "^5.4.3"
   }

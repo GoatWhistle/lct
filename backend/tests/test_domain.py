@@ -1,6 +1,6 @@
 """Тесты контракта. Домен — общий шов, ломать его молча нельзя."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -25,6 +25,16 @@ from scripts.export_types import OUT, render
 def test_interview_normative_is_75_seconds():
     """Центральная метрика продукта. Значение меняется только вместе с ГОСТ."""
     assert NORMATIVES[TimerCode.INTERVIEW].limit_ms == 75_000
+
+
+def test_card_fill_normative_defaults_to_three_minutes_and_is_configurable():
+    from app.domain.events import LessonCriteria
+
+    assert NORMATIVES[TimerCode.CARD_FILL].limit_ms == 180_000
+    assert LessonCriteria().card_fill_time_limit_seconds == 180
+    assert LessonCriteria(card_fill_time_limit_seconds=240).card_fill_time_limit_seconds == 240
+    with pytest.raises(ValidationError):
+        LessonCriteria(card_fill_time_limit_seconds=20)
 
 
 @pytest.mark.parametrize(
@@ -65,7 +75,7 @@ def test_server_events_round_trip_through_json():
         "type": "caller.utterance",
         "utterance_id": str(uuid4()),
         "text": "Алло! Помогите! Горим!",
-        "at": datetime.now(timezone.utc).isoformat(),
+        "at": datetime.now(UTC).isoformat(),
         "mood": "panic",
     }
     assert adapter.validate_python(payload).text.startswith("Алло")

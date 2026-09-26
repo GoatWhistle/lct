@@ -36,7 +36,7 @@ def reveals_number(value: str) -> bool:
 
 def editable_fact_ids(source: Scenario) -> list[str]:
     return [fact.id for fact in source.facts
-            if not fact.hidden and not fact.refined and not fact.refine_on
+            if not fact.refined and not fact.refine_on
             and not any(part in fact.id.casefold() for part in PROTECTED_IDS)]
 
 

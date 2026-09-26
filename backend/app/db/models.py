@@ -8,7 +8,18 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Index, LargeBinary, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -108,9 +119,43 @@ class Scenario(Base):
     # NULL означает базовую/унаследованную системную библиотеку.
     owner_login: Mapped[str | None] = mapped_column(String(80), nullable=True)
     body: Mapped[dict] = mapped_column(JSONB)
+    manual_edit_pending: Mapped[bool] = mapped_column(default=False, nullable=False)
+    grammar_check_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ScenarioSubmission(Base):
+    """Student-authored KIO draft awaiting instructor moderation."""
+
+    __tablename__ = "scenario_submissions"
+
+    id: Mapped[UUID] = _uuid_pk()
+    author_trainee_id: Mapped[UUID] = mapped_column(ForeignKey("trainees.id", ondelete="CASCADE"))
+    group_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("groups.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(200))
+    incident_type: Mapped[str] = mapped_column(String(20))
+    level: Mapped[str] = mapped_column(String(4))
+    description: Mapped[str] = mapped_column(Text)
+    address: Mapped[str] = mapped_column(String(500), default="")
+    victims: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kio: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    review_comment: Mapped[str] = mapped_column(Text, default="")
+    reviewed_by: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    scenario_id: Mapped[str | None] = mapped_column(
+        ForeignKey("scenarios.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_scenario_submissions_group_status", "group_id", "status", "created_at"),
+        Index("ix_scenario_submissions_author", "author_trainee_id", "created_at"),
     )
 
 
@@ -126,6 +171,9 @@ class Session(Base):
     id: Mapped[UUID] = _uuid_pk()
     scenario_id: Mapped[str] = mapped_column(ForeignKey("scenarios.id", ondelete="RESTRICT"))
     owner_login: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    backend_node_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    backend_fencing_epoch: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    backend_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     trainee_id: Mapped[UUID | None] = mapped_column(ForeignKey("trainees.id", ondelete="SET NULL"))
     group_id: Mapped[UUID | None] = mapped_column(ForeignKey("groups.id", ondelete="SET NULL"))
     mode: Mapped[str] = mapped_column(String(16))
@@ -148,6 +196,7 @@ class Session(Base):
     __table_args__ = (
         Index("ix_sessions_trainee_scenario", "trainee_id", "scenario_id"),
         Index("ix_sessions_group_created", "group_id", "created_at"),
+        Index("ix_sessions_backend_node_active", "backend_node_id", "ended_at"),
     )
 
 
@@ -270,18 +319,30 @@ class User(Base):
     service: Mapped[str | None] = mapped_column(String(120))
     trainee_id: Mapped[UUID | None] = mapped_column(ForeignKey("trainees.id", ondelete="SET NULL"))
     blocked: Mapped[bool] = mapped_column(default=False)
+    # Каталожные учётки создаются при первом успешном входе; их роль и DDS
+    # service синхронизируются с явной LDAP group mapping, пароль не хранится.
+    auth_provider: Mapped[str] = mapped_column(
+        String(16), default="local", server_default="local"
+    )
+    directory_subject: Mapped[str | None] = mapped_column(String(256), nullable=True)
     # Версия полномочий попадает в подписанную cookie. Смена роли, пароля или
     # блокировки увеличивает её и отзывает старые cookie даже после restart.
     auth_version: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("directory_subject", name="uq_users_directory_subject"),
+        CheckConstraint("auth_provider IN ('local', 'ldap')", name="ck_users_auth_provider"),
+    )
 
 
 class AuditLog(Base):
     """Журнал действий. ТЗ требует хранения не менее шести месяцев, поэтому
     записи не удаляются вместе с сессией: `object_id` — строка, а не ссылка.
 
-    Пишется то, что меняет чужой результат или состав системы: запуск занятия,
-    оценка, коррекция оценки, правка сценария, вход и выход.
+    Пишется то, что меняет чужой результат или состав системы, и значимые
+    административные действия: запуск занятия, оценка, правка сценария,
+    резервное копирование, аналитический запрос, вход и выход.
     """
 
     __tablename__ = "audit_log"

@@ -27,8 +27,8 @@ from app.domain.events import (
 )
 from app.domain.kio import KIO, ResponseStatus, apply_patch
 from app.domain.statuses import (
-    CardStatus,
     NEXT,
+    CardStatus,
     DdsCardSummary,
     DdsQueueCard,
     PhoneCallPending,
@@ -62,11 +62,20 @@ class DdsCardRecord:
     findings: list[Finding]
     actions: list[dict[str, Any]]
     duration_ms: int
+    title: str | None = None
+    address: str | None = None
+    description: str | None = None
+    incident_type: str | None = None
+    victims_count: int | None = None
+    received_at: datetime | None = None
+    managed_service: str | None = None
+    recipient_services: list[str] = field(default_factory=list)
 
     @property
     def score_auto(self) -> float:
         total = sum(metric.weight for metric in self.metrics)
-        passed = sum(metric.weight for metric in self.metrics if metric.passed)
+        passed = sum(metric.weight * (metric.credit if metric.credit is not None
+                                      else float(metric.passed)) for metric in self.metrics)
         return round(100 * passed / total, 1) if total else 0.0
 
 
@@ -106,6 +115,10 @@ class SessionState:
     mode: SessionMode
     #: Преподаватель, создавший занятие; чужой пульт не может им управлять.
     owner_login: str | None = None
+    #: Monotonic DB ownership generation; stale processes may not persist writes.
+    backend_fencing_epoch: int = 0
+    #: Runtime-only: set when this process loses or cannot confirm DB ownership.
+    lease_fenced: bool = False
     exercise: Exercise = Exercise.CALL
     #: После заполнения КИО занятие продолжится на АРМ ДДС, а не завершится.
     handoff_to_dds: bool = False
@@ -169,6 +182,11 @@ class SessionState:
     phone_lines: list[PhoneLineRecord] = field(default_factory=list)
     phone_pending: PhoneCallPending | None = None
     dds_scenarios: list[Scenario] = field(default_factory=list)
+    pending_dds_scenarios: list[Scenario] = field(default_factory=list)
+    #: Исходная часть упражнения 112→ДДС сохраняется отдельно от активной
+    #: карточки ДДС, которая может переключаться по очереди.
+    operator_kio: KIO | None = None
+    operator_scenario: Scenario | None = None
     dds_live_cards: list[DdsLiveCard] = field(default_factory=list)
     dds_active_card_id: UUID | None = None
     dds_card_index: int = 0
@@ -183,6 +201,10 @@ class SessionState:
     #: Чем курсант закрыл вызов, если не карточкой (lct-36).
     resolved_outcome: str | None = None
     resolve_comment: str = ""
+    #: Recently committed DDS command IDs; included in the durable checkpoint so
+    #: a lost WebSocket acknowledgement cannot apply an operation twice.
+    processed_station_commands: list[str] = field(default_factory=list)
+    text_revealed_facts: dict[str, str] = field(default_factory=dict)
 
     def on_event(self, event_type: str) -> None:
         """Единственная точка, где событие двигает таймеры."""
@@ -391,6 +413,11 @@ class SessionState:
             log=list(self.status_log),
             crew_options=(self.crew_options() if has_active_dds_card or not self.dds_scenarios else []),
             crew_selected=self.crew_selected if has_active_dds_card else None,
+            zone_decision=(
+                next((detail == "в зоне" for action, _at, detail in reversed(self.dds_log)
+                      if action == "zone.decision"), None)
+                if has_active_dds_card else None
+            ),
             phone_reports=list(self.phone_reports) if has_active_dds_card else [],
             phone_lines=list(self.phone_lines) if has_active_dds_card else [],
             phone_pending=self.phone_pending if has_active_dds_card else None,
@@ -422,6 +449,7 @@ class SessionState:
         return CardReceived(
             card=self.dispatched_card,
             from_operator=("учебный сценарий" if self.exercise is Exercise.DDS
+                           or (self.handoff_to_dds and self.dds_card_index > 0)
                            else self.trainee_name or "оператор 112"),
             at=self.dispatched_at or now_utc(),
             card_index=self.dds_card_index + 1,

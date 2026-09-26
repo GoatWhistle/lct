@@ -43,7 +43,7 @@ checklist:
 required_fields: [address, entrance, floor, incident_type, description]
 
 ground_truth:
-  address: "Зеленоград, 9-й микрорайон, корпус 902, квартира 45, подъезд 1, этаж 3, код домофона 45В"
+  address: "Зеленоград, 9-й микрорайон, корпус 902, квартира 45, подъезд 1, этаж 3, код 45В"
   victims: null
 
 tree:

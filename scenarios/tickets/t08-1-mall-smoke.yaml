@@ -18,11 +18,11 @@ persona:
     - { stage: registration, mood: worried }
     - { stage: interview, mood: worried }
 
-first_line: "У нас в торговом центре дымом тянет, с минус первого этажа!"
+first_line: "В торговом центре задымление на минус первом этаже, источник не установлен, о пострадавших точной информации нет."
 
 facts:
   - id: f_address
-    value: "станция метро Пражская, торговый центр «Электронный рай»"
+    value: "Москва, станция метро Пражская, торговый центр «Электронный рай»"
     refined: "улица Кировоградская, дом 15"
     reveal_on: { question: q_address }
     refine_on: q_address_check
@@ -50,7 +50,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Кировоградская, дом 15"
+  address: "Москва, улица Кировоградская, дом 15"
   victims: null
 
 tree:

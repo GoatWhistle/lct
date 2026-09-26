@@ -22,7 +22,7 @@ first_line: "Муж угрожает взорвать квартиру бывш�
 
 facts:
   - id: f_address
-    value: "проезд Шокальского, дом 67, корпус 1, квартира 3, подъезд 1, этаж 1, код 67"
+    value: "Москва, проезд Шокальского, дом 67, корпус 1, квартира 3, подъезд 1, этаж 1, код 67"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: бывший муж угрожает взорвать квартиру
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, entrance, incident_type, description]
 
 ground_truth:
-  address: "проезд Шокальского, дом 67, корпус 1, квартира 3, подъезд 1, этаж 1, код домофона 67"
+  address: "Москва, проезд Шокальского, дом 67, корпус 1, квартира 3, подъезд 1, этаж 1, код 67"
   victims: null
 
 tree:

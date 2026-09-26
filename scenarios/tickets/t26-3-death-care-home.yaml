@@ -20,11 +20,11 @@ persona:
     - { stage: registration, mood: calm }
     - { stage: interview, mood: calm }
 
-first_line: У нас в центре для пожилых женщина скончалась после инсульта.
+first_line: В доме престарелых скончалась женщина после инсульта.
 
 facts:
   - id: f_address
-    value: "улица Лескова, дом 6Б, этаж 1, центр для пожилых людей «Союз», охрана встретит"
+    value: "Москва, улица Лескова, дом 6Б, этаж 1, центр для пожилых людей «Союз», охрана встретит"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: скончалась после инсульта
@@ -45,7 +45,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "улица Лескова, дом 6Б, этаж 1, центр для пожилых людей «Союз», охрана встретит"
+  address: "Москва, улица Лескова, дом 6Б, этаж 1, центр для пожилых людей «Союз», охрана встретит"
   victims: 1
 
 tree:

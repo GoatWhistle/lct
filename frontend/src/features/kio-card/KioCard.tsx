@@ -20,7 +20,9 @@ export function KioCard({ state, required = [], readOnly = false, referenceArm =
   const groups = visibleGroups(dds);
   const section = (group: FieldGroup) => (
     <section className={`kio-arm-section kio-arm-${group.area}`} key={group.title}>
-      {(!referenceArm || group.area !== "header") && <div className="kio-arm-section-title">{group.title}</div>}
+      {(!referenceArm || group.area !== "header") && <div className="kio-arm-section-title">
+        {referenceArm && group.area === "incident" ? "Введите тип происшествия" : group.title}
+      </div>}
       <div className="kio-arm-fields">
         {(referenceArm && group.area === "incident"
           ? [...group.fields].sort((a, b) => Number(b.path === "incident_type") - Number(a.path === "incident_type"))
@@ -198,6 +200,7 @@ function SignsPicker({
       {levels.map((level) => (
         <SignSelect
           key={level}
+          level={level}
           prefix={value.slice(0, level)}
           group={group}
           chosen={value[level] ?? ""}
@@ -218,8 +221,9 @@ function SignsPicker({
 }
 
 function SignSelect({
-  prefix, group, chosen, onPick,
+  level, prefix, group, chosen, onPick,
 }: {
+  level: number;
   prefix: string[];
   group: number | null;
   chosen: string;
@@ -230,7 +234,7 @@ function SignSelect({
   // Уровня может не быть: часть происшествий классифицируется двумя признаками.
   if (!page.isLoading && values.length === 0) return null;
   return (
-    <select aria-label={`Признак происшествия ${prefix.length + 1}`} value={chosen} onChange={(e) => onPick(e.target.value)} disabled={page.isLoading}>
+    <select aria-label={`Признак происшествия ${level + 1}`} value={chosen} onChange={(e) => onPick(e.target.value)} disabled={page.isLoading}>
       <option value="">—</option>
       {values.map((sign) => (
         <option key={sign} value={sign}>{sign}</option>

@@ -3,7 +3,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { Level, SessionMode } from "@/shared/types/generated";
+import type { Level, SessionMode, StationSnapshot } from "@/shared/types/generated";
 
 export class ApiError extends Error {
   constructor(
@@ -21,7 +21,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, body.detail ?? response.statusText);
+    const detail = body.detail;
+    const message = typeof detail === "string"
+      ? detail
+      : Array.isArray(detail)
+        ? detail.map((item: { loc?: unknown[]; msg?: string }) => {
+          const path = item.loc?.slice(1).join(".");
+          return `${path ? `${path}: ` : ""}${item.msg ?? "некорректное значение"}`;
+        }).join("; ")
+        : response.statusText;
+    throw new ApiError(response.status, message);
   }
   return response.json() as Promise<T>;
 }
@@ -39,17 +48,36 @@ export interface Health {
 export interface ScenarioSummary {
   id: string;
   title: string;
-  type: string;
+  outcome?: "card" | "consultation" | "transfer_region";
+  type?: string;
   level: Level;
-  topics: string[];
+  topics?: string[];
   modes: SessionMode[];
-  signs: string[];
-  incident_code: string | null;
-  dds: string | null;
-  ticket: number | null;
-  position: number | null;
-  ekp_group: number | null;
-  can_manage: boolean;
+  signs?: string[];
+  incident_code?: string | null;
+  dds?: string | null;
+  ticket?: number | null;
+  position?: number | null;
+  ekp_group?: number | null;
+  can_manage?: boolean;
+  source?: "system" | "trainee";
+}
+
+export interface ScenarioSubmission {
+  id: string;
+  author_name: string;
+  title: string;
+  incident_type: string;
+  level: Level;
+  description: string;
+  address: string;
+  victims: number | null;
+  kio: Record<string, unknown> | null;
+  status: "pending" | "approved" | "rejected";
+  review_comment: string;
+  scenario_id: string | null;
+  created_at: string;
+  reviewed_at: string | null;
 }
 
 export interface SessionInfo {
@@ -59,13 +87,75 @@ export interface SessionInfo {
   attempt: number;
   trainee_id: string | null;
   group_id: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  end_reason: string | null;
 }
+
+export interface ActiveSessionInfo {
+  session_id: string;
+  trainee_name: string | null;
+  scenario_id: string;
+  scenario_title: string;
+  mode: SessionMode;
+  exercise: "call" | "card" | "dds";
+  started_at: string | null;
+  elapsed_seconds: number;
+  dds_card_total: number;
+  dds_open_cards: number;
+  dds_overdue_cards: number;
+  dds_work_overdue_cards: number;
+  dds_statuses: Record<string, string>;
+  dds_snapshot: StationSnapshot | null;
+}
+
+export const useActiveSessions = () =>
+  useQuery({
+    queryKey: ["sessions", "active"],
+    queryFn: () => request<ActiveSessionInfo[]>("/api/sessions/active"),
+    refetchInterval: 2_000,
+  });
 
 export const useHealth = () =>
   useQuery({ queryKey: ["health"], queryFn: () => request<Health>("/api/health"), refetchInterval: 5_000 });
 
-export const useScenarios = () =>
-  useQuery({ queryKey: ["scenarios"], queryFn: () => request<ScenarioSummary[]>("/api/scenarios") });
+export const useScenarios = (enabled = true, roleScope = "instructor") =>
+  useQuery({
+    queryKey: ["scenarios", roleScope],
+    queryFn: () => request<ScenarioSummary[]>("/api/scenarios"),
+    enabled,
+  });
+
+export const useScenarioSubmissions = (enabled = true) =>
+  useQuery({
+    queryKey: ["scenario-submissions"],
+    queryFn: () => request<ScenarioSubmission[]>("/api/scenario-submissions"),
+    enabled,
+  });
+
+export const useCreateScenarioSubmission = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { title: string; level: Level; kio: Record<string, unknown> }) => request<ScenarioSubmission>("/api/scenario-submissions", {
+      method: "POST", body: JSON.stringify(payload),
+    }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["scenario-submissions"] }),
+  });
+};
+
+export const useReviewScenarioSubmission = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { id: string; decision: "approve" | "reject"; comment?: string }) =>
+      request<ScenarioSubmission>(`/api/scenario-submissions/${payload.id}/review`, {
+        method: "POST", body: JSON.stringify({ decision: payload.decision, comment: payload.comment ?? "" }),
+      }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["scenario-submissions"] });
+      client.invalidateQueries({ queryKey: ["scenarios"] });
+    },
+  });
+};
 
 export const useSessions = (params: { trainee?: string; group?: string; mode?: SessionMode } = {}) => {
   const query = new URLSearchParams(
@@ -111,6 +201,12 @@ export interface Profile {
     score: number | null;
     interview_ms: number | null;
     facts_got: number | null;
+  }[];
+  recommendations: {
+    code: string;
+    title: string;
+    recommendation: string;
+    occurrences: number;
   }[];
   hints_total: number;
 }

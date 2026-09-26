@@ -1,0 +1,77 @@
+{
+  "frontend": "https://127.0.0.1:15443",
+  "backend": "http://127.0.0.1:18000",
+  "control": "https://127.0.0.1:15443",
+  "sessions_started": 20,
+  "browser_contexts": 100,
+  "dds_pages": 20,
+  "observer_pages": 80,
+  "distinct_authenticated_users": 100,
+  "distinct_users_mode": true,
+  "backend_node_distribution": {
+    "backend-a": 7,
+    "backend-b": 13
+  },
+  "backend_node_count": 2,
+  "session_rest_routes_ok": 20,
+  "call_ws_routes_ok": 20,
+  "route_errors": [],
+  "pages_ready": 100,
+  "hold_seconds": 3.0,
+  "ramp_seconds": 2.0,
+  "ready_ms": {
+    "min": 106.82483300115564,
+    "median": 1073.2357494980533,
+    "p95": 1532.3035410001467,
+    "max": 1681.785917000525
+  },
+  "ready_ms_by_page": {
+    "dds": {
+      "min": 138.80791600240627,
+      "median": 1360.3751459995692,
+      "p95": 1532.3035410001467,
+      "max": 1537.437000002683
+    },
+    "wall": {
+      "min": 106.82483300115564,
+      "median": 1049.4908330001635,
+      "p95": 1525.8145830011927,
+      "max": 1681.785917000525
+    }
+  },
+  "browser_navigation_ms": {
+    "responseStart": {
+      "min": 8.0,
+      "median": 40.000000001862645,
+      "p95": 150.29999999701977,
+      "max": 434.0
+    },
+    "responseEnd": {
+      "min": 8.0,
+      "median": 40.30000000074506,
+      "p95": 150.39999999850988,
+      "max": 434.1000000014901
+    },
+    "domInteractive": {
+      "min": 10.699999999254942,
+      "median": 43.55000000074506,
+      "p95": 153.19999999925494,
+      "max": 437.1000000014901
+    },
+    "domContentLoaded": {
+      "min": 23.699999999254942,
+      "median": 99.05000000074506,
+      "p95": 387.80000000074506,
+      "max": 659.5
+    }
+  },
+  "transfer_bytes": {
+    "min": 741.0,
+    "median": 741.0,
+    "p95": 741.0,
+    "max": 741.0
+  },
+  "errors": [],
+  "pass_browser_ui_2s": true,
+  "scope": "100 isolated Chromium contexts render real React DDS/wall pages for 20 sessions with a 2s connection ramp; all contexts remain active concurrently; unique trainee/admin accounts, local host, no VoIP, not target 6-core/32-GB server; at least 2 backend nodes required"
+}

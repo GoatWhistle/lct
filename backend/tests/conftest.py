@@ -6,12 +6,32 @@
 """
 
 import os
+import socket
+from urllib.parse import urlparse
 
 os.environ.setdefault("DEV_AUTH_BYPASS", "true")
 
 import pytest  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
+
+
+@pytest.fixture
+def postgres_access():
+    """Skip DB integration cases when the configured PostgreSQL is unreachable.
+
+    `/api/health` is a liveness endpoint and deliberately does not probe the
+    database. Use a short TCP check so sandbox/network-denied runs are reported
+    as unverified integration tests instead of misleading application failures.
+    """
+    url = urlparse(get_settings().database_url)
+    if url.scheme not in {"postgres", "postgresql", "postgresql+asyncpg"}:
+        pytest.skip("PostgreSQL integration test requires a PostgreSQL DATABASE_URL")
+    try:
+        with socket.create_connection((url.hostname or "localhost", url.port or 5432), timeout=2):
+            pass
+    except OSError as exc:
+        pytest.skip(f"PostgreSQL unavailable ({exc})")
 
 
 @pytest.fixture(autouse=True, scope="session")

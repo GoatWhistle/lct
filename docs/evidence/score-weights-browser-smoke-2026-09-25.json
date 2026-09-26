@@ -1,0 +1,37 @@
+{
+  "test": "instructor score-weight controls",
+  "date": "2026-09-25",
+  "frontend": "Vite development server",
+  "backend": "DEMO_NO_DB local backend; no database or external integrations",
+  "browser": "Chromium headless via Playwright",
+  "viewports": {
+    "desktop": "1440x1000",
+    "mobile": "390x844"
+  },
+  "metric_controls_by_exercise": {
+    "dds": 8,
+    "call": 22,
+    "card": 8,
+    "card_dds": 16
+  },
+  "weight_input_0_to_10": {
+    "attempted_value": 12,
+    "observed_value": 10,
+    "passed": true
+  },
+  "start_command": {
+    "exercise": "dds",
+    "websocket_event": "scenario.start",
+    "criteria_score_weights": {
+      "dds_ack": 3.5
+    },
+    "passed": true
+  },
+  "mobile_horizontal_overflow": false,
+  "javascript_errors": [],
+  "result": "passed",
+  "limitations": [
+    "does not validate teacher-approved metric weights or methodology",
+    "does not replace target-site visual acceptance"
+  ]
+}

@@ -23,8 +23,8 @@ first_line: На остановке нетрезвый мужчина ругае
 
 facts:
   - id: f_address
-    value: "улица Фабрициуса, остановка 62 автобуса «улица Штурвальная»"
-    refined: "улица Фабрициуса, дом 18, остановка «улица Штурвальная»"
+    value: "Москва, улица Фабрициуса, остановка 62 автобуса «улица Штурвальная»"
+    refined: "остановка автобуса № 62 «улица Штурвальная», на стороне улицы Фабрициуса, дом 18"
     reveal_on: { question: q_address }
     refine_on: q_address_check
   - id: f_what_happened
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Фабрициуса, дом 18, остановка № 62 «улица Штурвальная»"
+  address: "Москва, улица Фабрициуса, дом 18, остановка № 62 «улица Штурвальная»"
   victims: null
 
 tree:

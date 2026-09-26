@@ -1,0 +1,94 @@
+# Test-only fault injection. Each backend reaches PostgreSQL through a local
+# TCP proxy so one node's database path can be cut while its HTTP/WS path stays up.
+services:
+  db-proxy-a:
+    image: lct-hack-backend:load-test
+    entrypoint: ["python", "-c"]
+    command:
+      - |
+        import asyncio
+        async def handle(reader, writer):
+            try:
+                upstream_reader, upstream_writer = await asyncio.open_connection("postgres", 5432)
+            except Exception:
+                writer.close()
+                return
+            async def copy(source, target):
+                try:
+                    while data := await source.read(65536):
+                        target.write(data)
+                        await target.drain()
+                except Exception:
+                    pass
+                finally:
+                    target.close()
+            await asyncio.gather(
+                copy(reader, upstream_writer), copy(upstream_reader, writer)
+            )
+        async def main():
+            server = await asyncio.start_server(handle, "0.0.0.0", 5432)
+            async with server:
+                await server.serve_forever()
+        asyncio.run(main())
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',5432),1); s.close()"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  db-proxy-b:
+    image: lct-hack-backend:load-test
+    entrypoint: ["python", "-c"]
+    command:
+      - |
+        import asyncio
+        async def handle(reader, writer):
+            try:
+                upstream_reader, upstream_writer = await asyncio.open_connection("postgres", 5432)
+            except Exception:
+                writer.close()
+                return
+            async def copy(source, target):
+                try:
+                    while data := await source.read(65536):
+                        target.write(data)
+                        await target.drain()
+                except Exception:
+                    pass
+                finally:
+                    target.close()
+            await asyncio.gather(
+                copy(reader, upstream_writer), copy(upstream_reader, writer)
+            )
+        async def main():
+            server = await asyncio.start_server(handle, "0.0.0.0", 5432)
+            async with server:
+                await server.serve_forever()
+        asyncio.run(main())
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',5432),1); s.close()"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  backend:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://lct:${POSTGRES_PASSWORD:-lct}@db-proxy-a:5432/lct
+    depends_on:
+      db-proxy-a:
+        condition: service_healthy
+
+  backend-b:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://lct:${POSTGRES_PASSWORD:-lct}@db-proxy-b:5432/lct
+    ports:
+      - "127.0.0.1:${BACKEND_B_PORT:-18001}:8000"
+    depends_on:
+      db-proxy-b:
+        condition: service_healthy

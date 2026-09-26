@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import DEMO_TRAINEE_ID, audit, require
+from app.api.auth import DEMO_TRAINEE_ID, add_audit_entry, audit, require
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import Group, LearningMaterial, MaterialAssignment, Trainee
@@ -264,8 +264,8 @@ async def create(
         _demo_materials[row.id] = row
     else:
         db.add(row)
+        add_audit_entry(db, who.login, who.role.value, "material.create", str(row.id), row.title)
         await db.commit()
-    await audit(who.login, who.role.value, "material.create", str(row.id), row.title)
     return _out(row)
 
 
@@ -301,8 +301,8 @@ async def update(
         setattr(row, key, value.strip() if isinstance(value, str) else value)
     row.updated_at = datetime.now(timezone.utc)
     if db is not None:
+        add_audit_entry(db, who.login, who.role.value, "material.update", str(row.id))
         await db.commit()
-    await audit(who.login, who.role.value, "material.update", str(row.id))
     return _out(row)
 
 
@@ -320,8 +320,8 @@ async def archive(
     row.active = False
     row.updated_at = datetime.now(timezone.utc)
     if db is not None:
+        add_audit_entry(db, who.login, who.role.value, "material.archive", str(row.id))
         await db.commit()
-    await audit(who.login, who.role.value, "material.archive", str(row.id))
     return _out(row)
 
 
@@ -361,9 +361,13 @@ async def assign(
                 material_id=material_id, trainee_id=trainee_id, assigned_by=who.login
             )
             db.add(assignment)
-            await db.commit()
-            await db.refresh(assignment)
-    await audit(who.login, who.role.value, "material.assign", str(row.id), str(trainee_id))
+        add_audit_entry(
+            db, who.login, who.role.value, "material.assign", str(row.id), str(trainee_id)
+        )
+        await db.commit()
+        await db.refresh(assignment)
+    if db is None:
+        await audit(who.login, who.role.value, "material.assign", str(row.id), str(trainee_id))
     return _out(row, assignment=assignment)
 
 
@@ -394,8 +398,10 @@ async def assign_group(
             db.add(MaterialAssignment(
                 material_id=material_id, trainee_id=trainee_id, assigned_by=who.login
             ))
+    add_audit_entry(
+        db, who.login, who.role.value, "material.assign_group", str(row.id), str(group_id)
+    )
     await db.commit()
-    await audit(who.login, who.role.value, "material.assign_group", str(row.id), str(group_id))
     return {"material_id": str(row.id), "assigned": len(trainee_ids)}
 
 
@@ -422,9 +428,13 @@ async def unassign(
             raise HTTPException(status_code=404, detail="assignment_not_found")
         if assignment is not None:
             await db.delete(assignment)
-            await db.commit()
         removed = assignment is not None
-    await audit(who.login, who.role.value, "material.unassign", str(material_id), str(trainee_id))
+        add_audit_entry(
+            db, who.login, who.role.value, "material.unassign", str(material_id), str(trainee_id)
+        )
+        await db.commit()
+    if db is None:
+        await audit(who.login, who.role.value, "material.unassign", str(material_id), str(trainee_id))
     return {"removed": removed}
 
 
@@ -454,8 +464,10 @@ async def complete(
         assignment["completed_at"] = completed_at
     else:
         assignment.completed_at = completed_at
+        add_audit_entry(db, who.login, who.role.value, "material.complete", str(material_id))
         await db.commit()
-    await audit(who.login, who.role.value, "material.complete", str(material_id))
+    if isinstance(assignment, dict):
+        await audit(who.login, who.role.value, "material.complete", str(material_id))
     return _out(row, assignment=assignment)
 
 

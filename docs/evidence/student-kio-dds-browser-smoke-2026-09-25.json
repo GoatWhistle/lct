@@ -1,0 +1,31 @@
+{
+  "checks": {
+    "student_submitted_kio_from_profile": true,
+    "instructor_approved_in_browser": true,
+    "instructor_started_dds_lesson": true,
+    "approved_kio_received_in_live_dds": true,
+    "dds_primary_status_saved": true,
+    "dds_followup_status_saved": true
+  },
+  "source_scenario": "t01-1-fire-container",
+  "recipient_buttons": [
+    "Служба 101Добавлена",
+    "Гор. ХозяйствоДобавлена",
+    "ЦОДДДобавлена",
+    "Аппарат МЭРАДобавлена",
+    "ОАТИДобавлена",
+    "Территориальные ОИВДобавлена",
+    "Территориальные ОИВ ТиНАОДобавлена",
+    "ГКУ НТУДобавлена",
+    "ФСОДобавлена",
+    "ГУП МСРДобавлена",
+    "ЦУКБ Министерство обороныДобавлена",
+    "ГПБУ МосэкомониторингДобавлена"
+  ],
+  "actual_managed_service_button": "Служба 101",
+  "service_assignment_matches_card": true,
+  "session_id": "bfd2dda7-11e0-4c9f-aae0-3d082d6adf8d",
+  "scenario_id": "student-c9c87294139240a88ab237d9ccaf9dea",
+  "managed_service": "01",
+  "all_checks_passed": true
+}

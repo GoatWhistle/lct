@@ -23,10 +23,8 @@ first_line: "ДТП, и водители подрались между собо�
 
 facts:
   - id: f_address
-    value: "дорога от Киреевска в сторону посёлка Октябрьский, между заводом ЗОК и железнодорожными путями, 500 метров от остановки"
-    refined: "Тульская область, дорога от Киреевска в сторону посёлка Октябрьский, между заводом ЗОК и железнодорожными путями, 500 метров от автобусной остановки"
+    value: "Тульская область, дорога от Киреевска в сторону посёлка Октябрьский, между заводом ЗОК и железнодорожными путями, 500 метров от автобусной остановки"
     reveal_on: { question: q_address }
-    refine_on: q_address_check
   - id: f_what_happened
     value: "ДТП без пострадавших, драка между водителями, без оружия"
     reveal_on: { question: q_what_happened }
@@ -39,7 +37,6 @@ facts:
 
 checklist:
   - { id: q_address, fact: f_address }
-  - { id: q_address_check }
   - { id: q_what_happened, fact: f_what_happened }
   - { id: q_victims, fact: f_victims }
   - { id: q_caller, fact: f_caller }

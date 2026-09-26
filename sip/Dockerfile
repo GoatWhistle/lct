@@ -9,7 +9,7 @@ COPY pjsip.conf.template /opt/lct-sip/pjsip.conf.template
 COPY extensions.conf /etc/asterisk/extensions.conf
 COPY http.conf /etc/asterisk/http.conf
 COPY modules.conf /etc/asterisk/modules.conf
-COPY rtp.conf /etc/asterisk/rtp.conf
+COPY rtp.conf.template /opt/lct-sip/rtp.conf.template
 COPY entrypoint.sh /usr/local/bin/lct-sip-entrypoint
 RUN chmod +x /usr/local/bin/lct-sip-entrypoint \
     && mkdir -p /recordings /var/lib/lct-sip /tls \

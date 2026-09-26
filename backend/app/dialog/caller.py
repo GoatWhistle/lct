@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 from app.dialog.persona import PersonaState
 from app.dialog.slots import SlotMachine, TurnResult
@@ -31,6 +31,7 @@ NUMBER_WORDS = {
 class CallerLine:
     text: str
     mood: Mood
+    source: Literal["local_llm", "scenario"] = "scenario"
 
 
 class Caller(Protocol):
@@ -164,6 +165,11 @@ class LlmCaller:
             return await self._fallback.reply(turn, persona, slots)
 
         facts = {fact.id: fact.value for fact in slots.revealed_facts()}
+        # On an explicit correction, the previous address can mislead a small
+        # model into blending the old and new values. Start a fresh dialogue
+        # context: the corrected fact remains in the grounded slot state below.
+        if turn.refined:
+            self._history.clear()
         say_now = [
             facts[fact_id]
             for fact_id in [*turn.revealed, *turn.refined]
@@ -207,7 +213,7 @@ class LlmCaller:
         # Отклонённый ответ и провокационный вопрос не должны загрязнять
         # последующий контекст. Запоминаем только проверенную пару ходов.
         self._history.extend((current_message, {"role": "assistant", "content": text}))
-        return CallerLine(text=text, mood=mood)
+        return CallerLine(text=text, mood=mood, source="local_llm")
 
     async def aclose(self) -> None:
         """Сетевой клиент живёт, пока идёт занятие, и закрывается вместе с ним:

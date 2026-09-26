@@ -45,11 +45,14 @@ class LessonCriteria(BaseModel):
     """Настраиваемые преподавателем условия именно этого занятия.
 
     Нормативы ГОСТ для приёма вызова сюда не входят. Для занятия меняются
-    учебный лимит решения, порог успешности и веса метрик; веса сценария
-    остаются базовыми, а настройки занятия могут их переопределить.
+    учебные лимиты первичной реакции и полного цикла карточки ДДС, заполнения
+    КИО, порог успешности и веса метрик; веса сценария остаются базовыми,
+    настройки занятия могут их переопределить.
     """
 
     decision_time_limit_seconds: int = Field(default=30, ge=5, le=300)
+    card_fill_time_limit_seconds: int = Field(default=180, ge=30, le=1800)
+    dds_card_work_time_limit_seconds: int = Field(default=180, ge=30, le=1800)
     allowed_errors: int = Field(default=0, ge=0, le=50)
     require_correct_grammar: bool = True
     score_weights: dict[str, float] = Field(default_factory=dict)
@@ -156,6 +159,12 @@ class CardBriefing(BaseModel):
     handoff_to_dds: bool = False
 
 
+class TextTurnAccepted(BaseModel):
+    type: Literal["text.turn.accepted"] = "text.turn.accepted"
+    text: str
+    at: datetime
+
+
 class CallStarted(BaseModel):
     type: Literal["call.started"] = "call.started"
     started_at: datetime
@@ -178,6 +187,7 @@ class CallerUtterance(BaseModel):
     text: str
     at: datetime
     mood: Mood
+    source: Literal["local_llm", "scenario"] = "scenario"
 
 
 class TtsBegin(BaseModel):
@@ -251,6 +261,13 @@ class ScoreReady(BaseModel):
     session_id: UUID
 
 
+class CommandAck(BaseModel):
+    """Durable confirmation for a station command, safe to replay by ID."""
+
+    type: Literal["command.ack"] = "command.ack"
+    command_id: UUID
+
+
 class ErrorEvent(BaseModel):
     type: Literal["error"] = "error"
     code: ErrorKind
@@ -260,6 +277,7 @@ class ErrorEvent(BaseModel):
 ServerToTrainee = Annotated[
     CallIncoming
     | CardBriefing
+    | TextTurnAccepted
     | CallStarted
     | SttPartial
     | SttFinal
@@ -291,6 +309,11 @@ class CallAnswer(BaseModel):
 
 class CardSubmit(BaseModel):
     type: Literal["card.submit"] = "card.submit"
+
+
+class TextTurn(BaseModel):
+    type: Literal["text.turn"] = "text.turn"
+    text: str = Field(min_length=1, max_length=1000)
 
 
 class KioPatchIn(BaseModel):
@@ -347,6 +370,7 @@ class CallResolve(BaseModel):
 TraineeToServer = Annotated[
     CallAnswer
     | CardSubmit
+    | TextTurn
     | KioPatchIn
     | HintRequest
     | SelfAssessmentSubmit
@@ -446,6 +470,7 @@ class ScenarioStart(BaseModel):
     type: Literal["scenario.start"] = "scenario.start"
     scenario_id: str
     scenario_ids: list[str] | None = None
+    random_scenario_ids: list[str] | None = None
     # Pace defaults to simultaneous for older clients; the instructor UI
     # explicitly sends its slower training default.
     dds_arrival_interval_seconds: int = Field(default=0, ge=0, le=300)
@@ -489,11 +514,6 @@ class ScoreOverride(BaseModel):
     comment: str
 
 
-class ScenarioPublish(BaseModel):
-    type: Literal["scenario.publish"] = "scenario.publish"
-    scenario_id: str
-
-
 class SessionStop(BaseModel):
     type: Literal["session.stop"] = "session.stop"
 
@@ -504,7 +524,6 @@ InstructorToServer = Annotated[
     | ReferencePlay
     | InstructorNoteAdd
     | ScoreOverride
-    | ScenarioPublish
     | SessionStop,
     Field(discriminator="type"),
 ]
@@ -528,6 +547,7 @@ class CardAck(BaseModel):
     """Останавливает норматив `dds_ack` (≤ 30 с)."""
 
     type: Literal["card.ack"] = "card.ack"
+    comment: str = Field(min_length=1, max_length=1000)
 
 
 class CardBounce(BaseModel):
@@ -644,7 +664,8 @@ class CrewArrived(BaseModel):
 
 
 ServerToStation = Annotated[
-    CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded | ScoreReady | ErrorEvent,
+    CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded
+    | ScoreReady | CommandAck | ErrorEvent,
     Field(discriminator="type"),
 ]
 
@@ -661,7 +682,7 @@ StationToServer = Annotated[
 
 
 class Metric(BaseModel):
-    """Метрика оценки: факт против норматива со ссылкой. Не балл, а обоснование."""
+    """Факт против норматива со ссылкой; `credit` задаёт частичный вклад времени."""
 
     key: str
     title: str
@@ -670,11 +691,23 @@ class Metric(BaseModel):
     ref: str | None = None
     passed: bool
     weight: float = 1.0
+    credit: float | None = Field(default=None, ge=0, le=1)
 
 
 class CompetencyScore(BaseModel):
     competency: str
     value: float
+
+
+class AIRecommendation(BaseModel):
+    metric_key: str
+    text: str = Field(min_length=12, max_length=240)
+
+
+class AICoaching(BaseModel):
+    status: Literal["ready", "unavailable", "disabled", "not_needed"]
+    model: str | None = None
+    recommendations: list[AIRecommendation] = []
 
 
 class HintUsage(BaseModel):
@@ -713,6 +746,14 @@ class DdsCardReport(BaseModel):
     findings: list[Finding]
     actions: list[dict[str, Any]] = []
     duration_ms: int = 0
+    title: str | None = None
+    address: str | None = None
+    description: str | None = None
+    incident_type: str | None = None
+    victims_count: int | None = None
+    received_at: datetime | None = None
+    managed_service: str | None = None
+    recipient_services: list[str] = []
 
 
 class SessionReport(BaseModel):
@@ -721,6 +762,7 @@ class SessionReport(BaseModel):
     session_id: UUID
     scenario_id: str
     mode: SessionMode
+    exercise: Exercise = Exercise.CALL
     attempt: int = 1
     criteria: LessonCriteria
     failed_metrics: int
@@ -728,6 +770,7 @@ class SessionReport(BaseModel):
     transcript: list[TranscriptEntry]
     findings: list[Finding]
     metrics: list[Metric]
+    ai_coaching: AICoaching | None = None
     card_results: list[DdsCardReport] = []
     competencies: list[CompetencyScore]
     reference_questions: list[HintShown]

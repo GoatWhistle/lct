@@ -17,6 +17,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from load_browser import local_url, login_cookie
+from sip_recording_cleanup import remove_smoke_recordings
 from smoke_sip import compose_password
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -89,12 +90,14 @@ async def run(args: argparse.Namespace) -> int:
     login = f"webrtc-smoke-{secrets.token_hex(5)}"
     app_password = secrets.token_urlsafe(24)
     await create_account(args.database_url, login, app_password)
+    recordings_before: set[str] | None = None
     try:
         cookie = login_cookie(backend, login, app_password)
         cookie_name, cookie_value = cookie.split("=", 1)
         sip_6101 = compose_password("6101")
         sip_6102 = compose_password("6102")
         before = recordings()
+        recordings_before = set(before)
         errors: list[str] = []
         started = time.perf_counter()
         timeout_ms = args.timeout * 1000
@@ -129,7 +132,19 @@ async def run(args: argparse.Namespace) -> int:
             )
             registered_ms = (time.perf_counter() - started) * 1000
             await pages[0].get_by_role("button", name="Позвонить").click()
-            await pages[1].get_by_role("button", name="Ответить · 6101").wait_for(timeout=timeout_ms)
+            try:
+                await pages[1].get_by_role("button", name="Ответить · 6101").wait_for(timeout=timeout_ms)
+            except Exception as exc:
+                diagnostics = []
+                for page in pages:
+                    diagnostics.append({
+                        "url": page.url,
+                        "body": (await page.locator("body").inner_text())[-3000:],
+                    })
+                raise RuntimeError(
+                    "incoming SIP call was not displayed; browser states: "
+                    + json.dumps(diagnostics, ensure_ascii=False)
+                ) from exc
             await pages[1].get_by_role("button", name="Ответить · 6101").click()
             await asyncio.gather(
                 pages[0].get_by_text("разговор идёт", exact=False).wait_for(timeout=timeout_ms),
@@ -185,7 +200,21 @@ async def run(args: argparse.Namespace) -> int:
             args.output.write_text(rendered + "\n", encoding="utf-8")
         return 0 if passed else 1
     finally:
-        await cleanup_account(args.database_url, login)
+        try:
+            if recordings_before is not None:
+                try:
+                    current_recordings = recordings()
+                except (OSError, subprocess.CalledProcessError):
+                    current_recordings = {}
+                    print("WARNING: не удалось проверить очистку временной WAV-записи WebRTC smoke", file=sys.stderr)
+                created = set(current_recordings) - recordings_before
+                # Only this exercise's direction; preserve older files and any
+                # unrelated recordings in the stack's durable volume.
+                created = {name for name in created if "-6101-6102-" in name}
+                if created and not remove_smoke_recordings(ROOT, created):
+                    print("WARNING: не удалось удалить временную WAV-запись WebRTC smoke", file=sys.stderr)
+        finally:
+            await cleanup_account(args.database_url, login)
 
 
 if __name__ == "__main__":

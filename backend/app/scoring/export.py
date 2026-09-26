@@ -49,7 +49,10 @@ def to_csv(report: SessionReport) -> bytes:
     row("Оценка", "", "Причина изменения", report.override_comment)
 
     for number, item in enumerate(report.metrics, 1):
-        row("Метрики", number, item.title, item.fact, f"Норматив: {item.norm}; результат: {'да' if item.passed else 'нет'}; вес: {item.weight:g}; источник: {item.ref or ''}")
+        credit = f"; оценочный вклад: {item.credit:.0%}" if item.credit is not None else ""
+        row("Метрики", number, item.title, item.fact,
+            f"Норматив: {item.norm}; результат: {'да' if item.passed else 'нет'}; "
+            f"вес: {item.weight:g}{credit}; источник: {item.ref or ''}")
     for number, item in enumerate(report.findings, 1):
         row("Ошибки", number, item.code.value, item.summary, f"Факт: {item.fact}; норматив: {item.norm or ''}; источник: {item.ref or ''}")
     for number, item in enumerate(report.competencies, 1):
@@ -99,7 +102,6 @@ def _font_paths() -> tuple[Path, Path | None]:
 def to_pdf(report: SessionReport) -> bytes:
     """Собрать многостраничный PDF с кириллицей и переносом длинных текстов."""
     from reportlab.lib import colors
-    from reportlab.lib.enums import TA_LEFT
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.pdfbase import pdfmetrics
@@ -167,7 +169,9 @@ def to_pdf(report: SessionReport) -> bytes:
     if not report.metrics:
         story.append(p("Нет данных", muted))
     for item in report.metrics:
-        story.append(p(f"{item.title} - {'выполнено' if item.passed else 'нарушено'} (вес {item.weight:g})"))
+        credit = f", оценочный вклад {item.credit:.0%}" if item.credit is not None else ""
+        story.append(p(f"{item.title} - {'выполнено' if item.passed else 'нарушено'} "
+                       f"(вес {item.weight:g}{credit})"))
         story.append(p(f"Факт: {item.fact}. Норматив: {item.norm}. {item.ref or ''}", muted))
 
     section("Выявленные ошибки")

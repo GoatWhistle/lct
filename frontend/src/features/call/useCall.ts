@@ -28,6 +28,7 @@ const PATCH_DEBOUNCE_MS = 300;
 export interface Line {
   speaker: "caller" | "operator";
   text: string;
+  source?: "local_llm" | "scenario";
   partial?: boolean;
 }
 
@@ -85,6 +86,10 @@ export function useCall(sessionId: string | null) {
       },
       onBinary: (frame) => audio.current?.playback.enqueue(frame),
       onEvent: (event: ServerToTrainee) => {
+        if (event.type === "text.turn.accepted") {
+          append({ speaker: "operator", text: event.text });
+          return;
+        }
         if (event.type === "card.briefing") {
           const briefing = event;
           textMode.current = true;
@@ -110,7 +115,7 @@ export function useCall(sessionId: string | null) {
             append({ speaker: "operator", text: event.text });
             break;
           case "caller.utterance":
-            append({ speaker: "caller", text: event.text });
+            append({ speaker: "caller", text: event.text, source: event.source });
             break;
           case "tts.begin":
             setCallerSpeaking(true);
@@ -222,6 +227,12 @@ export function useCall(sessionId: string | null) {
     channel.current?.send(service ? { type: "dds.dispatch", service } : { type: "dds.dispatch" });
   }, []);
 
+  const sendText = useCallback((text: string) => {
+    const clean = text.trim();
+    if (!clean || clean.length > 1000) return false;
+    return Boolean(channel.current?.send({ type: "text.turn", text: clean }));
+  }, []);
+
   const submitCard = useCallback(() => {
     if (patchTimer.current) clearTimeout(patchTimer.current);
     patchTimer.current = null;
@@ -255,6 +266,6 @@ export function useCall(sessionId: string | null) {
     resolve,
     status, phase, incoming, briefing, cardSubmitted, lines, timers, callerSpeaking, micOn, error, card,
     checklist, selfAssessed, scoreReady, report, reportError,
-    answer, hangup, hint, patchKio, dispatch, submitCard, submitSelfAssessment,
+    answer, hangup, hint, patchKio, dispatch, submitCard, submitSelfAssessment, sendText,
   };
 }

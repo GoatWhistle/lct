@@ -24,13 +24,13 @@ first_line: "Я поругался с продавцом «Мегафон» и �
 
 facts:
   - id: f_address
-    value: "Сущёвский Вал, дом 5, строение 1, салон «Мегафон»"
+    value: "Москва, Сущёвский Вал, дом 5, строение 1, салон «Мегафон»"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "заявитель поругался с продавцом и бросил трубку"
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "сведений о пострадавших нет"
+    value: "в исходном билете сведения о пострадавших не указаны"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "телефон 916 896 3254"
@@ -46,7 +46,7 @@ checklist:
 required_fields: []
 
 ground_truth:
-  address: "Сущёвский Вал, дом 5, строение 1"
+  address: "Москва, Сущёвский Вал, дом 5, строение 1"
   victims: null
 
 tree:

@@ -68,18 +68,57 @@ def test_broken_yaml_names_the_file(tmp_path):
         load_file(path, tmp_path)
 
 
-def test_hidden_fact_without_approach_is_rejected(tmp_path):
-    body = VALID.replace(
+@pytest.mark.parametrize("replace_text", [
+    (
         '  - { id: f_addr, value: "Ленина, 1", reveal_on: { question: q_addr } }',
         '  - { id: f_addr, value: "Ленина, 1", hidden: true, reveal_on: { question: q_addr } }',
-    )
-    with pytest.raises(ScenarioError, match="hidden требует"):
+    ),
+    (
+        '  - { id: f_addr, value: "Ленина, 1", reveal_on: { question: q_addr } }',
+        '  - { id: f_addr, value: "Ленина, 1", reveal_on: { question: q_addr, approach: "проявил эмпатию" } }',
+    ),
+])
+def test_llm_controlled_fact_disclosure_is_rejected(tmp_path, replace_text):
+    body = VALID.replace(*replace_text)
+    with pytest.raises(ScenarioError, match="Extra inputs are not permitted"):
         load_file(write(tmp_path, body), tmp_path)
 
 
 def test_checklist_pointing_at_missing_fact_is_rejected(tmp_path):
     body = VALID.replace("fact: f_addr }", "fact: f_нет }")
     with pytest.raises(ScenarioError, match="которого нет"):
+        load_file(write(tmp_path, body), tmp_path)
+
+
+def test_duplicate_fact_ids_are_rejected_before_they_can_change_ground_truth(tmp_path):
+    fact = '  - { id: f_addr, value: "Ленина, 1", reveal_on: { question: q_addr } }'
+    body = VALID.replace(fact, fact + '\n  - { id: f_addr, value: "Ленина, 2", reveal_on: { question: q_addr } }')
+    with pytest.raises(ScenarioError, match="id фактов должны быть уникальны"):
+        load_file(write(tmp_path, body), tmp_path)
+
+
+def test_duplicate_local_checklist_ids_are_not_silently_merged(tmp_path):
+    item = '  - { id: q_addr, question: "Адрес?", fact: f_addr }'
+    body = VALID.replace("checklist:\n" + item, "checklist:\n" + item + "\n" + item)
+    with pytest.raises(ScenarioError, match="повторяются id пунктов чек-листа"):
+        load_file(write(tmp_path, body), tmp_path)
+
+
+@pytest.mark.parametrize(("fields", "message"), [
+    ('[address, coordinates]', "отсутствуют в форме КИО"),
+    ('[card_id]', "заполняются системой"),
+    ('[registered_at]', "заполняются системой"),
+    ('[address, address]', "повторяются поля"),
+])
+def test_required_fields_must_be_unique_and_fillable_in_kio_form(tmp_path, fields, message):
+    body = VALID + f"\nrequired_fields: {fields}\n"
+    with pytest.raises(ScenarioError, match=message):
+        load_file(write(tmp_path, body), tmp_path)
+
+
+def test_non_card_outcomes_cannot_require_kio_fields(tmp_path):
+    body = VALID + "\noutcome: consultation\nrequired_fields: [address]\n"
+    with pytest.raises(ScenarioError, match="required_fields должны быть пустыми"):
         load_file(write(tmp_path, body), tmp_path)
 
 

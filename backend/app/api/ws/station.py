@@ -16,9 +16,10 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from app.api.auth import principal_of
+from app.api.auth import principal_of, websocket_origin_allowed
 from app.domain.events import (
     CallEndReason,
+    CommandAck,
     ErrorEvent,
     ErrorKind,
     Exercise,
@@ -40,16 +41,25 @@ from app.domain.statuses import (
     StatusError,
     current,
 )
+from app.domain.timers import TimerCode
+from app.scoring.address import address_matches
 from app.scoring.grammar import assess
 from app.session.dds import deliver_due_cards
 from app.session.finish import finish, score_current_dds
-from app.session.hub import hub
+from app.session.hub import LEASE_FENCED_MESSAGE, hub
 from app.session.state import now_utc
 
 log = logging.getLogger(__name__)
 router = APIRouter()
 
 _adapter = TypeAdapter(StationToServer)
+
+
+def _start_dds_work_timer(state) -> None:
+    """Start the three-minute work clock once, when the card is opened."""
+    timer = state.timers.timers.get(TimerCode.DDS_WORK)
+    if timer is None or timer.started_at is None:
+        state.on_event("dds.open")
 
 REPORT_PHASES = ("dispatched", "arrived", "working", "completed")
 REQUIRED_STATUS = {
@@ -82,14 +92,7 @@ def _line(session_id: UUID, state, speaker: str, text: str) -> None:
 
 def _address_matches(expected: str | None, supplied: str) -> bool:
     """Не даём сообщить бригаде другой номер дома/другую улицу."""
-    if not expected:
-        return bool(supplied.strip())
-    numbers = re.findall(r"\d+", expected)
-    spoken_numbers = re.findall(r"\d+", supplied)
-    words = re.findall(r"[а-яё]{4,}", expected.casefold())
-    spoken_words = re.findall(r"[а-яё]{4,}", supplied.casefold())
-    return (all(number in spoken_numbers for number in numbers)
-            and any(word[:4] == spoken[:4] for word in words for spoken in spoken_words))
+    return address_matches(expected, supplied)
 
 
 def _incident_matches(state, supplied: str) -> bool:
@@ -134,6 +137,11 @@ def _finish_phone_call(session_id: UUID, state) -> None:
 async def _finish_dds(session_id: UUID, state) -> None:
     state.ended_at = now_utc()
     state.end_reason = CallEndReason.COMPLETE
+    state.capture_active_dds()
+    for card in state.dds_live_cards:
+        timer = card.timers.timers.get(TimerCode.DDS_WORK)
+        if timer is not None and timer.started_at is not None:
+            card.timers.on_event("dds.finish")
     hub.stop_ticker(session_id)
     hub.to_station(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
     hub.to_observers(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
@@ -152,18 +160,27 @@ async def _handle(session_id: UUID, state, event) -> None:
             # Подтверждение приёма — это статус «Принята» у главной службы.
             # Кнопка осталась ради живой цепочки 112 → ДДС (lct-20), где
             # диспетчер один и выбирать службу не из чего.
+            if not event.comment.strip():
+                _error(session_id, "Для подтверждения приёма добавьте комментарий с основанием")
+                return
+            if any(action == "card.ack" for action, _at, _detail in state.dds_log):
+                return
             state.on_event("card.ack")
             state.dds_log.append(("card.ack", now_utc(), None))
             services = state.managed_services()
             if services:
+                _start_dds_work_timer(state)
                 try:
-                    state.set_service_status(services[0], ServiceStatus.ACCEPTED)
+                    state.set_service_status(
+                        services[0], ServiceStatus.ACCEPTED, event.comment, author="диспетчер"
+                    )
                 except StatusError:
                     pass  # статус уже стоит: повторное нажатие ничего не меняет
         case "card.status":
             if event.service not in state.managed_services():
                 _error(session_id, "Можно менять статусы только своей ДДС")
                 return
+            _start_dds_work_timer(state)
             try:
                 state.set_service_status(
                     event.service, event.status, event.comment, author="диспетчер"
@@ -177,6 +194,10 @@ async def _handle(session_id: UUID, state, event) -> None:
             # Первичный статус останавливает норматив 30 секунд.
             if event.status in PRIMARY:
                 state.on_event("card.ack")
+            if event.status in {
+                ServiceStatus.COMPLETED, ServiceStatus.DECLINED, ServiceStatus.REFUSED,
+            }:
+                state.on_event("dds.complete")
         case "crew.select":
             if event.crew not in state.crew_options():
                 _error(session_id, "Выберите бригаду из списка доступных")
@@ -190,6 +211,8 @@ async def _handle(session_id: UUID, state, event) -> None:
                 return
             if state.phone_pending is not None:
                 _error(session_id, "Завершите текущий разговор перед сменой бригады")
+                return
+            if state.crew_selected == event.crew and assigned == event.crew:
                 return
             state.crew_selected = event.crew
             state.crew_assignments[service] = event.crew
@@ -261,13 +284,20 @@ async def _handle(session_id: UUID, state, event) -> None:
             ):
                 _error(session_id, "Ответ относится не к текущей карточке")
                 return
+            # A browser may lose the acknowledgement after the server has
+            # committed this replace-style value. Reconnect retries are safe:
+            # don't create another journal row (or rerun grammar assessment)
+            # when the current card already contains exactly this text.
+            if state.reply_text == event.text:
+                return
             state.reply_text = event.text
             state.reply_grammar = await assess(event.text)
             state.reply_log.append((now_utc(), event.text))
         case "card.open":
-            if state.exercise is not Exercise.DDS or not state.activate_dds_card(event.card_id):
+            if (state.exercise is not Exercise.DDS and not state.handoff_to_dds) or not state.activate_dds_card(event.card_id):
                 _error(session_id, "Карточка отсутствует в текущей очереди")
                 return
+            _start_dds_work_timer(state)
             hub.to_station(session_id, state.card_received_event())
             # CardReceived carries the contents, while StationState carries
             # the status journal and current queue. Send both on every switch
@@ -275,7 +305,7 @@ async def _handle(session_id: UUID, state, event) -> None:
             # card's status snapshot until the next periodic tick.
             hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
         case "card.next":
-            if state.exercise is not Exercise.DDS or not state.dispatched_card or (
+            if (state.exercise is not Exercise.DDS and not state.handoff_to_dds) or not state.dispatched_card or (
                 event.card_id != state.dispatched_card.card_id
             ):
                 _error(session_id, "Следующая карточка недоступна: ID текущей не совпадает")
@@ -323,8 +353,18 @@ async def _handle(session_id: UUID, state, event) -> None:
             )
             return
         case "zone.decision":
+            previous = next(
+                (detail for action, _at, detail in reversed(state.dds_log)
+                 if action == "zone.decision"),
+                None,
+            )
+            decision = "в зоне" if event.in_zone else "не в зоне"
+            if previous is not None:
+                if previous != decision:
+                    _error(session_id, "Решение по зоне уже записано для этой карточки")
+                return
             state.on_event("zone.decision")
-            state.dds_log.append(("zone.decision", now_utc(), "в зоне" if event.in_zone else "не в зоне"))
+            state.dds_log.append(("zone.decision", now_utc(), decision))
         case "crew.dispatched":
             state.kio = state.kio.model_copy(update={"dispatch_order_at": event.at})
             state.dds_log.append(("crew.dispatched", now_utc(), None))
@@ -342,6 +382,10 @@ async def _pump(ws: WebSocket, queue: asyncio.Queue) -> None:
     while True:
         event = await queue.get()
         await ws.send_text(event.model_dump_json())
+        if (isinstance(event, ErrorEvent) and event.code is ErrorKind.INTERNAL
+                and event.message == LEASE_FENCED_MESSAGE):
+            await ws.close(code=1012)
+            return
 
 
 async def _reject(ws: WebSocket, message: str) -> None:
@@ -354,6 +398,12 @@ async def _reject(ws: WebSocket, message: str) -> None:
 
 @router.websocket("/ws/station/{session_id}")
 async def station(ws: WebSocket, session_id: UUID, role: str = "dds") -> None:
+    if not websocket_origin_allowed(ws):
+        await ws.close(code=1008)
+        return
+    if hub.is_lease_fenced(session_id):
+        await ws.close(code=1012)
+        return
     await ws.accept()
 
     # За АРМ ДДС садится обучающийся, преподаватель смотрит и подменяет.
@@ -364,6 +414,12 @@ async def station(ws: WebSocket, session_id: UUID, role: str = "dds") -> None:
 
     state = hub.get(session_id)
     if state is None:
+        await ws.send_text(
+            ErrorEvent(code=ErrorKind.SESSION_NOT_FOUND, message="Занятие не запущено").model_dump_json()
+        )
+        await ws.close()
+        return
+    if who.role is Role.INSTRUCTOR and state.owner_login != who.login:
         await ws.send_text(
             ErrorEvent(code=ErrorKind.SESSION_NOT_FOUND, message="Занятие не запущено").model_dump_json()
         )
@@ -393,8 +449,47 @@ async def station(ws: WebSocket, session_id: UUID, role: str = "dds") -> None:
                         ErrorEvent(code=ErrorKind.UNSUPPORTED_EVENT, message=str(payload)[:200]),
                     )
                     continue
-                await _handle(session_id, state, event)
+                raw_command_id = payload.get("_command_id") if isinstance(payload, dict) else None
+                try:
+                    command_id = UUID(raw_command_id) if raw_command_id is not None else None
+                except (ValueError, TypeError, AttributeError):
+                    hub.to_station(
+                        session_id,
+                        ErrorEvent(code=ErrorKind.UNSUPPORTED_EVENT,
+                                   message="Некорректный идентификатор команды"),
+                    )
+                    continue
+                if command_id is not None and str(command_id) in state.processed_station_commands:
+                    # The checkpoint already proves this exact command committed.
+                    # Re-ack it without rerunning its business transition.
+                    hub.to_station(session_id, CommandAck(command_id=command_id))
+                    continue
+                async with hub.durable_transition(session_id):
+                    await _handle(session_id, state, event)
+                    if command_id is not None:
+                        state.processed_station_commands.append(str(command_id))
+                        del state.processed_station_commands[:-512]
+                        # Commit the state+dedupe ID before acknowledging. The
+                        # transition context can have already flushed other
+                        # events; an explicit checkpoint here makes the
+                        # command/ACK boundary independent of that batch state.
+                        await hub.checkpoint(session_id)
+                        # The hub stages non-error events until the checkpoint
+                        # transaction has committed, including this ack.
+                        hub.to_station(session_id, CommandAck(command_id=command_id))
         except WebSocketDisconnect:
+            return
+        except Exception:  # noqa: BLE001 — failed durable transition may fence the owner
+            if not state.lease_fenced:
+                raise
+            log.info(
+                "закрытие станционного WebSocket после fencing занятия %s",
+                session_id,
+            )
+            # `hub.checkpoint` broadcasts a structured fence event before
+            # propagating the failed database write. Let the sender deliver
+            # that event and close with 1012 instead of an opaque 1006.
+            await asyncio.gather(sender, return_exceptions=True)
             return
         finally:
             sender.cancel()

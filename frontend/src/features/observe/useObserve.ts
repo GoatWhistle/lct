@@ -47,16 +47,46 @@ export function useObserve(sessionId: string | null): ObservedSession {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setStatus(sessionId ? "connecting" : "closed");
+    setTitle(null);
+    setMode(undefined);
+    setTrainee(null);
+    setCard({ server: { ...emptyCard.server }, pending: { ...emptyCard.pending } });
+    setRequiredFields([]);
+    setTranscript([]);
+    setTimers([]);
+    setHintsUsed(0);
+    setNotes(new Map());
+    setEnded(false);
+    setReport(null);
+    setError(null);
     if (!sessionId) return;
-    // A report may already be archived when an instructor opens a history link;
-    // the observe socket is then intentionally unavailable after process restart.
-    void fetch(`/api/sessions/${sessionId}/report`, { credentials: "same-origin" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((saved) => { if (saved) setReport(saved as SessionReport); })
-      .catch(() => undefined);
+    let active = true;
+    // Active monitors used to query this on every open. Almost all such requests
+    // could only return score_not_ready, competing with the snapshot under load.
+    // Ask for the report only after completion or when no live session exists
+    // (e.g. history opened after a backend restart).
+    let reportLoading = false;
+    let reportLoaded = false;
+    const loadReport = () => {
+      if (reportLoading || reportLoaded) return;
+      reportLoading = true;
+      void fetch(`/api/sessions/${sessionId}/report`, { credentials: "same-origin" })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((saved) => {
+          if (!active) return;
+          if (saved) {
+            reportLoaded = true;
+            setReport(saved as SessionReport);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => { reportLoading = false; });
+    };
     const channel = observeChannel(sessionId, {
-      onStatus: setStatus,
+      onStatus: (next) => { if (active) setStatus(next); },
       onEvent: (event) => {
+        if (!active) return;
         switch (event.type) {
           case "session.snapshot":
             setTitle(event.scenario_title);
@@ -68,6 +98,7 @@ export function useObserve(sessionId: string | null): ObservedSession {
             setTimers(event.timers);
             setHintsUsed(event.hints_used ?? 0);
             setEnded(event.ended ?? false);
+            if (event.ended) loadReport();
             break;
           case "kio.state":
             setCard((prev) => applyState(prev, event.kio as unknown as Record<string, unknown>));
@@ -89,20 +120,19 @@ export function useObserve(sessionId: string | null): ObservedSession {
             break;
           case "session.ended":
             setEnded(true);
+            loadReport();
             break;
           case "error":
             setError(event.message);
+            if (event.code === "session_not_found") loadReport();
             break;
           case "score.ready":
-            void fetch(`/api/sessions/${sessionId}/report`)
-              .then((response) => (response.ok ? response.json() : null))
-              .then(setReport)
-              .catch(() => setReport(null));
+            loadReport();
             break;
         }
       },
     }).connect();
-    return () => channel.close();
+    return () => { active = false; channel.close(); };
   }, [sessionId]);
 
   return { status, title, mode, trainee, card, requiredFields, transcript, timers, hintsUsed, notes, ended, report, error };

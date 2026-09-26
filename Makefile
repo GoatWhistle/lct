@@ -27,6 +27,20 @@ tls: ## Поднять полный стенд по HTTPS/WSS с локальн�
 offline-tls: ## Поднять HTTPS/WSS из уже собранных образов без сети
 	$(COMPOSE) -f docker-compose.yml -f docker-compose.tls.yml up --pull never --no-build
 
+production: ## Защищённый запуск из исходников: уникальный DB-пароль обязателен
+	bash scripts/validate_production_env.sh
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.production.yml -f docker-compose.tls.yml up --build
+
+offline-production: ## Защищённый запуск готовых образов без pull/build; требуется уникальный DB-пароль
+	bash scripts/validate_production_env.sh
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.production.yml -f docker-compose.tls.yml up --pull never --no-build
+
+production-config-check: ## Проверить, что production Compose требует и передаёт заданный DB-пароль
+	bash scripts/check_production_compose.sh
+
+production-postgres-check: ## Проверить межконтейнерную PostgreSQL-аутентификацию на временной БД
+	bash scripts/test_production_postgres.sh
+
 sip: ## Собрать и поднять локальный Asterisk SIP/VoIP
 	$(COMPOSE) -f docker-compose.yml -f docker-compose.sip.yml up --build -d sip
 
@@ -45,6 +59,9 @@ webrtc-test: ## Проверить два браузерных SIP-клиент�
 		--backend-url http://127.0.0.1:$(or $(BACKEND_PORT),8000) \
 		--database-url postgresql+asyncpg://lct:lct@127.0.0.1:$(or $(POSTGRES_PORT),5432)/lct $(args)
 
+webrtc-test-isolated: ## Полный двухбраузерный WebRTC smoke на отдельной БД, портах и volume
+	bash scripts/test_webrtc_isolated.sh
+
 down: ## Погасить стенд
 	$(COMPOSE) down
 
@@ -59,6 +76,9 @@ types: ## domain/events.py → frontend/src/shared/types/generated.ts
 
 test: ## Тесты бэкенда (голосовой контур пропускается)
 	cd backend && $(UV) run --extra dev pytest -q
+
+test-db: ## Полный backend-прогон на новой временной PostgreSQL, без касания dev-базы
+	bash scripts/test_isolated_db.sh $(args)
 
 test-voice: ## Тест голосового контура на настоящих моделях: задержка и перебивание
 	cd backend && $(UV) run --extra dev --extra voice pytest tests/test_voice_pipeline.py -q -s
@@ -96,8 +116,15 @@ seed: ## Залить сценарии из /scenarios в БД
 lesson: ## Запустить занятие и напечатать ссылки: make lesson s=<сценарий> m=<режим>
 	cd backend && $(UV) run --no-project --with websockets python scripts/start_lesson.py "$(s)" "$(m)"
 
-test-llm: ## Живые проверки LLM по backend/.env.test (медленно: рассуждающая модель)
-	cd backend && $(UV) run --extra dev pytest tests/test_llm.py -m llm -q -s
+test-llm-local: ## Живые проверки локального Qwen по backend/.env.test (без сети)
+	test -f backend/.env.test || (echo "Создайте backend/.env.test из backend/.env.test.example"; exit 2)
+	cd backend && $(UV) run --offline --extra dev pytest tests/test_llm.py -m llm -q -s
+
+test-llm-corpus: ## Проверить строгий диалог Qwen на всех 96 карточках (локально, без сети)
+	test -f backend/.env.test || (echo "Создайте backend/.env.test из backend/.env.test.example"; exit 2)
+	cd backend && $(UV) run --offline --extra dev python scripts/smoke_llm_corpus.py --output ../docs/evidence/local-llm-corpus-smoke-2026-09-25.json $(args)
+
+test-llm: test-llm-local ## Совместимое имя цели локальной проверки LLM
 
 llm-check: ## Один запрос к активной локальной модели из backend/.env
 	cd backend && $(UV) run python scripts/llm_check.py
@@ -123,4 +150,4 @@ demo: ## Поднять основной стенд ДДС: база, готов
 demo-lite: ## Локальная демонстрация карточки/ДДС без Docker, БД, голоса и внешней сети
 	cd backend && UV_CACHE_DIR=/tmp/lct-uv-demo-cache OFFLINE=true VOICE_ENABLED=false DEV_AUTH_BYPASS=true DEMO_NO_DB=true $(UV) run --offline --no-sync uvicorn app.main:app --host 127.0.0.1 --port $(DEMO_PORT) --workers 1
 
-.PHONY: help dev offline tls offline-tls sip offline-sip sip-credentials sip-test webrtc-test down back front types ekp users users-docker backup test test-voice typecheck test-llm lesson llm-check latency migrate revision models local-models local-llm local-stt seed repl pregen demo demo-lite
+.PHONY: help dev offline tls offline-tls production offline-production production-config-check production-postgres-check sip offline-sip sip-credentials sip-test webrtc-test webrtc-test-isolated down back front types ekp users users-docker backup test test-db test-voice typecheck test-llm test-llm-local test-llm-corpus lesson llm-check latency migrate revision models local-models local-llm local-stt seed repl pregen demo demo-lite

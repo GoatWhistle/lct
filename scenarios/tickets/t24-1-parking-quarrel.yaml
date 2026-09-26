@@ -22,7 +22,7 @@ first_line: "Во дворе ругаются из-за парковки."
 
 facts:
   - id: f_address
-    value: "улица Вешняковская, дом 37, двор у пятого подъезда"
+    value: "Москва, улица Вешняковская, дом 37, двор у пятого подъезда"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: ссора во дворе из-за парковки
@@ -43,7 +43,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Вешняковская, дом 37, двор у пятого подъезда"
+  address: "Москва, улица Вешняковская, дом 37, двор у пятого подъезда"
   victims: null
 
 tree:

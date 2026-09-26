@@ -74,9 +74,22 @@ NEXT: dict[ServiceStatus, tuple[ServiceStatus, ...]] = {
 
 #: Без комментария не сохраняются. Это не валидация формы, а предмет обучения:
 #: половина нарушений в памятке — отказ без указания, куда передана информация.
-COMMENT_REQUIRED: frozenset[ServiceStatus] = frozenset(
-    {ServiceStatus.DECLINED, ServiceStatus.REFUSED}
-)
+# Заказчик уточнил, что диспетчер выбирает статусы и добавляет к ним свои
+# комментарии. Требуем фиксировать источник/содержание сведений для каждой
+# ручной отметки, а не обучать проставлению статусов без основания.
+COMMENT_REQUIRED: frozenset[ServiceStatus] = frozenset({
+    ServiceStatus.ACCEPTED,
+    ServiceStatus.DECLINED,
+    ServiceStatus.RESPONDING,
+    ServiceStatus.ARRIVED,
+    ServiceStatus.WORKING,
+    ServiceStatus.COMPLETED,
+    ServiceStatus.REFUSED,
+})
+REFUSAL_COMMENT_REQUIRED: frozenset[ServiceStatus] = frozenset({
+    ServiceStatus.DECLINED,
+    ServiceStatus.REFUSED,
+})
 
 #: Первичные статусы: их ждут в норматив 30 секунд.
 PRIMARY: frozenset[ServiceStatus] = frozenset(
@@ -198,8 +211,8 @@ def check(entries: list[StatusEntry], service: str, status: ServiceStatus, comme
         )
     if status in COMMENT_REQUIRED and not comment.strip():
         raise StatusError(
-            f"«{SERVICE_STATUS_LABELS[status]}» требует комментария: причина и то, "
-            "куда передана информация"
+            f"«{SERVICE_STATUS_LABELS[status]}» требует комментария: укажите основание "
+            "отметки и содержание полученных сведений"
         )
 
 
@@ -250,6 +263,7 @@ class StationSnapshot(BaseModel):
     log: list[StatusEntry]
     crew_options: list[str] = []
     crew_selected: str | None = None
+    zone_decision: bool | None = None
     phone_reports: list[PhoneReportRecord] = []
     phone_lines: list[PhoneLineRecord] = []
     phone_pending: PhoneCallPending | None = None

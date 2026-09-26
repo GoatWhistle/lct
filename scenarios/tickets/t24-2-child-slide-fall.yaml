@@ -22,7 +22,7 @@ first_line: "Сын с горки упал, лицо разбил, кровь!"
 
 facts:
   - id: f_address
-    value: "Погонный проезд, дом 1, корпус 4, двор, детская площадка"
+    value: "Москва, Погонный проезд, дом 1, корпус 4, двор, детская площадка"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "упал сам с горки, высота полтора метра, травма лица, кровотечение"
@@ -47,7 +47,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Погонный проезд, дом 1, корпус 4, двор, детская площадка"
+  address: "Москва, Погонный проезд, дом 1, корпус 4, двор, детская площадка"
   victims: 1
 
 tree:

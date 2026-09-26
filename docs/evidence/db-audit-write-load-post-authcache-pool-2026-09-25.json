@@ -1,0 +1,18 @@
+{
+  "database": "local PostgreSQL",
+  "workload": "audit",
+  "operations_requested": 1000,
+  "operations_written": 1000,
+  "cleanup_rows_deleted": 1000,
+  "concurrency": 1,
+  "elapsed_seconds": 0.2675466249929741,
+  "operations_per_second": 3737.6662853671223,
+  "operation_latency_ms": {
+    "min": 0.21066699991934001,
+    "median": 0.2431250031804666,
+    "p95": 0.29512499168049544,
+    "max": 5.2690420125145465
+  },
+  "pass_100_writes_per_second": true,
+  "scope": "autocommitted INSERTs over 1 local asyncpg connection(s) into the indexed product audit_log table; this run's rows are deleted in finally; not target 6-core/32-GB hardware"
+}

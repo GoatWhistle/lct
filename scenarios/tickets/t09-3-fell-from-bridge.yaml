@@ -22,7 +22,7 @@ first_line: "Человек с моста упал в воду! Кричит, ч
 
 facts:
   - id: f_address
-    value: "Бережковский мост, Третье транспортное кольцо, внутренняя сторона, середина моста"
+    value: "Москва, Бережковский мост, Третье транспортное кольцо, внутренняя сторона, середина моста"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "мужчина упал с моста в воду, плавать не умеет"
@@ -43,7 +43,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Бережковский мост, ТТК, внутренняя сторона, середина моста"
+  address: "Москва, Бережковский мост, ТТК, внутренняя сторона, середина моста"
   victims: 1
 
 tree:

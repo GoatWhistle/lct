@@ -9,23 +9,29 @@
 но с проверкой».
 """
 
+import csv
+import io
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote, quote_plus
 from uuid import UUID
 from xml.etree import ElementTree as ET
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.admin import backup as backup_service
-from app.api.auth import audit, hash_password, invalidate_login, require
+from app.api.auth import (
+    add_audit_entry, audit, audit_required, hash_password, invalidate_login, require,
+)
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import AuditLog, Session as SessionRow, Trainee, User
@@ -97,6 +103,7 @@ class UserOut(BaseModel):
     login: str
     full_name: str
     role: Role
+    auth_provider: str
     service: str | None
     blocked: bool
     created_at: datetime
@@ -126,6 +133,7 @@ def _out(user: User) -> UserOut:
         login=user.login,
         full_name=user.full_name,
         role=Role(user.role),
+        auth_provider=user.auth_provider,
         service=user.service,
         blocked=user.blocked,
         created_at=user.created_at,
@@ -161,13 +169,14 @@ async def create_user(
         user.trainee_id = trainee.id
 
     db.add(user)
+    add_audit_entry(db, who.login, who.role.value, "user.create", body.login,
+                    ROLE_LABELS[body.role])
     try:
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail="login_taken") from exc
 
-    await audit(who.login, who.role.value, "user.create", body.login, ROLE_LABELS[body.role])
     return _out(user)
 
 
@@ -179,6 +188,11 @@ async def patch_user(
     user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="user_not_found")
+
+    if user.auth_provider == "ldap" and any(
+        value is not None for value in (body.role, body.service, body.password)
+    ):
+        raise HTTPException(status_code=409, detail="directory_managed_account")
 
     changed: list[str] = []
     if body.role is not None:
@@ -207,9 +221,10 @@ async def patch_user(
     if not changed:
         return _out(user)
     user.auth_version += 1
+    add_audit_entry(db, who.login, who.role.value, "user.update", user.login,
+                    ", ".join(changed))
     await db.commit()
     invalidate_login(user.login, user.auth_version)
-    await audit(who.login, who.role.value, "user.update", user.login, ", ".join(changed))
     return _out(user)
 
 
@@ -220,6 +235,25 @@ class AuditOut(BaseModel):
     action: str
     object_id: str | None
     detail: str
+
+
+def _csv_value(value: object) -> str:
+    """Prevent spreadsheet formula execution in user-controlled audit fields."""
+    if value is None:
+        return ""
+    text = str(value)
+    probe = text.lstrip(" \t\r\n\ufeff\u200b")
+    if probe.startswith(("=", "+", "-", "@")) or text.startswith(("\t", "\r", "\n")):
+        return "'" + text
+    return text
+
+
+def _csv_row(values: tuple[object, ...]) -> str:
+    output = io.StringIO(newline="")
+    csv.writer(output, lineterminator="\r\n").writerow(
+        [_csv_value(value) for value in values]
+    )
+    return output.getvalue()
 
 
 @router.get("/audit", response_model=list[AuditOut])
@@ -252,6 +286,37 @@ async def audit_log(
         )
         for row in rows
     ]
+
+
+@router.get("/audit.csv")
+async def audit_csv(
+    request: Request,
+    action: str | None = None,
+    actor: str | None = None,
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """Stream the complete filtered security log for offline review/archive."""
+    require(request, Role.ADMIN)
+    query = select(AuditLog).order_by(AuditLog.at.asc(), AuditLog.id.asc())
+    if action:
+        query = query.where(AuditLog.action == action)
+    if actor:
+        query = query.where(AuditLog.actor == actor)
+
+    async def rows():
+        yield "\ufeff" + _csv_row(("Когда UTC", "Пользователь", "Роль", "Действие", "Объект", "Подробности"))
+        result = await db.stream_scalars(query)
+        async for row in result:
+            yield _csv_row((
+                row.at.isoformat(), row.actor, row.role, row.action,
+                row.object_id, row.detail,
+            ))
+
+    return StreamingResponse(
+        rows(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="lct-audit.csv"'},
+    )
 
 
 class ServiceState(BaseModel):
@@ -504,9 +569,25 @@ def _safe_backup_error(exc: backup_service.BackupError) -> str:
     dsn = get_settings().database_url
     if dsn:
         message = message.replace(dsn, "[DATABASE_URL скрыт]")
-        match = re.search(r"://[^:]+:([^@]+)@", dsn)
-        if match and match.group(1):
-            message = message.replace(match.group(1), "[пароль скрыт]")
+        try:
+            password = make_url(dsn).password
+        except Exception:  # malformed DSN is handled by backup setup separately
+            password = None
+        if password:
+            # Driver errors may echo the DSN either as configured (percent
+            # encoded) or after the URL parser decoded credentials. Redact all
+            # common representations; checking only the raw password misses
+            # secrets containing @, :, spaces, or other escaped characters.
+            encoded = {quote(password, safe=""), quote_plus(password, safe="")}
+            variants = {
+                password,
+                *encoded,
+                *(re.sub(r"%[0-9A-F]{2}", lambda match: match.group(0).lower(), item)
+                  for item in encoded),
+            }
+            for secret in sorted(variants, key=len, reverse=True):
+                if secret:
+                    message = message.replace(secret, "[пароль скрыт]")
     return message
 
 
@@ -515,12 +596,21 @@ async def make_backup(request: Request) -> BackupOut:
     """Копия прямо сейчас. Расписание — отдельно, в `scripts/backup.py`:
     кнопка нужна перед занятием, расписание — чтобы о нём не вспоминали."""
     who = require(request, Role.ADMIN)
+    # Record intent before the irreversible filesystem operation. If the DB
+    # audit store fails after pg_dump finishes, the attempt is still visible.
+    await audit_required(who.login, who.role.value, "backup.create.requested")
     try:
         # pg_dump may run for two minutes; never block the event loop for it.
         created = await run_in_threadpool(backup_service.create)
     except backup_service.BackupError as exc:
         detail = _safe_backup_error(exc)
+        # The durable requested event above preserves the attempt even if the
+        # outcome write also fails. Keep the concrete storage error visible to
+        # the operator instead of replacing it with an audit-store error.
         await audit(who.login, who.role.value, "backup.failed", detail=detail)
         raise HTTPException(status_code=503, detail=detail) from exc
-    await audit(who.login, who.role.value, "backup.create", created["name"])
+    # A completed backup must not be reported as successful when its security
+    # audit could not be persisted. The file remains visible in the backup list
+    # so an administrator can reconcile it after the audit store recovers.
+    await audit_required(who.login, who.role.value, "backup.create", created["name"])
     return BackupOut(**created)

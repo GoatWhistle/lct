@@ -15,6 +15,24 @@ export interface CardState {
 
 export const empty: CardState = { server: {}, pending: {} };
 
+function sameValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right)
+      && left.length === right.length
+      && left.every((item, index) => sameValue(item, right[index]));
+  }
+  if (left && right && typeof left === "object" && typeof right === "object") {
+    const leftRecord = left as Record<string, unknown>;
+    const rightRecord = right as Record<string, unknown>;
+    const keys = Object.keys(leftRecord);
+    return keys.length === Object.keys(rightRecord).length
+      && keys.every((key) => key in rightRecord
+        && sameValue(leftRecord[key], rightRecord[key]));
+  }
+  return false;
+}
+
 export function setNested(card: Record<string, unknown>, path: string, value: unknown): Record<string, unknown> {
   const [head, ...rest] = path.split(".");
   if (rest.length === 0) return { ...card, [head]: value };
@@ -42,7 +60,7 @@ export function applyPatch(
   const pending = { ...state.pending };
   for (const [path, value] of Object.entries(fields)) {
     server = setNested(server, path, value);
-    if (source === "auto" || pending[path] === value) delete pending[path];
+    if (source === "auto" || sameValue(pending[path], value)) delete pending[path];
   }
   return { server, pending };
 }
@@ -51,7 +69,7 @@ export function applyPatch(
 export function applyState(state: CardState, card: Record<string, unknown>): CardState {
   const pending = { ...state.pending };
   for (const path of Object.keys(pending)) {
-    if (readPath(card, path) === pending[path]) delete pending[path];
+    if (sameValue(readPath(card, path), pending[path])) delete pending[path];
   }
   return { server: card, pending };
 }

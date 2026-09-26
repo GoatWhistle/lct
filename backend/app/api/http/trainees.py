@@ -13,12 +13,14 @@ from pydantic import BaseModel
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import DEMO_TRAINEE_ID, require
+from app.api.auth import DEMO_TRAINEE_ID, audit_required, require
 from app.config import get_settings
 from app.domain.roles import Role
 from app.db.base import get_session, get_sessionmaker
 from app.db.models import Group, Score, Session, Trainee, User
+from app.domain.taxonomy import ERRORS, ErrorCode
 from app.scoring.export import certificate_pdf
+from app.scoring.group import RECOMMENDATIONS
 from app.voice.recording import recording_path
 
 router = APIRouter(prefix="/api/trainees", tags=["trainees"])
@@ -67,6 +69,9 @@ async def certificate(
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    await audit_required(
+        who.login, who.role.value, "trainee.certificate.export.pdf", str(trainee_id)
+    )
     return Response(
         content=content,
         media_type="application/pdf",
@@ -107,12 +112,36 @@ class DeltaOut(BaseModel):
     facts_got: int | None = None
 
 
+class RecommendationOut(BaseModel):
+    code: str
+    title: str
+    recommendation: str
+    occurrences: int
+
+
 class ProfileOut(BaseModel):
     trainee: TraineeOut
     attempts: list[AttemptOut]
     competencies: dict[str, float]
     deltas: list[DeltaOut]
+    recommendations: list[RecommendationOut]
     hints_total: int
+
+
+def _personal_recommendations(codes: dict[str, int]) -> list[RecommendationOut]:
+    """Следующие упражнения опираются на коды последней оценённой попытки."""
+    recommendations = []
+    for code, count in codes.items():
+        if code not in RECOMMENDATIONS or not isinstance(count, int) or count <= 0:
+            continue
+        error = ERRORS[ErrorCode(code)]
+        recommendations.append(RecommendationOut(
+            code=code,
+            title=error.title,
+            recommendation=RECOMMENDATIONS[code],
+            occurrences=count,
+        ))
+    return sorted(recommendations, key=lambda item: (-item.occurrences, item.code))[:5]
 
 
 @router.get("", response_model=list[TraineeOut])
@@ -187,8 +216,11 @@ async def profile(
     rows = await db.execute(attempts_query)
     attempts: list[AttemptOut] = []
     competency_sums: dict[str, list[float]] = {}
+    latest_scored_codes: dict[str, int] = {}
     for session, score in rows:
         summary = (score.report or {}).get("summary", {}) if score else {}
+        if score is not None:
+            latest_scored_codes = summary.get("codes", {})
         attempts.append(
             AttemptOut(
                 session_id=session.id,
@@ -230,13 +262,18 @@ async def profile(
                 )
             )
 
-    return ProfileOut(
+    result = ProfileOut(
         trainee=TraineeOut(id=trainee.id, name=trainee.name, group=group.name if group else None),
         attempts=attempts,
         competencies=competencies,
         deltas=deltas,
+        recommendations=_personal_recommendations(latest_scored_codes),
         hints_total=sum(attempt.hints or 0 for attempt in attempts),
     )
+    await audit_required(
+        who.login, who.role.value, "trainee.profile.read", str(trainee_id)
+    )
+    return result
 
 
 def _diff(before, after):

@@ -3,16 +3,17 @@
 import asyncio
 import csv
 import io
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 from app.api.auth import Principal
 from app.api.http import sessions
+from app.config import get_settings
 from app.domain.events import SessionReport
 from app.domain.roles import Role
 from app.main import app
@@ -20,7 +21,7 @@ from app.scoring.export import _cell, certificate_pdf, to_csv, to_pdf
 
 
 def sample_report(*, long: bool = False) -> SessionReport:
-    at = datetime(2026, 9, 21, 12, 0, tzinfo=timezone.utc)
+    at = datetime(2026, 9, 21, 12, 0, tzinfo=UTC)
     long_text = "Заявитель сообщает о дыме в учебном помещении. " * (240 if long else 1)
     return SessionReport.model_validate({
         "session_id": str(uuid4()),
@@ -114,18 +115,32 @@ def test_certificate_pdf_contains_saved_result(tmp_path):
 @pytest.fixture
 def client(monkeypatch):
     report = sample_report()
-    state = SimpleNamespace(score={"score_auto": 70}, trainee_id=uuid4(), owner_login="dev")
+    owner_login = "demo-instructor" if get_settings().demo_no_db else "dev"
+    state = SimpleNamespace(score={"score_auto": 70}, trainee_id=uuid4(), owner_login=owner_login)
+    audit_events = []
+
+    async def capture_audit(actor, role, action, object_id=None, detail=""):
+        audit_events.append((actor, role, action, object_id))
+
+    state.audit_events = audit_events
     monkeypatch.setattr(sessions, "_live", lambda session_id: (state, object()))
     monkeypatch.setattr(sessions, "build_report", lambda session_id, state, scenario: report)
+    monkeypatch.setattr(sessions, "audit_required", capture_audit)
     with TestClient(app) as test_client:
+        # These endpoint tests exercise the in-memory live-report path. Durable
+        # report readiness is covered by the isolated PostgreSQL integration suite.
+        monkeypatch.setattr(sessions.hub, "journal", None)
         test_client.post("/api/auth/dev-token")
         yield test_client, state, report
 
 
 def test_export_routes_return_downloads_with_json_report_rights(client):
     browser, state, report = client
+    json_response = browser.get(f"/api/sessions/{report.session_id}/report")
+    assert json_response.status_code == 200, json_response.text
+
     csv_response = browser.get(f"/api/sessions/{report.session_id}/report.csv")
-    assert csv_response.status_code == 200
+    assert csv_response.status_code == 200, csv_response.text
     assert csv_response.headers["content-type"].startswith("text/csv")
     assert csv_response.content.startswith(b"\xef\xbb\xbf")
     assert "attachment" in csv_response.headers["content-disposition"]
@@ -134,6 +149,11 @@ def test_export_routes_return_downloads_with_json_report_rights(client):
     assert pdf_response.status_code == 200
     assert pdf_response.headers["content-type"] == "application/pdf"
     assert pdf_response.content.startswith(b"%PDF-")
+    assert state.audit_events == [
+        ("dev", "instructor", "report.read", str(report.session_id)),
+        ("dev", "instructor", "report.export.csv", str(report.session_id)),
+        ("dev", "instructor", "report.export.pdf", str(report.session_id)),
+    ]
 
     state.score = None
     assert browser.get(f"/api/sessions/{report.session_id}/report.csv").status_code == 409
@@ -141,13 +161,28 @@ def test_export_routes_return_downloads_with_json_report_rights(client):
 
 
 def test_trainee_cannot_export_another_persons_report(client, monkeypatch):
-    browser, state, report = client
+    browser, _state, report = client
     monkeypatch.setattr(
         sessions, "require",
         lambda request: Principal(login="trainee", full_name="Учебный", role=Role.TRAINEE, trainee_id=uuid4()),
     )
     for suffix in ("csv", "pdf"):
         assert browser.get(f"/api/sessions/{report.session_id}/report.{suffix}").status_code == 403
+    assert not client[1].audit_events
+
+
+def test_report_export_fails_closed_when_access_audit_is_unavailable(client, monkeypatch):
+    from fastapi import HTTPException
+
+    browser, _state, report = client
+
+    async def unavailable(*_args, **_kwargs):
+        raise HTTPException(status_code=503, detail="audit_unavailable")
+
+    monkeypatch.setattr(sessions, "audit_required", unavailable)
+    response = browser.get(f"/api/sessions/{report.session_id}/report.pdf")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "audit_unavailable"}
 
 
 def test_archived_report_survives_missing_live_session(monkeypatch):
@@ -220,6 +255,12 @@ def test_archived_score_override_updates_json_exports_and_audit(monkeypatch):
         sessions, "require",
         lambda request, *roles: Principal(login="teacher", full_name="Преподаватель", role=Role.INSTRUCTOR),
     )
+    audit_events = []
+
+    async def capture_audit(actor, role, action, object_id=None, detail=""):
+        audit_events.append((actor, role, action, object_id))
+
+    monkeypatch.setattr(sessions, "audit_required", capture_audit)
 
     corrected = asyncio.run(sessions.override(
         archived.session_id,
@@ -237,7 +278,8 @@ def test_archived_score_override_updates_json_exports_and_audit(monkeypatch):
     assert corrected.override_comment == "проверена запись переговоров"
     audit = db.added[0]
     assert audit.action == "score.override" and audit.actor == "teacher"
-    assert "84.5" in audit.detail and "проверена запись переговоров" in audit.detail
+    assert "84.5" in audit.detail and "comment_chars=" in audit.detail
+    assert "проверена запись переговоров" not in audit.detail
 
     report = asyncio.run(sessions.report(archived.session_id, object(), db))
     assert report.score_final == 84.5 and report.score_auto == 70.0
@@ -246,3 +288,8 @@ def test_archived_score_override_updates_json_exports_and_audit(monkeypatch):
     assert "проверена запись переговоров" in csv_response.body.decode("utf-8-sig")
     pdf_response = asyncio.run(sessions.report_pdf(archived.session_id, object(), db))
     assert pdf_response.body.startswith(b"%PDF-")
+    assert audit_events == [
+        ("teacher", "instructor", "report.read", str(archived.session_id)),
+        ("teacher", "instructor", "report.export.csv", str(archived.session_id)),
+        ("teacher", "instructor", "report.export.pdf", str(archived.session_id)),
+    ]

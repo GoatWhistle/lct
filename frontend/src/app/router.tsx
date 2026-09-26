@@ -30,6 +30,7 @@ const guarded = (screen: string, element: JSX.Element) => (
 export const router = createBrowserRouter([
   { path: "/", element: <Navigate to={DEMO_MODE ? "/instructor" : "/trainee"} replace /> },
   { path: "/trainee", element: guarded("/trainee", <Call />) },
+  { path: "/trainee/completed", element: guarded("/trainee", <Call />) },
   { path: "/instructor", element: guarded("/instructor", <Instructor />) },
   { path: "/wall", element: guarded("/wall", <Wall />) },
   { path: "/profile", element: guarded("/profile", <Profile />) },

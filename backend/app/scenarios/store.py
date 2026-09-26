@@ -4,6 +4,7 @@
 преподаватель выбирает сценарий и что переживает перезапуск.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
@@ -11,15 +12,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Scenario as ScenarioRow
+from app.scenarios import editor
 from app.scenarios.loader import load_library
 from app.scenarios.schema import Scenario
-from app.scenarios import editor
 
 _library: dict[str, Scenario] = {}
 _demo_drafts: dict[str, ScenarioRow] = {}
 _demo_archived: dict[str, Scenario] = {}
 _demo_scenario_owners: dict[str, str] = {}
 _demo_archived_owners: dict[str, str] = {}
+BeforeCommit = Callable[[AsyncSession, ScenarioRow], None]
 
 
 def reset_demo_drafts() -> None:
@@ -46,6 +48,12 @@ def all_scenarios() -> list[Scenario]:
 def publish(scenario: Scenario) -> None:
     """Сделать утверждённую версию доступной запуску занятия немедленно."""
     _library[scenario.id] = scenario
+
+
+def register_owned_scenario(scenario: Scenario, owner_login: str) -> None:
+    """Обновить runtime-библиотеку после публикации модерируемого сценария."""
+    _library[scenario.id] = scenario
+    _demo_scenario_owners[scenario.id] = owner_login
 
 
 def load_from_disk(root: Path) -> list[Scenario]:
@@ -93,11 +101,48 @@ async def restore_published(db: AsyncSession) -> int:
             continue
         if row.owner_login:
             _demo_scenario_owners[row.id] = row.owner_login
-        if row.id in _library:
+        # Shipped YAML remains the canonical source for base cards, but a
+        # published instructor-owned row may have changed on another process.
+        already_loaded = row.id in _library
+        if already_loaded and row.owner_login is None:
             continue
         _library[row.id] = Scenario.model_validate(row.body)
-        delta += 1
+        if not already_loaded:
+            delta += 1
     return delta
+
+
+async def published_catalog(
+    db: AsyncSession, scenario_ids: list[str], owner_login: str | None,
+) -> tuple[dict[str, Scenario], set[str]]:
+    """Resolve startable scenarios from shared DB, including a peer's cache misses.
+
+    Process-local memory remains a fallback only for the shipped library. Any
+    database row is authoritative: archived/pending rows never fall back to a
+    stale in-memory copy, and instructor-owned rows stay private across nodes.
+    """
+    ids = set(scenario_ids)
+    if not ids:
+        return {}, set()
+    rows = await db.scalars(select(ScenarioRow).where(ScenarioRow.id.in_(ids)))
+    by_id = {row.id: row for row in rows}
+    scenarios: dict[str, Scenario] = {}
+    hidden: set[str] = set()
+    for scenario_id, row in by_id.items():
+        if row.owner_login and row.owner_login != owner_login:
+            hidden.add(scenario_id)
+            continue
+        if row.status == "published":
+            scenario = Scenario.model_validate(row.body)
+            scenarios[scenario_id] = scenario
+            # Refresh a stale process-local version from the authoritative row.
+            _library[scenario_id] = scenario
+    for scenario_id in ids - by_id.keys():
+        scenario = _library.get(scenario_id)
+        # A process-local owner marker without a durable row is not publishable.
+        if scenario is not None and scenario_id not in _demo_scenario_owners:
+            scenarios[scenario_id] = scenario
+    return scenarios, hidden
 
 
 async def owned_scenario_ids(db: AsyncSession | None, owner_login: str) -> set[str]:
@@ -117,8 +162,24 @@ async def owned_scenario_ids(db: AsyncSession | None, owner_login: str) -> set[s
     return {value if isinstance(value, str) else value.id for value in values}
 
 
+async def scenario_ids_owned_by_other(db: AsyncSession | None, owner_login: str) -> set[str]:
+    """Hide another instructor's private scenarios from this instructor's bank."""
+    if db is None:
+        return {
+            scenario_id for scenario_id, owner in _demo_scenario_owners.items()
+            if owner != owner_login
+        }
+    rows = await db.scalars(select(ScenarioRow.id).where(
+        ScenarioRow.owner_login.is_not(None),
+        ScenarioRow.owner_login != owner_login,
+        ScenarioRow.status == "published",
+    ))
+    return {value if isinstance(value, str) else value.id for value in rows}
+
+
 async def archive(
-    db: AsyncSession | None, scenario_id: str, *, owner_login: str | None = None
+    db: AsyncSession | None, scenario_id: str, *, owner_login: str | None = None,
+    before_commit: BeforeCommit | None = None,
 ) -> Scenario | None:
     """Скрыть опубликованный сценарий без удаления истории и внешних ключей."""
     scenario = _library.get(scenario_id)
@@ -148,13 +209,16 @@ async def archive(
             )
             db.add(row)
         row.status = "archived"
+        if before_commit is not None:
+            before_commit(db, row)
         await db.commit()
     _library.pop(scenario_id, None)
     return scenario
 
 
 async def restore_archived(
-    db: AsyncSession | None, scenario_id: str, *, owner_login: str | None = None
+    db: AsyncSession | None, scenario_id: str, *, owner_login: str | None = None,
+    before_commit: BeforeCommit | None = None,
 ) -> Scenario | None:
     """Вернуть мягко удалённый сценарий в библиотеку назначения."""
     if db is None:
@@ -175,6 +239,8 @@ async def restore_archived(
         # черновика до вычисления и закономерно запрещает такие поля.
         scenario = Scenario.model_validate(row.body)
         row.status = "published"
+        if before_commit is not None:
+            before_commit(db, row)
         await db.commit()
     if scenario is None:
         return None
@@ -185,7 +251,7 @@ async def restore_archived(
 async def create_draft(
     db: AsyncSession | None, *, source: Scenario, title: str | None = None,
     proposal: dict | None = None, full_proposal: dict | None = None,
-    owner_login: str | None = None,
+    owner_login: str | None = None, before_commit: BeforeCommit | None = None,
 ) -> ScenarioRow:
     if proposal is not None and full_proposal is not None:
         raise ValueError("нельзя одновременно передать вариацию и полный сюжет")
@@ -216,6 +282,8 @@ async def create_draft(
         _demo_drafts[row.id] = row
     else:
         db.add(row)
+        if before_commit is not None:
+            before_commit(db, row)
         await db.commit()
     return row
 
@@ -231,15 +299,25 @@ async def draft(
     return row
 
 
-async def update_draft(db: AsyncSession | None, row: ScenarioRow, patch: dict) -> ScenarioRow:
+async def update_draft(
+    db: AsyncSession | None, row: ScenarioRow, patch: dict,
+    *, before_commit: BeforeCommit | None = None,
+) -> ScenarioRow:
     row.body = editor.merge_patch(row.body, patch)
     row.title = str(row.body.get("title") or "")[:200]
+    row.manual_edit_pending = True
+    row.grammar_check_hash = None
     if db is not None:
+        if before_commit is not None:
+            before_commit(db, row)
         await db.commit()
     return row
 
 
-async def revise_draft(db: AsyncSession | None, row: ScenarioRow, proposal: dict) -> ScenarioRow:
+async def revise_draft(
+    db: AsyncSession | None, row: ScenarioRow, proposal: dict,
+    *, before_commit: BeforeCommit | None = None,
+) -> ScenarioRow:
     """Заменить сюжетную версию того же черновика после комментария преподавателя."""
     from app.scenarios.generation import proposal_body
 
@@ -250,12 +328,18 @@ async def revise_draft(db: AsyncSession | None, row: ScenarioRow, proposal: dict
     row.level = row.body["level"]
     row.topics = row.body["topics"]
     row.modes = row.body["modes"]
+    row.manual_edit_pending = False
+    row.grammar_check_hash = None
     if db is not None:
+        if before_commit is not None:
+            before_commit(db, row)
         await db.commit()
     return row
 
 
-async def approve_draft(db: AsyncSession | None, row: ScenarioRow) -> Scenario:
+async def approve_draft(
+    db: AsyncSession | None, row: ScenarioRow, *, before_commit: BeforeCommit | None = None,
+) -> Scenario:
     scenario = editor.validate(row.body)
     row.title = scenario.title
     row.incident_type = scenario.type.value
@@ -269,6 +353,8 @@ async def approve_draft(db: AsyncSession | None, row: ScenarioRow) -> Scenario:
         if row.owner_login is not None:
             _demo_scenario_owners[row.id] = row.owner_login
     else:
+        if before_commit is not None:
+            before_commit(db, row)
         await db.commit()
     publish(scenario)
     return scenario

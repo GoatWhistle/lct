@@ -94,6 +94,7 @@ def dump_state(state: SessionState) -> dict:
         "level": state.level,
         "mode": state.mode.value,
         "owner_login": state.owner_login,
+        "backend_fencing_epoch": state.backend_fencing_epoch,
         "exercise": state.exercise.value,
         "handoff_to_dds": state.handoff_to_dds,
         "required_fields": state.required_fields,
@@ -135,6 +136,9 @@ def dump_state(state: SessionState) -> dict:
             state.phone_pending.model_dump(mode="json") if state.phone_pending else None
         ),
         "dds_scenarios": [item.model_dump(mode="json") for item in state.dds_scenarios],
+        "pending_dds_scenarios": [item.model_dump(mode="json") for item in state.pending_dds_scenarios],
+        "operator_kio": state.operator_kio.model_dump(mode="json") if state.operator_kio else None,
+        "operator_scenario": state.operator_scenario.model_dump(mode="json") if state.operator_scenario else None,
         "dds_live_cards": [_dump_live_card(item, now) for item in state.dds_live_cards],
         "dds_active_card_id": (
             str(state.dds_active_card_id) if state.dds_active_card_id else None
@@ -163,6 +167,7 @@ def dump_state(state: SessionState) -> dict:
         "reply_log": [[at.isoformat(), text] for at, text in state.reply_log],
         "resolved_outcome": state.resolved_outcome,
         "resolve_comment": state.resolve_comment,
+        "processed_station_commands": state.processed_station_commands[-512:],
     }
     # В actions/score могут быть datetime/UUID из расчёта; JSONB должен
     # получать только стандартные JSON-типы.
@@ -250,6 +255,7 @@ def load_state(payload: dict, saved_at: datetime) -> SessionState:
         level=payload["level"],
         mode=SessionMode(payload["mode"]),
         owner_login=payload.get("owner_login"),
+        backend_fencing_epoch=int(payload.get("backend_fencing_epoch", 0)),
         exercise=Exercise(payload["exercise"]),
         handoff_to_dds=bool(payload.get("handoff_to_dds")),
         required_fields=list(payload.get("required_fields") or []),
@@ -296,6 +302,12 @@ def load_state(payload: dict, saved_at: datetime) -> SessionState:
         ),
         dds_scenarios=[Scenario.model_validate(item)
                        for item in payload.get("dds_scenarios", [])],
+        pending_dds_scenarios=[Scenario.model_validate(item)
+                               for item in payload.get("pending_dds_scenarios", [])],
+        operator_kio=(KIO.model_validate(payload["operator_kio"])
+                      if payload.get("operator_kio") else None),
+        operator_scenario=(Scenario.model_validate(payload["operator_scenario"])
+                           if payload.get("operator_scenario") else None),
         dds_live_cards=[_restore_live_card(item, saved_at)
                         for item in payload.get("dds_live_cards", [])],
         dds_active_card_id=(
@@ -329,6 +341,7 @@ def load_state(payload: dict, saved_at: datetime) -> SessionState:
                    for at, text in payload.get("reply_log", [])],
         resolved_outcome=payload.get("resolved_outcome"),
         resolve_comment=payload.get("resolve_comment", ""),
+        processed_station_commands=list(payload.get("processed_station_commands") or [])[-512:],
     )
     if state.dds_live_cards:
         # Legacy snapshots had no explicit active ID; newer snapshots may

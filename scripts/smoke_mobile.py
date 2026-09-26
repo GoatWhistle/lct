@@ -14,7 +14,7 @@ from load_browser import local_url
 
 def layout(page) -> dict:
     return page.evaluate(
-        """() => {
+        r"""() => {
           const root = document.documentElement;
           const visible = [...document.querySelectorAll('body *')].filter((element) => {
             const style = getComputedStyle(element);
@@ -26,6 +26,12 @@ def layout(page) -> dict:
           return {
             viewport: innerWidth,
             document_width: root.scrollWidth,
+            lesson_start_position: (() => {
+              const bar = document.querySelector('.instructor-layout .lesson-start-bar');
+              return bar ? getComputedStyle(bar).position : null;
+            })(),
+            visible_json: /\bjson\b/i.test(document.body.innerText)
+              || /\{\s*["'][\w-]+["']\s*:/.test(document.body.innerText),
             overflowing: visible.filter((element) => {
               const rect = element.getBoundingClientRect();
               return rect.right > innerWidth + 2 || rect.left < -2;
@@ -41,7 +47,9 @@ def layout(page) -> dict:
             )].filter((element) => {
               const style = getComputedStyle(element);
               const rect = element.getBoundingClientRect();
+              const closedDetails = element.closest('details:not([open])');
               return style.display !== 'none' && style.visibility !== 'hidden'
+                && !closedDetails
                 && !element.disabled && (rect.height < 40 || rect.width < 40);
             }).slice(0, 20).map((element) => ({
               tag: element.tagName.toLowerCase(),
@@ -73,19 +81,23 @@ def stop_exercise_from_instructor(page, base_url: str, exercise_href: str) -> No
 
 
 def choose_trainee(page) -> None:
-    # Match the label cell, not any row whose body happens to mention a
-    # trainee (the scenario/category tables include that word too).
+    # Match the step title even when mobile layout renders the step number
+    # inside the same cell. Do not use exact text on the nested th: its actual
+    # accessible text is now "4 Курсант".
     exercise_table = page.locator(".instructor-layout > section").first.locator(
         "table.grid"
     ).first
-    trainee_row = exercise_table.locator("th").get_by_text(
-        "Курсант", exact=True
-    ).locator("xpath=..")
+    trainee_row = exercise_table.locator(".lesson-step-title").filter(
+        has_text="Курсант"
+    ).locator("xpath=../..")
     trainee_select = trainee_row.locator("select")
     if trainee_select.count():
         if trainee_select.locator("option").count() < 2:
             raise RuntimeError("Список курсантов не содержит доступного выбора")
-        trainee_select.select_option(index=1)
+        demo_option = trainee_select.locator('option[value="__demo__"]')
+        trainee_select.select_option(
+            value="__demo__" if demo_option.count() else trainee_select.locator("option").nth(1).get_attribute("value")
+        )
     else:
         trainee_row.locator('input[type="text"]').fill("Мобильный smoke")
 
@@ -117,6 +129,11 @@ def exercise_dds_flow(page, scenario_title: str) -> dict:
     if not any("Принята" in label for label in labels):
         raise RuntimeError(f"статус «Принята» недоступен для {service_title}: {labels}")
     next_status.select_option(value="accepted")
+    service_name = next_status.get_attribute("aria-label").removeprefix("Следующий статус ")
+    page.get_by_role("textbox", name=f"Основание статуса {service_name}").fill("Учебный доклад бригады")
+    page.get_by_role("textbox", name=f"Полученные сведения {service_name}").fill(
+        "Служба приняла карточку и направила подразделение к месту происшествия."
+    )
     page.locator('button[aria-label="Сохранить статус"]').click()
     page.wait_for_function("""() => [...document.querySelectorAll(
       '.dds-service-dock button')].some((button) => button.innerText.includes('Принята'))""")
@@ -164,9 +181,10 @@ def smoke_dds_queue(page, base_url: str, output: Path, screenshot_suffix: str) -
     queue = page.locator("details.scenario-queue")
     queue.locator("summary").click()
     queue.locator('input[type="checkbox"]').first.check()
+    page.get_by_text("Настроить нормативы и критерии оценки").click()
     page.get_by_label("Интервал поступления карточек ДДС, секунд").fill("6")
     page.get_by_label("Максимум ожидающих карточек ДДС").fill("1")
-    dds_href = start_exercise(page, "Диспетчер ДДС · готовая карточка", "АРМ ДДС")
+    dds_href = start_exercise(page, "Диспетчер ДДС", "АРМ ДДС")
     page.goto(dds_href, wait_until="networkidle")
     page.locator(".dds-workspace").wait_for()
     first_row = page.locator('.dds-registry tbody tr[aria-current="true"]')
@@ -185,6 +203,10 @@ def smoke_dds_queue(page, base_url: str, output: Path, screenshot_suffix: str) -
     if not any("Принята" in option for option in next_status.locator("option").all_text_contents()):
         raise RuntimeError(f"для первой карточки недоступен статус «Принята»: {service_title}")
     next_status.select_option(value="accepted")
+    page.get_by_role("textbox", name=f"Основание статуса {service_name}").fill("Учебный доклад бригады")
+    page.get_by_role("textbox", name=f"Полученные сведения {service_name}").fill(
+        "Служба приняла карточку и направила подразделение к месту происшествия."
+    )
     page.locator('button[aria-label="Сохранить статус"]').click()
     page.wait_for_function(
         """(service) => [...document.querySelectorAll('.dds-service-dock button')]
@@ -193,7 +215,7 @@ def smoke_dds_queue(page, base_url: str, output: Path, screenshot_suffix: str) -
         arg=service_title,
         timeout=5_000,
     )
-    page.locator(".dds-case-top button").click()
+    page.locator(".dds-card-back").click()
     page.wait_for_function(
         "document.querySelectorAll('.dds-registry tbody tr').length === 2",
         timeout=20_000,
@@ -204,18 +226,18 @@ def smoke_dds_queue(page, base_url: str, output: Path, screenshot_suffix: str) -
     second_row = rows.nth(1)
     second_number = second_row.locator('td[data-label="Номер"] button').inner_text()
     second_row.get_by_role("button", name="Открыть карточку").click()
-    page.locator(".dds-case-top").get_by_text(second_number, exact=False).wait_for()
-    page.locator(".dds-case-top button").click()
+    page.locator(".dds-call-incident").get_by_text(second_number, exact=False).wait_for()
+    page.locator(".dds-card-back").click()
     page.locator(".dds-registry tbody tr").filter(has_text=first_number).get_by_role(
         "button", name="Открыть карточку"
     ).click()
-    page.locator(".dds-case-top").get_by_text(first_number, exact=False).wait_for()
+    page.locator(".dds-call-incident").get_by_text(first_number, exact=False).wait_for()
     restored_status = page.locator(".dds-service-dock button").filter(
         has_text=service_title
     ).first.inner_text()
     if "Принята" not in restored_status:
         raise RuntimeError(f"статус первой карточки потерян после поступления/переключения: {restored_status}")
-    page.locator(".dds-case-top button").click()
+    page.locator(".dds-card-back").click()
     screen = layout(page)
     page.screenshot(path=output / f"dds-queue-{screenshot_suffix}.png", full_page=True)
     stop_exercise_from_instructor(page, base_url, dds_href)
@@ -234,6 +256,8 @@ def main() -> int:
     parser.add_argument("--report", type=Path)
     parser.add_argument("--login")
     parser.add_argument("--password")
+    parser.add_argument("--results-only", action="store_true",
+                        help="stop after verifying the completed lesson report UI")
     parser.add_argument("--width", type=int, default=390)
     parser.add_argument("--height", type=int, default=844)
     parser.add_argument("--device-scale-factor", type=float, default=2)
@@ -264,6 +288,8 @@ def main() -> int:
             locale="ru-RU",
         )
         page = context.new_page()
+        browser_errors: list[str] = []
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
         page.goto(f"{args.base_url}/instructor", wait_until="networkidle")
         demo_login = page.get_by_role("button", name="Войти в демо одним нажатием")
         if demo_login.is_visible():
@@ -277,6 +303,24 @@ def main() -> int:
         page.locator("#ai-scenario-editor").wait_for()
         page.screenshot(path=args.output / f"instructor-{screenshot_suffix}.png", full_page=True)
         report["screens"]["instructor"] = layout(page)
+        step_titles = [
+            " ".join(value.split())
+            for value in page.locator(".lesson-step-title").all_inner_texts()
+        ]
+        if step_titles[:4] != [
+            "1 Сценарий", "2 Упражнение", "3 Режим", "4 Курсант",
+        ]:
+            raise RuntimeError(f"Шаги создания занятия отображаются не по порядку: {step_titles[:4]}")
+        page.get_by_label("Поиск сценария").fill("smoke-no-matching-scenario")
+        page.locator(".scenario-empty-state").wait_for()
+        page.get_by_role("button", name="Сбросить фильтры").last.click()
+        page.locator(".scenario-empty-state").wait_for(state="hidden")
+        page.locator(".selected-scenario-summary").wait_for()
+        report["workflow"]["lesson_setup"] = {
+            "ordered_steps": step_titles[:4],
+            "empty_search_explains_next_action": True,
+            "filter_reset_restores_scenario": True,
+        }
 
         trainee_href = start_exercise(
             page, "Оператор 112 · текстовая вводная", "АРМ курсанта"
@@ -286,10 +330,51 @@ def main() -> int:
         page.screenshot(path=args.output / f"trainee-{screenshot_suffix}.png", full_page=True)
         report["screens"]["trainee"] = layout(page)
         stop_exercise_from_instructor(page, args.base_url, trainee_href)
+        results_heading = page.get_by_role("heading", name="Результаты занятия")
+        results_heading.wait_for()
+        if not page.locator(".debrief-summary").is_visible():
+            raise RuntimeError("после завершения занятия не показана сводка результатов")
+        technical_details = page.locator(".debrief-tech-details")
+        technical_open = technical_details.evaluate("element => element.open")
+        if technical_open:
+            raise RuntimeError("технические сведения должны быть скрыты до раскрытия")
+        results_text = page.locator(".debrief").last.inner_text()
+        if "JSON" in results_text:
+            raise RuntimeError("в итогах занятия отображается JSON")
+        page.screenshot(path=args.output / f"instructor-results-{screenshot_suffix}.png", full_page=True)
+        report["screens"]["instructor_results"] = layout(page)
+        report["workflow"]["results_summary"] = {
+            "visible_after_finish": True,
+            "technical_details_collapsed": not technical_open,
+            "json_visible": False,
+        }
+        if args.results_only:
+            browser.close()
+            results_screen = report["screens"]["instructor_results"]
+            report["passed"] = (
+                results_screen["document_width"] <= results_screen["viewport"] + 2
+                and results_screen["small_controls"] == []
+                and not results_screen["visible_json"]
+                and results_screen["lesson_start_position"] in (None, "static")
+                and not browser_errors
+            )
+            report["browser_errors"] = browser_errors
+            report["problems"] = {
+                "instructor_results_horizontal_overflow": not report["passed"],
+                "instructor_results_small_controls": results_screen["small_controls"],
+                "instructor_results_visible_json": results_screen["visible_json"],
+                "browser_errors": browser_errors,
+            }
+            rendered = json.dumps(report, ensure_ascii=False, indent=2)
+            print(rendered)
+            if args.report:
+                args.report.parent.mkdir(parents=True, exist_ok=True)
+                args.report.write_text(rendered + "\n", encoding="utf-8")
+            return 0 if report["passed"] else 1
 
         open_instructor(page, args.base_url)
         dds_href = start_exercise(
-            page, "Диспетчер ДДС · готовая карточка", "АРМ ДДС"
+            page, "Диспетчер ДДС", "АРМ ДДС"
         )
         page.goto(dds_href, wait_until="networkidle")
         page.locator(".dds-workspace").wait_for()
@@ -304,7 +389,7 @@ def main() -> int:
         page.locator(".dds-case-layout").wait_for()
         page.screenshot(path=args.output / f"dds-card-{screenshot_suffix}.png", full_page=True)
         report["screens"]["dds_card"] = layout(page)
-        report["workflow"] = exercise_dds_flow(page, scenario_title)
+        report["workflow"].update(exercise_dds_flow(page, scenario_title))
         page.screenshot(path=args.output / f"dds-workflow-{screenshot_suffix}.png", full_page=True)
         report["screens"]["dds_workflow"] = layout(page)
         page.locator(".dds-service-dock button").last.click()
@@ -319,16 +404,19 @@ def main() -> int:
     problems = {
         name: {
             "horizontal_overflow": data["document_width"] > data["viewport"] + 2,
+            "visible_json": data["visible_json"],
             "small_controls": len(data["small_controls"]),
+            "start_button_overlay": data["lesson_start_position"] not in (None, "static"),
             "touch_target_check_applies": args.width <= 600,
         }
         for name, data in report["screens"].items()
     }
     report["problems"] = problems
-    report["passed"] = all(
-        not item["horizontal_overflow"] and (
+    report["browser_errors"] = browser_errors
+    report["passed"] = not browser_errors and all(
+        not item["horizontal_overflow"] and not item["visible_json"] and (
             not item["touch_target_check_applies"] or item["small_controls"] == 0
-        )
+        ) and not item["start_button_overlay"]
         for item in problems.values()
     )
     rendered = json.dumps(report, ensure_ascii=False, indent=2)

@@ -136,7 +136,10 @@ password=${SIP_6101_PASSWORD}
 type=aor
 max_contacts=2
 remove_existing=yes
-qualify_frequency=30
+# Browser SIP.js clients use a persistent WSS registration and do not reliably
+# answer Asterisk's periodic OPTIONS probes. Do not mark a live WSS contact
+# unreachable based on those probes; registration expiry still governs liveness.
+qualify_frequency=0
 
 [6102](webrtc-endpoint)
 auth=6102-auth
@@ -153,4 +156,4 @@ password=${SIP_6102_PASSWORD}
 type=aor
 max_contacts=2
 remove_existing=yes
-qualify_frequency=30
+qualify_frequency=0

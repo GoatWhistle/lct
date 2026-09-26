@@ -37,7 +37,7 @@ export function Materials() {
   const trainee = me.data?.role === "trainee";
   const [showArchived, setShowArchived] = useState(false);
   const materials = useMaterials(showArchived && !trainee);
-  const scenarios = useScenarios();
+  const scenarios = useScenarios(instructor, me.data?.role ?? "anonymous");
   const trainees = useTrainees(instructor);
   const groups = useGroups(instructor);
   const create = useCreateMaterial();

@@ -1,0 +1,81 @@
+# Opt-in two-node routing test/cluster profile. Apply migrations and seed once
+# on `backend`; `backend-b` waits for it and joins with its own stable node ID.
+# Use with docker-compose.tls.yml for the browser-facing cluster deployment.
+services:
+  backend:
+    environment:
+      BACKEND_NODE_ID: backend-a
+      SECURE_COOKIES: "true"
+
+  backend-b:
+    build: ./backend
+    image: lct-hack-backend:local
+    restart: unless-stopped
+    # Loopback-only endpoint is used by the disposable cross-node acceptance
+    # smoke; normal users still enter through the TLS Nginx service.
+    ports: ["127.0.0.1:${BACKEND_B_PORT:-8001}:8000"]
+    command: >-
+      sh -c '
+      if [ -z "$${SESSION_SECRET:-}" ]; then
+        while [ ! -s /run/lct/session-secret ]; do sleep 0.2; done;
+        export SESSION_SECRET="$$(cat /run/lct/session-secret)";
+      fi;
+      exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1'
+    environment:
+      DATABASE_URL: postgresql+asyncpg://lct:${POSTGRES_PASSWORD:-lct}@postgres:5432/lct
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+      DB_POOL_MAX_OVERFLOW: ${DB_POOL_MAX_OVERFLOW:-10}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      BACKEND_NODE_ID: backend-b
+      SECURE_COOKIES: "true"
+      OFFLINE: "true"
+      LDAP_ENABLED: ${LDAP_ENABLED:-false}
+      LDAP_URL: ${LDAP_URL:-}
+      LDAP_BASE_DN: ${LDAP_BASE_DN:-}
+      LDAP_BIND_DN: ${LDAP_BIND_DN:-}
+      LDAP_BIND_PASSWORD: ${LDAP_BIND_PASSWORD:-}
+      LDAP_USER_FILTER: ${LDAP_USER_FILTER:-'(objectClass=person)'}
+      LDAP_LOGIN_ATTRIBUTE: ${LDAP_LOGIN_ATTRIBUTE:-sAMAccountName}
+      LDAP_ROLE_GROUPS: "${LDAP_ROLE_GROUPS:-{}}"
+      LDAP_SERVICE_GROUPS: "${LDAP_SERVICE_GROUPS:-{}}"
+      LDAP_CA_CERTS_FILE: ${LDAP_CA_CERTS_FILE:-}
+      LDAP_CONNECT_TIMEOUT_SECONDS: ${LDAP_CONNECT_TIMEOUT_SECONDS:-5}
+      VOICE_ENABLED: "false"
+      RECORD_CALLS: "true"
+      RECORDINGS_DIR: /recordings
+      LLM_PROVIDER: local
+      LLM_BASE_URL: ${DOCKER_LLM_BASE_URL:-http://host.docker.internal:18080/v1}
+      LLM_MODEL_CALLER: ${LLM_MODEL_CALLER:-Qwen3-1.7B}
+      LLM_CONTROL_BASE_URL: ${DOCKER_LLM_CONTROL_BASE_URL:-http://host.docker.internal:18081/v1}
+      LLM_MODEL_CONTROL: ${LLM_MODEL_CONTROL:-Vikhr-1B}
+      GRAMMAR_LLM_ENABLED: ${GRAMMAR_LLM_ENABLED:-false}
+      ALLOW_DOCKER_HOST_MODELS: "true"
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
+    volumes:
+      - ./backend:/app
+      - ./scenarios:/scenarios:ro
+      - securitydata:/run/lct
+      - recordings:/recordings
+      - backups:/app/backups
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).read()"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  frontend:
+    volumes:
+      - ./frontend/nginx.cluster.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./frontend/nginx.cluster.tls.conf.template:/etc/nginx/templates-tls/default.conf.template:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      backend-b:
+        condition: service_healthy

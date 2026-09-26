@@ -22,7 +22,7 @@ first_line: "Пешехода сбили и уехали! Мужчина в со
 
 facts:
   - id: f_address
-    value: "Рублёвское шоссе, напротив торгового центра «Европарк»"
+    value: "Москва, Рублёвское шоссе, напротив торгового центра «Европарк»"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "наезд на пешехода, автомашина с места скрылась"
@@ -51,7 +51,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Рублёвское шоссе, напротив ТЦ «Европарк»"
+  address: "Москва, Рублёвское шоссе, напротив ТЦ «Европарк»"
   victims: 1
 
 tree:

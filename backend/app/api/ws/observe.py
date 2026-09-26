@@ -16,9 +16,9 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.domain.events import ErrorEvent, ErrorKind
-from app.api.auth import principal_of
+from app.api.auth import principal_of, websocket_origin_allowed
 from app.domain.roles import Role
-from app.session.hub import hub
+from app.session.hub import LEASE_FENCED_MESSAGE, hub
 
 router = APIRouter()
 
@@ -27,6 +27,10 @@ async def _pump(ws: WebSocket, queue: asyncio.Queue) -> None:
     while True:
         event = await queue.get()
         await ws.send_text(event.model_dump_json())
+        if (isinstance(event, ErrorEvent) and event.code is ErrorKind.INTERNAL
+                and event.message == LEASE_FENCED_MESSAGE):
+            await ws.close(code=1012)
+            return
 
 
 async def _wait_for_disconnect(ws: WebSocket) -> None:
@@ -48,6 +52,12 @@ async def _reject(ws: WebSocket, message: str) -> None:
 
 @router.websocket("/ws/observe/{session_id}")
 async def observe(ws: WebSocket, session_id: UUID) -> None:
+    if not websocket_origin_allowed(ws):
+        await ws.close(code=1008)
+        return
+    if hub.is_lease_fenced(session_id):
+        await ws.close(code=1012)
+        return
     await ws.accept()
 
     # Наблюдение за чужим занятием — не для обучающегося.
@@ -58,6 +68,16 @@ async def observe(ws: WebSocket, session_id: UUID) -> None:
 
     state = hub.get(session_id)
     if state is None:
+        await ws.send_text(
+            ErrorEvent(code=ErrorKind.SESSION_NOT_FOUND, message="Занятие не запущено").model_dump_json()
+        )
+        await ws.close()
+        return
+
+    # Live state is process-local, so authorize against the owner snapshot on
+    # the state itself. Instructors may observe only their own sessions;
+    # administrators retain the cross-owner diagnostic view.
+    if who.role is Role.INSTRUCTOR and state.owner_login != who.login:
         await ws.send_text(
             ErrorEvent(code=ErrorKind.SESSION_NOT_FOUND, message="Занятие не запущено").model_dump_json()
         )

@@ -56,8 +56,7 @@ SCENARIO = Scenario.model_validate(
             {
                 "id": "f_secret",
                 "value": "муж курил на балконе",
-                "hidden": True,
-                "reveal_on": {"approach": "объяснил, что вину никто не ищет"},
+                "reveal_on": {"question": "q_cause"},
             },
         ],
         "checklist": [
@@ -100,14 +99,13 @@ def test_two_questions_in_one_line_both_count(slots):
     assert set(turn.revealed) == {"f_address", "f_people"}
 
 
-def test_hidden_fact_is_not_given_for_a_direct_question(slots):
-    """Скрывающий звонящий уклоняется от прямого вопроса: факт раскрывается
-    только подходом, иначе механика L3 превращается в обычный чек-лист."""
-    turn = slots.hear("Из-за чего начался пожар?")
-    assert "f_secret" not in turn.revealed
-    assert "q_cause" in slots.asked, "вопрос задан — это должно быть видно в разборе"
+def test_fact_is_revealed_only_by_its_matching_question(slots):
+    unrelated = slots.hear("Где находится квартира?")
+    assert "f_secret" not in unrelated.revealed
 
-    assert slots.reveal_by_approach("f_secret")
+    cause = slots.hear("Из-за чего начался пожар?")
+    assert cause.revealed == ["f_secret"]
+    assert "q_cause" in slots.asked
     assert "f_secret" in [fact.id for fact in slots.revealed_facts()]
 
 

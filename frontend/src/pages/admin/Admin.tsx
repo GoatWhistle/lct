@@ -69,7 +69,6 @@ function Diagnostics() {
         </table>
       )}
       {report.isError && <p className="warn">Диагностика недоступна: {String(report.error)}</p>}
-      <p><a href="/api/admin/diagnostics.json">Скачать отчёт об ошибках и сбоях JSON</a></p>
       <h3>Сбои действий за 24 часа</h3>
       {failedActions.length === 0 ? <p>Зафиксированных сбоев действий нет.</p> : (
         <table className="grid">
@@ -130,7 +129,7 @@ function Users() {
       <h2>Учётные записи</h2>
       <table className="grid">
         <thead>
-          <tr><th>Логин</th><th>ФИО</th><th>Роль</th><th>Служба</th><th>Состояние</th></tr>
+          <tr><th>Логин</th><th>ФИО</th><th>Роль</th><th>Служба</th><th>Источник</th><th>Состояние</th></tr>
         </thead>
         <tbody>
           {(users.data ?? []).map((user) => (
@@ -139,6 +138,7 @@ function Users() {
               <td>{user.full_name}</td>
               <td>{ROLE_LABELS[user.role]}</td>
               <td>{user.service ?? "—"}</td>
+              <td>{user.auth_provider === "ldap" ? "AD / LDAP" : "Локальная"}</td>
               <td>
                 <button
                   type="button"
@@ -166,17 +166,18 @@ function Users() {
           <tbody>
             <tr>
               <th>Логин</th>
-              <td><input value={form.login} maxLength={80} onChange={(e) => setForm({ ...form, login: e.target.value })} /></td>
+              <td><input aria-label="Логин пользователя" value={form.login} maxLength={80} onChange={(e) => setForm({ ...form, login: e.target.value })} /></td>
             </tr>
             <tr>
               <th>ФИО</th>
-              <td><input value={form.full_name} maxLength={120} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></td>
+              <td><input aria-label="ФИО пользователя" value={form.full_name} maxLength={120} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></td>
             </tr>
             <tr>
               <th>Пароль</th>
               <td>
                 <input
                   type="password"
+                  aria-label="Пароль пользователя"
                   maxLength={1024}
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
@@ -187,7 +188,7 @@ function Users() {
             <tr>
               <th>Роль</th>
               <td>
-                <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>
+                <select aria-label="Роль пользователя" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>
                   {Object.entries(ROLE_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
@@ -199,7 +200,7 @@ function Users() {
             {form.role === "trainee" && (
               <tr>
                 <th>Служба ДДС</th>
-                <td><input value={form.service} onChange={(e) => setForm({ ...form, service: e.target.value })} /></td>
+                <td><input aria-label="Служба ДДС пользователя" value={form.service} onChange={(e) => setForm({ ...form, service: e.target.value })} /></td>
               </tr>
             )}
           </tbody>
@@ -254,8 +255,9 @@ function Audit() {
     <>
       <h2>Журнал действий</h2>
       <p>
-        Действие: <input value={action} placeholder="login.failed" onChange={(e) => { setAction(e.target.value); setOffset(0); }} />
-        {" "}Пользователь: <input value={actor} placeholder="логин" onChange={(e) => { setActor(e.target.value); setOffset(0); }} />
+        Действие: <input aria-label="Фильтр аудита по действию" value={action} placeholder="login.failed" onChange={(e) => { setAction(e.target.value); setOffset(0); }} />
+        {" "}Пользователь: <input aria-label="Фильтр аудита по пользователю" value={actor} placeholder="логин" onChange={(e) => { setActor(e.target.value); setOffset(0); }} />
+        {" "}<a href={`/api/admin/audit.csv?${new URLSearchParams({ ...(action ? { action } : {}), ...(actor ? { actor } : {}) }).toString()}`}>Скачать весь фильтрованный журнал CSV</a>
       </p>
       <table className="grid">
         <thead>

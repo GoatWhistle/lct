@@ -8,13 +8,19 @@ from fastapi.testclient import TestClient
 from app.api.http import scenarios as scenarios_api
 from app.config import get_settings
 from app.dialog.llm import LlmUnavailable
+from app.db.models import AuditLog
 from app.main import app
-from app.scenarios import store
+from app.scenarios import generation, store
 from app.scenarios.editor import merge_patch, template_copy, validate
-from app.scenarios import generation
-from app.scenarios.generation import (GenerationError, correction_target,
-                                      full_proposal_body, parse_full_proposal,
-                                      parse_proposal, proposal_body, style_fallback)
+from app.scenarios.generation import (
+    GenerationError,
+    correction_target,
+    full_proposal_body,
+    parse_full_proposal,
+    parse_proposal,
+    proposal_body,
+    style_fallback,
+)
 from app.scenarios.loader import ScenarioError, load_file
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
@@ -25,23 +31,39 @@ class FakeSession:
 
     def __init__(self):
         self.rows = {}
+        self.audit_rows = []
+        self.commit_audit_counts = []
 
     def add(self, row):
-        self.rows[row.id] = row
+        if isinstance(row, AuditLog):
+            self.audit_rows.append(row)
+        else:
+            self.rows[row.id] = row
 
     async def get(self, model, key):
         return self.rows.get(key)
 
     async def commit(self):
-        pass
+        self.commit_audit_counts.append(len(self.audit_rows))
 
     async def scalars(self, query):
         expression = query.column_descriptions[0]["expr"]
         if getattr(expression, "key", None) == "id":
-            owner_login = query.compile().params.get("owner_login_1")
+            owner_filter = next(
+                clause for clause in query.whereclause.clauses
+                if getattr(getattr(clause, "left", None), "key", None) == "owner_login"
+                and getattr(getattr(clause, "right", None), "value", None) is not None
+            )
+            owner_login = owner_filter.right.value
+            owner_operator = owner_filter.operator.__name__
             return [
                 row.id for row in self.rows.values()
-                if row.status == "published" and row.owner_login == owner_login
+                if row.status == "published"
+                and (
+                    row.owner_login == owner_login
+                    if owner_operator == "eq"
+                    else row.owner_login is not None and row.owner_login != owner_login
+                )
             ]
         return [row for row in self.rows.values() if row.status == "published"]
 
@@ -60,8 +82,16 @@ def client(monkeypatch):
     monkeypatch.setattr(scenarios_api, "audit", no_audit)
     monkeypatch.setattr(store, "restore_published", no_restore)
     with TestClient(app) as test_client:
+        test_client.fake_db = db
         yield test_client
     app.dependency_overrides.clear()
+
+
+def assert_atomic_audit(client, action: str, object_id: str) -> None:
+    row = client.fake_db.audit_rows[-1]
+    assert row.action == action
+    assert row.object_id == object_id
+    assert client.fake_db.commit_audit_counts[-1] == len(client.fake_db.audit_rows)
 
 
 def test_template_copy_is_local_independent_and_valid():
@@ -85,6 +115,20 @@ def test_editor_rejects_derived_truth_and_missing_fact():
     broken = merge_patch(body, {"facts": []})
     with pytest.raises(ScenarioError, match="нужны факты"):
         validate(broken)
+
+
+def test_editor_can_save_explicit_scenario_decline_with_required_reason():
+    source = load_file(LIBRARY / "fire-apartment-l2.yaml", LIBRARY)
+    body = template_copy(source, "draft-decline")
+    declined = merge_patch(body, {
+        "dds_decision": {
+            "expected": "decline",
+            "reason": "Повторный вызов уже отрабатывается по первой карточке.",
+        },
+    })
+    assert validate(declined).dds_decision.expected == "decline"
+    with pytest.raises(ScenarioError, match="reason обязателен"):
+        validate(merge_patch(body, {"dds_decision": {"expected": "decline"}}))
 
 
 def test_ai_proposal_changes_only_story_and_keeps_reference():
@@ -191,10 +235,10 @@ async def test_ai_generation_retries_copied_facts_with_strict_schema(monkeypatch
     class FakeClient:
         def __init__(self, **kwargs):
             self.answers = iter([
-                '{"title":"Ночной пожар","first_line":"Алло, на балконе горит!",'
-                '"facts":{"f_smoke":"дым идёт в подъезд, на площадке ничего не видно"}}',
-                '{"title":"Ночной пожар","first_line":"Алло, на балконе горит!",'
-                '"facts":{"f_smoke":"лестница уже заполнена густым дымом"}}',
+                ('{"title":"Ночной пожар","first_line":"Алло, на балконе горит!",'
+                 '"facts":{"f_smoke":"дым идёт в подъезд, на площадке ничего не видно"}}'),
+                ('{"title":"Ночной пожар","first_line":"Алло, на балконе горит!",'
+                 '"facts":{"f_smoke":"лестница уже заполнена густым дымом"}}'),
             ])
 
         async def complete(self, request, **kwargs):
@@ -317,7 +361,13 @@ async def test_description_generation_retries_fact_that_is_a_question(monkeypatc
     assert proposal["facts"]["f_people"].endswith("Пострадавших: 1")
 
 
-def test_draft_is_hidden_until_approval_and_then_available_to_lesson(client):
+def test_draft_is_hidden_until_approval_and_then_available_to_lesson(client, monkeypatch):
+    from app.scoring.grammar import GrammarAssessment
+
+    async def fake_assess(_text):
+        return GrammarAssessment(True, (), "rules")
+
+    monkeypatch.setattr(scenarios_api, "assess", fake_assess)
     source = next(s for s in store.all_scenarios() if s.id == "fire-apartment-l2")
     assert client.post("/api/auth/dev-token").status_code == 200
     response = client.post(
@@ -329,6 +379,7 @@ def test_draft_is_hidden_until_approval_and_then_available_to_lesson(client):
     draft_id = draft["id"]
     assert draft["generation"] == "template_copy"
     assert draft["status"] == "draft"
+    assert_atomic_audit(client, "scenario.draft.create", draft_id)
     assert store.get(draft_id) is None
     assert client.get(f"/api/scenarios/{draft_id}").status_code == 404
 
@@ -338,10 +389,14 @@ def test_draft_is_hidden_until_approval_and_then_available_to_lesson(client):
     )
     assert changed.status_code == 200, changed.text
     assert changed.json()["body"]["first_line"] == "Соседи! В доме дым!"
+    assert_atomic_audit(client, "scenario.draft.update", draft_id)
     check = client.post(f"/api/scenarios/drafts/{draft_id}/validate")
     assert check.status_code == 200 and check.json()["valid"]
+    grammar = client.post(f"/api/scenarios/drafts/{draft_id}/grammar-check")
+    assert grammar.status_code == 200 and grammar.json()["valid"]
     approved = client.post(f"/api/scenarios/drafts/{draft_id}/approve")
     assert approved.status_code == 200, approved.text
+    assert_atomic_audit(client, "scenario.approve", draft_id)
     assert approved.json()["status"] == "published"
     assert store.get(draft_id).first_line == "Соседи! В доме дым!"
     assert client.get(f"/api/scenarios/{draft_id}").status_code == 200
@@ -365,6 +420,7 @@ def test_ai_draft_requires_instructor_review_before_publication(client, monkeypa
     draft = response.json()
     assert draft["generation"] == "ai_variant"
     assert draft["id"].startswith("ai-")
+    assert_atomic_audit(client, "scenario.draft.ai_generate", draft["id"])
     assert draft["body"]["first_line"] == "Помогите, у нас горит балкон!"
     assert store.get(draft["id"]) is None
     assert client.get(f"/api/scenarios/{draft['id']}").status_code == 404
@@ -438,7 +494,71 @@ def test_instructor_revises_same_ai_draft_by_comment(client, monkeypatch):
     assert body["facts"][0]["value"] == "улица Ленина, 14, квартира 47, 5-й этаж"
     assert next(item["value"] for item in body["facts"] if item["id"] == "f_smoke").startswith("чёрный")
     assert comments[-1] == "Сделай дым чёрным и закрой им площадку"
+    assert_atomic_audit(client, "scenario.draft.ai_revise", draft_id)
+    audit_row = client.fake_db.audit_rows[-1]
+    assert audit_row.detail == "instruction_chars=38"
+    assert "чёрным" not in audit_row.detail
     assert client.post(f"/api/scenarios/drafts/{draft_id}/validate").json()["valid"]
+
+
+def test_manual_grammar_check_covers_caller_line_and_fact_values(client, monkeypatch):
+    from app.scoring.grammar import GrammarAssessment
+
+    checked = []
+
+    async def fake_assess(text):
+        checked.append(text)
+        return GrammarAssessment(True, (), "rules")
+
+    monkeypatch.setattr(scenarios_api, "assess", fake_assess)
+    client.post("/api/auth/dev-token")
+    created = client.post("/api/scenarios/drafts/from-template", json={
+        "source_id": "fire-apartment-l2",
+    })
+    assert created.status_code == 201, created.text
+    draft_id = created.json()["id"]
+
+    changed = client.patch(
+        f"/api/scenarios/drafts/{draft_id}",
+        json={"first_line": "Помогите! Горит балкон."},
+    )
+    assert changed.status_code == 200, changed.text
+    assert client.post(f"/api/scenarios/drafts/{draft_id}/approve").status_code == 409
+
+    response = client.post(f"/api/scenarios/drafts/{draft_id}/grammar-check")
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["valid"] is True
+    assert result["checks"][0]["field"] == "first_line"
+    assert len(result["checks"]) == 1 + len(changed.json()["body"]["facts"])
+    assert checked == [changed.json()["body"]["first_line"], *[
+        fact["value"] for fact in changed.json()["body"]["facts"]
+    ]]
+    assert client.post(f"/api/scenarios/drafts/{draft_id}/approve").status_code == 200
+
+
+def test_failed_grammar_check_does_not_authorize_manual_draft(client, monkeypatch):
+    from app.scoring.grammar import GrammarAssessment
+
+    async def fake_assess(_text):
+        return GrammarAssessment(False, ("тестовая языковая ошибка",), "rules")
+
+    monkeypatch.setattr(scenarios_api, "assess", fake_assess)
+    client.post("/api/auth/dev-token")
+    created = client.post("/api/scenarios/drafts/from-template", json={
+        "source_id": "fire-apartment-l2",
+    })
+    draft_id = created.json()["id"]
+    assert client.patch(f"/api/scenarios/drafts/{draft_id}",
+                        json={"first_line": "пожар"}).status_code == 200
+
+    result = client.post(f"/api/scenarios/drafts/{draft_id}/grammar-check")
+
+    assert result.status_code == 200
+    assert result.json()["valid"] is False
+    assert result.json()["checks"][0]["errors"] == ["тестовая языковая ошибка"]
+    assert client.post(f"/api/scenarios/drafts/{draft_id}/approve").status_code == 409
 
 
 def test_ai_editor_works_in_demo_lite_without_database(monkeypatch):
@@ -517,11 +637,13 @@ def test_instructor_archives_and_restores_scenario_without_deleting_history(clie
     scenario_id = created.json()["id"]
     approved = client.post(f"/api/scenarios/drafts/{scenario_id}/approve")
     assert approved.status_code == 200, approved.text
+    assert_atomic_audit(client, "scenario.approve", scenario_id)
     original = store.get(scenario_id)
     assert original is not None
 
     archived = client.delete(f"/api/scenarios/{scenario_id}")
     assert archived.status_code == 200, archived.text
+    assert_atomic_audit(client, "scenario.archive", scenario_id)
     assert archived.json()["status"] == "archived"
     assert store.get(scenario_id) is None
     assert scenario_id not in {item["id"] for item in client.get("/api/scenarios").json()}
@@ -529,6 +651,7 @@ def test_instructor_archives_and_restores_scenario_without_deleting_history(clie
 
     restored = client.post(f"/api/scenarios/{scenario_id}/restore")
     assert restored.status_code == 200, restored.text
+    assert_atomic_audit(client, "scenario.restore", scenario_id)
     assert restored.json()["status"] == "published"
     assert store.get(scenario_id).title == original.title
     assert scenario_id in {item["id"] for item in client.get("/api/scenarios").json()}
@@ -544,7 +667,6 @@ def test_instructor_cannot_read_or_edit_another_instructors_draft(client, monkey
         return Principal(login=identity["login"], full_name="Преподаватель", role=Role.INSTRUCTOR)
 
     monkeypatch.setattr(scenarios_api, "require", instructor)
-    monkeypatch.setattr(scenarios_api, "current", instructor)
     created = client.post(
         "/api/scenarios/drafts/from-template",
         json={"source_id": "fire-apartment-l2", "title": "Личный черновик"},
@@ -570,7 +692,6 @@ def test_instructor_cannot_archive_another_instructors_published_scenario(client
         return Principal(login=identity["login"], full_name="Преподаватель", role=Role.INSTRUCTOR)
 
     monkeypatch.setattr(scenarios_api, "require", instructor)
-    monkeypatch.setattr(scenarios_api, "current", instructor)
     created = client.post(
         "/api/scenarios/drafts/from-template",
         json={"source_id": "fire-apartment-l2", "title": "Публикация автора"},
@@ -582,8 +703,8 @@ def test_instructor_cannot_archive_another_instructors_published_scenario(client
     assert scenario["can_manage"] is True
 
     identity["login"] = "teacher-two"
-    scenario = next(item for item in client.get("/api/scenarios").json() if item["id"] == scenario_id)
-    assert scenario["can_manage"] is False
+    assert scenario_id not in {item["id"] for item in client.get("/api/scenarios").json()}
+    assert client.get(f"/api/scenarios/{scenario_id}").status_code == 404
     assert client.delete(f"/api/scenarios/{scenario_id}").status_code == 404
 
 

@@ -10,12 +10,14 @@ services:
       SIP_6101_PASSWORD: ${SIP_6101_PASSWORD:-}
       SIP_6102_PASSWORD: ${SIP_6102_PASSWORD:-}
       SIP_EXTERNAL_MEDIA_ADDRESS: ${SIP_EXTERNAL_MEDIA_ADDRESS:-127.0.0.1}
+      SIP_RTP_START: ${SIP_RTP_START:-10000}
+      SIP_RTP_END: ${SIP_RTP_END:-10099}
     ports:
       - "${BIND_HOST:-127.0.0.1}:${SIP_PORT:-5060}:5060/udp"
       - "${BIND_HOST:-127.0.0.1}:${SIP_PORT:-5060}:5060/tcp"
       - "${BIND_HOST:-127.0.0.1}:${SIPS_PORT:-5061}:5061/tcp"
       - "${BIND_HOST:-127.0.0.1}:${SIP_WS_PORT:-8088}:8088/tcp"
-      - "${BIND_HOST:-127.0.0.1}:${RTP_PORT_START:-10000}-${RTP_PORT_END:-10099}:10000-10099/udp"
+      - "${BIND_HOST:-127.0.0.1}:${RTP_PORT_START:-10000}-${RTP_PORT_END:-10099}:${SIP_RTP_START:-10000}-${SIP_RTP_END:-10099}/udp"
     volumes:
       - sipdata:/var/lib/lct-sip
       - siprecordings:/recordings

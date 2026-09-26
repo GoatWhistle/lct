@@ -4,21 +4,28 @@
 Проверяются пункты приёмки карточки lct-05, а не отдельные функции.
 """
 
+import asyncio
 import contextlib
 import time
 import wave
 from uuid import uuid4
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.http import sessions as sessions_http
 from app.main import app
 from app.scenarios import store
 from app.session.hub import hub
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    async def audit_in_memory(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(sessions_http, "audit_required", audit_in_memory)
     with TestClient(app) as test_client:
         # Сокеты закрыты ролями (lct-23): тесты входят так же,
         # как `make lesson`, — через dev-token за флагом.
@@ -225,6 +232,37 @@ def test_instructor_cannot_touch_the_card(client):
     assert "fields" not in fields and "kio" not in fields
 
 
+def test_control_contract_contains_only_handled_commands():
+    """Не рекламировать команду WebSocket, у которой нет ветки обработчика."""
+    import ast
+    from pathlib import Path
+
+    from app.domain.events import InstructorToServer
+    from typing import get_args
+
+    union = get_args(get_args(InstructorToServer)[0])
+    commands = {model.model_fields["type"].default for model in union}
+    source = Path(__file__).parents[1] / "app" / "api" / "ws" / "control.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    control_matches = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Match)
+        and isinstance(node.subject, ast.Attribute)
+        and isinstance(node.subject.value, ast.Name)
+        and node.subject.value.id == "event"
+        and node.subject.attr == "type"
+    ]
+    assert len(control_matches) == 1, "не удалось однозначно найти dispatch control-событий"
+    handled = {
+        case.pattern.value.value
+        for case in control_matches[0].cases
+        if isinstance(case.pattern, ast.MatchValue)
+        and isinstance(case.pattern.value, ast.Constant)
+        and isinstance(case.pattern.value.value, str)
+    }
+    assert commands == handled
+
+
 def test_call_socket_refuses_session_that_was_not_started(client):
     with client.websocket_connect(f"/ws/call/{uuid4()}") as trainee:
         message = trainee.receive_json()
@@ -261,10 +299,31 @@ def test_answered_call_is_saved_as_wav_on_hangup(client, monkeypatch, tmp_path):
     from app.api.ws import call as call_api
     from app.voice.recording import CallRecorder
 
+    # Exercise the production audio callback without loading models: caller
+    # audio uses the same send_audio path whether it came from TTS or a test.
+    caller_pcm = (2000).to_bytes(2, "little", signed=True) * 480
+
+    class FakeVoice:
+        def __init__(self, *, send_audio, **_kwargs):
+            self.send_audio = send_audio
+            self.speak_count = 0
+
+        def speak(self, *_args):
+            self.speak_count += 1
+            asyncio.get_running_loop().call_later(0.01, self.send_audio, caller_pcm)
+
+        def feed(self, _pcm):
+            return None
+
+        async def close(self):
+            return None
+
     monkeypatch.setattr(
         call_api, "start_recording",
         lambda session_id: CallRecorder(tmp_path / f"{session_id}.wav"),
     )
+    monkeypatch.setattr(call_api, "get_voice_models", lambda: object())
+    monkeypatch.setattr(call_api, "VoiceSession", FakeVoice)
     with lesson(client) as (session_id, _):
         state = hub.get(session_id)
         path = tmp_path / f"{session_id}.wav"
@@ -272,7 +331,34 @@ def test_answered_call_is_saved_as_wav_on_hangup(client, monkeypatch, tmp_path):
             read_until(trainee, "call.incoming")
             trainee.send_json({"type": "call.answer"})
             read_until(trainee, "call.started")
+            wait_for(lambda: state.recorder and len(state.recorder._segments) >= 1)
+            for _ in range(10):
+                outgoing = trainee.receive()
+                if outgoing.get("bytes") is not None:
+                    assert outgoing["bytes"] == caller_pcm
+                    break
+            else:
+                raise AssertionError("TTS-реплика звонящего не пришла по WebSocket")
+            first_started_at = state.started_at
+            trainee.send_json({"type": "call.answer"})
+            read_until(trainee, "call.started")
+            assert state.started_at == first_started_at, "повторное подключение перезапустило таймер"
+            assert state.voice.speak_count == 1, "повторное подключение заново проиграло вводную"
             trainee.send_bytes((1000).to_bytes(2, "little", signed=True) * 320)
+            wait_for(lambda: len(state.recorder._segments) >= 2)
+
+        # Drop process-local runtime objects but leave the durable call journal,
+        # as if the backend process had been killed and restored from PostgreSQL.
+        state.recorder._journal.close()
+        state.recorder = None
+        state.voice = None
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            read_until(trainee, "call.incoming")
+            read_until(trainee, "call.started")
+            assert len(state.recorder._segments) == 2
+            assert state.voice.speak_count == 0, "после восстановления повторилась первая реплика"
+            trainee.send_bytes((3000).to_bytes(2, "little", signed=True) * 320)
+            wait_for(lambda: len(state.recorder._segments) >= 3)
             trainee.send_json({"type": "call.hangup"})
             read_until(trainee, "call.ended")
             wait_for(path.is_file)
@@ -280,7 +366,12 @@ def test_answered_call_is_saved_as_wav_on_hangup(client, monkeypatch, tmp_path):
     assert state.recording_path == str(path)
     with wave.open(str(path), "rb") as source:
         assert source.getframerate() == 16_000
-        assert source.getnframes() >= 320
+        samples = source.readframes(source.getnframes())
+        assert source.getnframes() >= 640
+    decoded = np.frombuffer(samples, dtype="<i2")
+    assert 1000 in decoded, "в записи потерян микрофонный звук оператора"
+    assert 2000 in decoded, "в записи потерян звук звонящего"
+    assert 3000 in decoded, "после восстановления потерян микрофонный звук оператора"
 
 
 def test_score_waits_for_self_assessment(client):
@@ -378,18 +469,42 @@ def test_report_shows_missed_questions_and_self_assessment_gap(client):
     assert report["hints_used"], "использованные подсказки попадают в разбор"
 
 
-def test_instructor_correction_keeps_the_automatic_score(client):
-    with lesson(client) as (session_id, _):
-        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
-            trainee.send_json({"type": "call.answer"})
-            trainee.send_json({"type": "call.hangup"})
-            wait_for(lambda: hub.get(session_id).score is not None)
+def test_instructor_correction_keeps_the_automatic_score(client, postgres_access):
+    from app.db.base import get_sessionmaker
+    from app.session.journal import DbJournal
 
-        auto = client.get(f"/api/sessions/{session_id}/report").json()["score_auto"]
-        corrected = client.patch(
-            f"/api/sessions/{session_id}/report",
-            json={"score_final": 80.0, "comment": "связь рвалась не по вине курсанта"},
-        ).json()
+    # Unlike the websocket-only cases above, this regression exercises the
+    # durable HTTP correction endpoint against a real PostgreSQL score row.
+    journal = DbJournal(get_sessionmaker())
+    try:
+        with lesson(client) as (session_id, _):
+            with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+                trainee.send_json({"type": "call.answer"})
+                trainee.send_json({"type": "call.hangup"})
+                wait_for(lambda: hub.get(session_id).score is not None)
+                # The websocket-only fixture deliberately disables journalling;
+                # persist its computed result before testing the HTTP override.
+                state = hub.get(session_id)
+                client.portal.call(
+                    journal.start_lesson,
+                    session_id,
+                    state.scenario_id,
+                    state.mode.value,
+                    state.trainee_name,
+                    state.trainee_id,
+                    "dev",
+                )
+                client.portal.call(journal.score, session_id, state.score["score_auto"], state.score)
+
+            auto = client.get(f"/api/sessions/{session_id}/report").json()["score_auto"]
+            response = client.patch(
+                f"/api/sessions/{session_id}/report",
+                json={"score_final": 80.0, "comment": "связь рвалась не по вине курсанта"},
+            )
+            assert response.status_code == 200, response.text
+            corrected = response.json()
+    finally:
+        hub.journal = None
 
     assert corrected["score_final"] == 80.0
     assert corrected["score_auto"] == auto, "автооценка должна сохраниться рядом"
@@ -421,6 +536,32 @@ def test_ws_score_override_rejects_other_session_and_invalid_value(client):
         })
         wait_for(lambda: state.score.get("score_final") == 85)
         assert state.score["overridden_by"] == "dev"
+
+
+def test_ws_score_override_is_not_applied_when_atomic_persistence_fails(client):
+    class FailedJournal:
+        async def score_override(self, *_args):
+            return False
+
+        async def checkpoint(self, *_args):
+            return None
+
+    with lesson(client) as (session_id, control):
+        state = hub.get(session_id)
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            trainee.send_json({"type": "call.answer"})
+            trainee.send_json({"type": "call.hangup"})
+            wait_for(lambda: state.score is not None)
+
+        auto = state.score["score_auto"]
+        hub.journal = FailedJournal()
+        control.send_json({
+            "type": "score.override", "session_id": str(session_id),
+            "verdict": "85", "comment": "manual review",
+        })
+        time.sleep(0.1)
+        assert state.score["score_auto"] == auto
+        assert "score_final" not in state.score
 
 
 def test_soft_directive_changes_how_the_caller_sounds(client):

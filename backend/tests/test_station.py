@@ -6,12 +6,17 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.http import sessions as sessions_http
 from app.main import app
 from app.session.hub import hub
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    async def audit_in_memory(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(sessions_http, "audit_required", audit_in_memory)
     with TestClient(app) as test_client:
         # Сокеты закрыты ролями (lct-23): тесты входят так же,
         # как `make lesson`, — через dev-token за флагом.
@@ -97,7 +102,7 @@ def test_acknowledgement_stops_the_four_second_norm(client):
                 trainee.send_json({"type": "call.answer"})
                 trainee.send_json({"type": "dds.dispatch", "service": "01"})
                 read_until(station, "card.received")
-                station.send_json({"type": "card.ack"})
+                station.send_json({"type": "card.ack", "comment": "Подтверждение приёма зафиксировано по докладу старшего группы."})
                 measured = wait_for(lambda: state.timers.measured_ms(TimerCode.DDS_ACK) is not None)
         assert measured
     finally:
@@ -173,8 +178,25 @@ def test_dispatcher_sets_a_status_and_the_card_follows(client):
     try:
         read_until(station, "station.state")
         station.send_json({"type": "card.status", "service": "Служба 101", "status": "accepted"})
+        error = read_until(station, "error")
+        assert "комментар" in error["message"]
+        assert hub.get(session_id).status_log == []
+        command_id = str(uuid4())
+        accepted = {
+            "type": "card.status", "service": "Служба 101", "status": "accepted",
+            "comment": "Старший группы подтвердил приём карточки.",
+            "_command_id": command_id,
+        }
+        station.send_json(accepted)
         state = read_until(station, "station.state")
         assert state["snapshot"]["statuses"]["Служба 101"] == "accepted"
+        assert read_until(station, "command.ack")["command_id"] == command_id
+        # Simulate a retry after the client lost the ACK: the committed ID
+        # returns another ACK but does not append a second status action.
+        station.send_json(accepted)
+        assert read_until(station, "command.ack")["command_id"] == command_id
+        runtime = hub.get(session_id)
+        assert sum(item.service == "Служба 101" for item in runtime.status_log) == 1
         assert "responding" in state["snapshot"]["available"]["Служба 101"]
         assert "accepted" not in state["snapshot"]["available"]["Служба 101"]
     finally:
@@ -186,7 +208,8 @@ def test_out_of_order_status_is_rejected_with_a_reason(client):
     session_id, station, contexts = dispatched(client)
     try:
         read_until(station, "station.state")
-        station.send_json({"type": "card.status", "service": "Служба 101", "status": "arrived"})
+        station.send_json({"type": "card.status", "service": "Служба 101", "status": "arrived",
+                           "comment": "Бригада доложила старшему о прибытии."})
         error = read_until(station, "error")
         assert "Принята" in error["message"]
         assert hub.get(session_id).status_log == []
@@ -211,7 +234,7 @@ def test_ack_button_still_works_and_counts_as_accepted(client):
     session_id, station, contexts = dispatched(client)
     try:
         read_until(station, "station.state")
-        station.send_json({"type": "card.ack"})
+        station.send_json({"type": "card.ack", "comment": "Старший группы подтвердил приём карточки."})
         state = read_until(station, "station.state")
         assert state["snapshot"]["statuses"]["Служба 101"] == "accepted"
     finally:

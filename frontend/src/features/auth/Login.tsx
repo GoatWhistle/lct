@@ -1,9 +1,21 @@
 // Экран входа. Ставится перед всеми остальными: номер занятия перестал быть
 // пропуском, по ссылке пускает роль, а не знание адреса (lct-23).
 
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 
 import { DEMO_MODE, SCREENS, useDemoLogin, useLogin, useLogout, useMe } from "./useAuth";
+
+const preloadScreenModule: Record<string, () => Promise<unknown>> = {
+  "/trainee": () => import("@/pages/trainee/Call"),
+  "/instructor": () => import("@/pages/instructor/Instructor"),
+  "/wall": () => import("@/pages/wall/Wall"),
+  "/profile": () => import("@/pages/profile/Profile"),
+  "/groups": () => import("@/pages/groups/Groups"),
+  "/dds": () => import("@/pages/dds/Dds"),
+  "/phone": () => import("@/pages/phone/Phone"),
+  "/materials": () => import("@/pages/materials/Materials"),
+  "/admin": () => import("@/pages/admin/Admin"),
+};
 
 function DemoLinks() {
   const openScreen = (event: MouseEvent<HTMLAnchorElement>, path: string) => {
@@ -32,6 +44,12 @@ function DemoLinks() {
 export function RequireAuth({ screen, children }: { screen: string; children: ReactNode }) {
   const me = useMe();
   const logout = useLogout();
+
+  // Fetch only static route code while the signed cookie is being checked;
+  // user data and the screen itself remain gated by the role check below.
+  useEffect(() => {
+    void preloadScreenModule[screen]?.().catch(() => undefined);
+  }, [screen]);
 
   if (me.isLoading) {
     return <main className="page"><p>Проверяем доступ…</p></main>;
@@ -76,7 +94,7 @@ function Login() {
             <tr>
               <th>Логин</th>
               <td>
-                <input value={name} autoFocus onChange={(event) => setName(event.target.value)} />
+                <input aria-label="Логин" value={name} autoFocus onChange={(event) => setName(event.target.value)} />
               </td>
             </tr>
             <tr>
@@ -84,6 +102,7 @@ function Login() {
               <td>
                 <input
                   type="password"
+                  aria-label="Пароль"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                 />

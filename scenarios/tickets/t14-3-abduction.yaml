@@ -22,7 +22,7 @@ first_line: "Жену в машину затащили и увезли! Помо
 
 facts:
   - id: f_address
-    value: "Комсомольская площадь, дом 2А, у «Бургер Кинга»"
+    value: "Москва, Комсомольская площадь, дом 2А, у «Бургер Кинга»"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: неизвестные затащили жену в машину у метро Комсомольская
@@ -51,7 +51,7 @@ checklist:
 required_fields: [address, incident_type, description, victims_count]
 
 ground_truth:
-  address: "Комсомольская площадь, дом 2А, у «Бургер Кинга»"
+  address: "Москва, Комсомольская площадь, дом 2А, у «Бургер Кинга»"
   victims: 1
 
 tree:

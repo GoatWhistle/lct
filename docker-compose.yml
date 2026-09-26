@@ -4,7 +4,9 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: lct
-      POSTGRES_PASSWORD: lct
+      # Local development default only. Use docker-compose.production.yml for
+      # an isolated deployment; that overlay requires an install-specific secret.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lct}
       POSTGRES_DB: lct
     # БД и backend не публикуются в класс: с рабочих мест доступен только
     # TLS-терминатор frontend. Loopback-порты нужны для администрирования хоста.
@@ -34,8 +36,23 @@ services:
       alembic upgrade head && python scripts/seed.py &&
       uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1'
     environment:
-      DATABASE_URL: postgresql+asyncpg://lct:lct@postgres:5432/lct
+      DATABASE_URL: postgresql+asyncpg://lct:${POSTGRES_PASSWORD:-lct}@postgres:5432/lct
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+      DB_POOL_MAX_OVERFLOW: ${DB_POOL_MAX_OVERFLOW:-10}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      BACKEND_NODE_ID: ${BACKEND_NODE_ID:-backend}
       OFFLINE: "true"
+      LDAP_ENABLED: ${LDAP_ENABLED:-false}
+      LDAP_URL: ${LDAP_URL:-}
+      LDAP_BASE_DN: ${LDAP_BASE_DN:-}
+      LDAP_BIND_DN: ${LDAP_BIND_DN:-}
+      LDAP_BIND_PASSWORD: ${LDAP_BIND_PASSWORD:-}
+      LDAP_USER_FILTER: ${LDAP_USER_FILTER:-'(objectClass=person)'}
+      LDAP_LOGIN_ATTRIBUTE: ${LDAP_LOGIN_ATTRIBUTE:-sAMAccountName}
+      LDAP_ROLE_GROUPS: "${LDAP_ROLE_GROUPS:-{}}"
+      LDAP_SERVICE_GROUPS: "${LDAP_SERVICE_GROUPS:-{}}"
+      LDAP_CA_CERTS_FILE: ${LDAP_CA_CERTS_FILE:-}
+      LDAP_CONNECT_TIMEOUT_SECONDS: ${LDAP_CONNECT_TIMEOUT_SECONDS:-5}
       VOICE_ENABLED: "false"
       RECORD_CALLS: "true"
       RECORDINGS_DIR: /recordings
@@ -73,7 +90,7 @@ services:
     restart: unless-stopped
     command: python scripts/backup_loop.py
     environment:
-      DATABASE_URL: postgresql+asyncpg://lct:lct@postgres:5432/lct
+      DATABASE_URL: postgresql+asyncpg://lct:${POSTGRES_PASSWORD:-lct}@postgres:5432/lct
       BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
       BACKUP_RETRY_SECONDS: ${BACKUP_RETRY_SECONDS:-300}
       BACKUP_KEEP: ${BACKUP_KEEP:-14}

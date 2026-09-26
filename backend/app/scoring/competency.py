@@ -24,8 +24,8 @@ def radar(metrics: list[Metric]) -> list[CompetencyScore]:
             continue
         competency = mapping[1]
         total[competency] = total.get(competency, 0.0) + metric.weight
-        if metric.passed:
-            passed[competency] = passed.get(competency, 0.0) + metric.weight
+        credit = metric.credit if metric.credit is not None else float(metric.passed)
+        passed[competency] = passed.get(competency, 0.0) + metric.weight * credit
 
     return [
         CompetencyScore(competency=competency.value, value=round(passed.get(competency, 0.0) / weight, 3))

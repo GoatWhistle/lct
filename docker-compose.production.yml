@@ -1,0 +1,19 @@
+# Production overlay. Keep the default developer profile in docker-compose.yml
+# convenient, but refuse to start a network deployment with the known demo DB
+# password. Use a URL-unreserved random secret (A-Z, a-z, 0-9, ., _, ~, -).
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a unique URL-safe POSTGRES_PASSWORD in .env}
+
+  backend:
+    environment:
+      APP_ENV: production
+      DEMO_NO_DB: "false"
+      DEV_AUTH_BYPASS: "false"
+      SECURE_COOKIES: "true"
+      DATABASE_URL: postgresql+asyncpg://lct:${POSTGRES_PASSWORD:?Set a unique URL-safe POSTGRES_PASSWORD in .env}@postgres:5432/lct
+
+  backup:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://lct:${POSTGRES_PASSWORD:?Set a unique URL-safe POSTGRES_PASSWORD in .env}@postgres:5432/lct

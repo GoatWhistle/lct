@@ -17,11 +17,37 @@ docker save -o lct-hack-images.tar postgres:16-alpine lct-hack-backend:local lct
 
 ```sh
 docker load -i lct-hack-images.tar
-make offline
+make offline-production
 make offline-sip
 ```
 
+До первого запуска скопируйте `.env.example` в `.env` и задайте случайный
+уникальный `POSTGRES_PASSWORD`, например:
+
+```sh
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Пароль должен состоять из URL-safe символов латиницы, цифр, точки, подчёркивания,
+тильды и дефиса, поскольку он передаётся в PostgreSQL DSN backend/backup.
+Не используйте `make offline` для рабочего стенда: эта команда оставлена для
+разработки и использует пароль БД по умолчанию. Для production/offline-развёртывания
+с TLS выполните `make offline-production`. Для сборки из исходников используется
+`make production`. В обоих случаях Compose откажется запускаться, если
+`POSTGRES_PASSWORD` is empty, too short, or contains unsupported characters. The
+production overlay also forces `DEMO_NO_DB=false`,
+`DEV_AUTH_BYPASS=false` and `SECURE_COOKIES=true`; backend startup rejects
+known/default or short session-signing secrets, rejects production unless
+`OFFLINE=true` and `LLM_PROVIDER=local`, and browsers send the auth cookie only
+over HTTPS/WSS. Compose generates and persists a random signing secret in
+`securitydata` if `SESSION_SECRET` is left blank.
+
 В другом терминале один раз выполните `make users-docker` и сохраните выведенные пароли. При старте контейнера backend автоматически накатывает миграции и загружает библиотеку сценариев. Данные остаются в Docker volume `pgdata`; повторный запуск не должен пересоздавать пользователей.
+
+PostgreSQL применяет `POSTGRES_PASSWORD` только при инициализации нового
+`pgdata`. Если volume уже создан, смена `.env` сама не меняет пароль роли: до
+подключения production overlay выполните ротацию роли `lct` в PostgreSQL и
+обновите приложение вместе с ней. Не удаляйте volume ради смены пароля.
 
 Сервис `backup` сразу создаёт первую SQL-копию, затем повторяет операцию не
 реже раза в сутки и хранит 14 последних файлов в отдельном volume `backups`.
@@ -40,7 +66,7 @@ SQL-копии — в `backups`.
 Для рабочего контура вместо HTTP запустите TLS-профиль:
 
 ```sh
-make offline-tls
+make offline-production
 # пульт: https://localhost:5443/instructor
 ```
 

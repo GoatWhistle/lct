@@ -23,7 +23,7 @@ first_line: "Здравствуйте, дымит мусоропровод, я �
 
 facts:
   - id: f_address
-    value: "улица Берзарина, дом 21, корпус 1, подъезд 3, домофон 68"
+    value: "Москва, улица Берзарина, дом 21, корпус 1, подъезд 3, домофон 68"
     reveal_on: { question: q_address }
   - id: f_what_burns
     value: "дымит мусоропровод, открытого пламени не видно"
@@ -48,7 +48,7 @@ checklist:
 required_fields: [address, entrance, incident_type, description]
 
 ground_truth:
-  address: "улица Берзарина, дом 21, корпус 1, подъезд 3, домофон 68"
+  address: "Москва, улица Берзарина, дом 21, корпус 1, подъезд 3, домофон 68"
   victims: 0
 
 tree:

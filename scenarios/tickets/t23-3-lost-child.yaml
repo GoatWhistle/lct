@@ -22,7 +22,7 @@ first_line: "Внук потерялся! Тридцать минут назад
 
 facts:
   - id: f_address
-    value: "улица Домодедовская, дом 34, корпус 1, двор у третьего подъезда"
+    value: "Москва, улица Домодедовская, дом 34, корпус 1, двор у третьего подъезда"
     reveal_on: { question: q_address }
   - id: f_what_happened
     value: "потерялся тридцать минут назад, гулял с бабушкой во дворе"
@@ -43,7 +43,7 @@ checklist:
 required_fields: [address, incident_type, description]
 
 ground_truth:
-  address: "улица Домодедовская, дом 34, корпус 1, двор у третьего подъезда"
+  address: "Москва, улица Домодедовская, дом 34, корпус 1, двор у третьего подъезда"
   victims: null
 
 tree:

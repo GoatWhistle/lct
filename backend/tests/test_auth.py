@@ -8,6 +8,8 @@
 проверяют разграничение, для которого база не нужна.
 """
 
+import time
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -46,10 +48,17 @@ def test_broken_hash_does_not_let_anyone_in():
     assert not verify_password("не хеш вовсе", "что угодно")
 
 
+def test_malformed_stored_hash_is_not_written_to_logs(caplog):
+    stored_hash = "private-stored-hash-marker"
+    assert not verify_password(stored_hash, "candidate-password")
+    assert stored_hash not in caplog.text
+    assert "InvalidHash" in caplog.text
+
+
 # ── вход ──
 
 
-def test_unknown_login_and_wrong_password_look_the_same(client):
+def test_unknown_login_and_wrong_password_look_the_same(client, postgres_access):
     """Иначе форма входа превращается в список действующих учётных записей."""
     first = client.post("/api/auth/login", json={"login": "нет-такого", "password": "x"})
     assert first.status_code == 401
@@ -78,9 +87,186 @@ def test_dev_token_gives_an_instructor(client):
     assert client.get("/api/auth/me").json()["role"] == "instructor"
 
 
-def test_logout_clears_the_session(client):
-    client.post("/api/auth/dev-token")
-    client.post("/api/auth/logout")
+def test_directory_login_issues_the_mapped_role_and_identity(client, monkeypatch):
+    from app import directory
+    from app.api import auth
+    from app.config import get_settings
+    from app.directory import DirectoryIdentity
+
+    # This route test supplies its own account and sessionmaker below. Mark an
+    # empty auth-generation snapshot fresh as if startup had loaded the empty
+    # test directory; otherwise the production middleware correctly fails
+    # closed with 503 when the sandbox cannot reach PostgreSQL.
+    monkeypatch.setattr(auth, "_generations", {})
+    monkeypatch.setattr(auth, "_generations_synced_at", time.monotonic())
+
+    provisioned = {}
+
+    class EmptyDb:
+        async def scalar(self, query):
+            if "users.auth_version" in str(query) and "user" in provisioned:
+                return provisioned["user"].auth_version
+            return None
+
+    class DbContext:
+        async def __aenter__(self):
+            return EmptyDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    settings = get_settings().model_copy(update={"ldap_enabled": True})
+    monkeypatch.setattr(auth, "get_settings", lambda: settings)
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: DbContext())
+    identity = DirectoryIdentity(
+        login="trainee.one",
+        full_name="Курсант Один",
+        role=Role.TRAINEE,
+        service="01",
+        subject="directory-guid-1",
+    )
+
+    async def authenticate(login, password):
+        assert login == "trainee.one"
+        assert password == "directory-password"
+        return identity
+
+    async def provision(_identity):
+        provisioned["user"] = SimpleNamespace(
+            login=identity.login,
+            full_name=identity.full_name,
+            role=identity.role.value,
+            service=identity.service,
+            trainee_id=uuid4(),
+            auth_version=0,
+            blocked=False,
+        )
+        return provisioned["user"]
+
+    async def audit(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(directory, "authenticate", authenticate)
+    monkeypatch.setattr(auth, "_directory_account", provision)
+    monkeypatch.setattr(auth, "audit", audit)
+    response = client.post(
+        "/api/auth/login",
+        json={"login": "trainee.one", "password": "directory-password"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["role"] == "trainee"
+    assert response.json()["service"] == "01"
+    assert client.get("/api/auth/me").json()["login"] == "trainee.one"
+
+
+def test_directory_outage_does_not_fall_back_or_issue_a_session(client, monkeypatch):
+    from app import directory
+    from app.api import auth
+    from app.config import get_settings
+    from app.directory import DirectoryUnavailable
+
+    class EmptyDb:
+        async def scalar(self, _query):
+            return None
+
+    class DbContext:
+        async def __aenter__(self):
+            return EmptyDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(
+        auth,
+        "get_settings",
+        lambda: get_settings().model_copy(update={"ldap_enabled": True}),
+    )
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: DbContext())
+
+    async def unavailable(*_args):
+        raise DirectoryUnavailable("directory service unavailable")
+
+    async def audit(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(directory, "authenticate", unavailable)
+    monkeypatch.setattr(auth, "audit", audit)
+    response = client.post(
+        "/api/auth/login", json={"login": "trainee.one", "password": "anything"}
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"] == "directory_unavailable"
+    assert client.get("/api/auth/me").status_code == 401
+
+
+def test_blocked_directory_account_attempt_is_audited(client, monkeypatch):
+    from app import directory
+    from app.api import auth
+    from app.config import get_settings
+    from app.directory import DirectoryIdentity
+
+    class EmptyDb:
+        async def scalar(self, _query):
+            return None
+
+    class DbContext:
+        async def __aenter__(self):
+            return EmptyDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    settings = get_settings().model_copy(update={"ldap_enabled": True})
+    monkeypatch.setattr(auth, "get_settings", lambda: settings)
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: DbContext())
+    identity = DirectoryIdentity(
+        login="trainee.one",
+        full_name="Курсант Один",
+        role=Role.TRAINEE,
+        service="01",
+        subject="directory-guid-blocked",
+    )
+
+    async def authenticate(*_args):
+        return identity
+
+    async def provision(_identity):
+        return SimpleNamespace(
+            login=identity.login,
+            full_name=identity.full_name,
+            role=identity.role.value,
+            service=identity.service,
+            trainee_id=uuid4(),
+            auth_version=0,
+            blocked=True,
+        )
+
+    audit_events = []
+
+    async def audit(*args):
+        audit_events.append(args)
+
+    monkeypatch.setattr(directory, "authenticate", authenticate)
+    monkeypatch.setattr(auth, "_directory_account", provision)
+    monkeypatch.setattr(auth, "audit", audit)
+    response = client.post(
+        "/api/auth/login",
+        json={"login": "trainee.one", "password": "directory-password"},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "blocked"
+    assert any(event[2] == "login.blocked" for event in audit_events)
+    assert client.get("/api/auth/me").status_code == 401
+
+
+def test_logout_clears_and_revokes_the_session(client, postgres_access):
+    assert client.post("/api/auth/dev-token").status_code == 200
+    stale_cookie = client.cookies.get("lct_session")
+    response = client.post("/api/auth/logout")
+    assert response.status_code == 200, response.text
+    assert client.get("/api/auth/me").status_code == 401
+    # Replaying a copied pre-logout cookie must not restore the authenticated session.
+    client.cookies.set("lct_session", stale_cookie)
     assert client.get("/api/auth/me").status_code == 401
 
 

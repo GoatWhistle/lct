@@ -10,6 +10,7 @@ export interface AdminUser {
   login: string;
   full_name: string;
   role: Role;
+  auth_provider: "local" | "ldap";
   service: string | null;
   blocked: boolean;
   created_at: string;
@@ -94,7 +95,7 @@ export const useBackups = () =>
 export function useCreateUser() {
   const cache = useQueryClient();
   return useMutation({
-    mutationFn: (body: Omit<AdminUser, "id" | "blocked" | "created_at"> & { password: string }) =>
+    mutationFn: (body: Omit<AdminUser, "id" | "blocked" | "created_at" | "auth_provider"> & { password: string }) =>
       call<AdminUser>("/api/admin/users", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => cache.invalidateQueries({ queryKey: ["admin-users"] }),
   });

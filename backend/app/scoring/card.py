@@ -9,7 +9,8 @@ from app.domain.events import Metric
 from app.domain.kio import KIO, missing_fields
 from app.domain.taxonomy import Finding, FindingSource
 from app.scenarios.schema import Scenario
-from app.scoring.gost import GostResult, _normalize_address
+from app.scoring.gost import GostResult
+from app.scoring.address import address_matches
 from app.scoring.taxonomy import METRIC_MAP, METRIC_WEIGHTS
 
 
@@ -49,8 +50,7 @@ def evaluate_card(scenario: Scenario, kio: KIO) -> GostResult:
     if truth.address:
         written = kio.address or " ".join(filter(None, (kio.street, kio.building)))
         add("address", "Адрес происшествия", written or "не заполнен", truth.address,
-            bool(_normalize_address(truth.address))
-            and _normalize_address(truth.address) <= _normalize_address(written),
+            address_matches(truth.address, written),
             "эталон сценария")
 
     if truth.victims is not None:

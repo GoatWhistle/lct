@@ -7,38 +7,46 @@
 import asyncio
 import json
 import logging
-from uuid import UUID
+import re
+from types import SimpleNamespace
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
+from app.api.auth import principal_of, websocket_origin_allowed
 from app.domain.events import (
-    StationState,
-    CallIncoming,
+    BgStart,
     CallEnded,
     CallEndReason,
+    CallIncoming,
     CallStarted,
+    CallerUtterance,
     ErrorEvent,
     ErrorKind,
     Exercise,
     HintShown,
-    KioState,
     KioPatchOut,
+    KioState,
     PatchSource,
     ScoreReady,
     SessionEnded,
     SessionMode,
+    StationState,
     TimerTick,
+    TextTurnAccepted,
+    Speaker,
+    TranscriptAppend,
     TraineeToServer,
 )
-from app.domain.events import BgStart
-from app.scenarios import store
-from app.session.finish import finish, refresh_archived_report, release_score
-from app.api.auth import principal_of
-from app.domain.roles import Role
-from app.session.hub import hub
-from app.session.state import now_utc
 from app.domain.kio import ResponseStatus
+from app.dialog.slots import TurnResult
+from app.domain.roles import Role
+from app.scenarios import store
+from app.session.dds import prepare_handoff_queue
+from app.session.finish import finish, refresh_archived_report, release_score
+from app.session.hub import LEASE_FENCED_MESSAGE, hub
+from app.session.state import now_utc
 from app.voice.models import TTS_RATE, get_voice_models
 from app.voice.pipeline import VoiceSession
 from app.voice.recording import start_recording
@@ -51,6 +59,89 @@ FRAME_BYTES = 640
 FRAMES_PER_LOG = 250  # раз в пять секунд звука
 
 _adapter = TypeAdapter(TraineeToServer)
+
+
+class _TextSlotView:
+    """Grounded facts for the text exercise when the optional embedder is absent."""
+    def __init__(self, state):
+        self.scenario = state.scenario
+        self.state = state
+
+    def revealed_facts(self):
+        return [SimpleNamespace(id=fact.id, value=self.state.text_revealed_facts[fact.id])
+                for fact in self.scenario.facts if fact.id in self.state.text_revealed_facts]
+
+
+def _text_turn(state, text: str):
+    """Match typed questions to approved checklist prompts; never let the model
+    decide which hidden scenario fact becomes available."""
+    turn = None
+    if state.slots is not None:
+        turn = state.slots.hear(text)
+        for fact in state.slots.revealed_facts():
+            state.text_revealed_facts[fact.id] = fact.value
+        if turn.refined:
+            return turn
+
+    # The lexical offline matcher misses natural follow-ups such as “а точнее,
+    # ближайший дом?”. Once the caller has disclosed a fact with a refinement,
+    # allow an explicit request for precision to reveal only that refined value.
+    # This remains a deterministic slot rule: the model never chooses the fact.
+    normalized = text.casefold().replace("ё", "е")
+    asks_for_precision = bool(re.search(
+        r"\b(точн\w*|конкретн\w*|ближ\w*|номер\w*|уточн\w*)\b", normalized
+    ))
+    if asks_for_precision:
+        for fact in state.scenario.facts:
+            if (fact.id in state.text_revealed_facts and fact.refine_on and fact.refined):
+                state.text_revealed_facts[fact.id] = fact.refined
+                if state.slots is not None:
+                    if fact.id not in state.slots.refined:
+                        state.slots.refined.append(fact.id)
+                    if fact.id not in state.slots.revealed:
+                        state.slots.revealed.append(fact.id)
+                    if fact.refine_on not in state.slots.asked:
+                        state.slots.asked.append(fact.refine_on)
+                return TurnResult(text=text, matched=[fact.refine_on], refined=[fact.id])
+
+    if turn is not None and turn.matched:
+        return turn
+
+    words = set(re.findall(r"[а-яё]{3,}", text.casefold().replace("ё", "е")))
+    stop = {"что", "как", "где", "когда", "сколько", "есть", "это", "или", "вас", "вам", "пожалуйста"}
+    words -= stop
+    best = None
+    best_score = 0.0
+    for item in state.scenario.checklist:
+        if not item.question:
+            continue
+        for phrase in [item.question, *item.examples]:
+            prompt_words = set(re.findall(r"[а-яё]{3,}", phrase.casefold().replace("ё", "е"))) - stop
+            score = len(words & prompt_words) / max(1, len(prompt_words))
+            if score > best_score:
+                best, best_score = item, score
+    turn = TurnResult(text=text)
+    if best is None or best_score < 0.25:
+        return turn
+    turn.matched.append(best.id)
+    fact_ids = [fact.id for fact in state.scenario.facts
+                if fact.reveal_on and fact.reveal_on.question == best.id]
+    if best.fact and best.fact not in fact_ids:
+        fact_ids.append(best.fact)
+    for fact in state.scenario.facts:
+        if fact.refine_on == best.id and fact.refined:
+            state.text_revealed_facts[fact.id] = fact.refined
+            turn.refined.append(fact.id)
+    for fact_id in fact_ids:
+        fact = next((item for item in state.scenario.facts if item.id == fact_id), None)
+        if fact is None:
+            continue
+        if fact_id in state.text_revealed_facts:
+            turn.repeated.append(fact_id)
+        else:
+            state.text_revealed_facts[fact_id] = fact.value
+            turn.revealed.append(fact_id)
+    return turn
 
 
 def _on_audio(session_id: UUID, state, frame: bytes) -> None:
@@ -96,8 +187,8 @@ async def _handle(session_id: UUID, state, event) -> None:
             code=ErrorKind.UNSUPPORTED_EVENT, message="Занятие уже завершено",
         ))
         return
-    if state.exercise is Exercise.DDS or (
-        state.exercise is Exercise.CARD and event.type not in {"kio.patch", "card.submit"}
+    if (event.type == "text.turn" and state.exercise is not Exercise.CARD) or state.exercise is Exercise.DDS or (
+        state.exercise is Exercise.CARD and event.type not in {"kio.patch", "card.submit", "text.turn"}
     ) or (state.exercise is Exercise.CALL and event.type == "card.submit"):
         hub.to_trainee(session_id, ErrorEvent(
             code=ErrorKind.UNSUPPORTED_EVENT, message="Действие недоступно в этом упражнении",
@@ -110,13 +201,53 @@ async def _handle(session_id: UUID, state, event) -> None:
         ))
         return
     match event.type:
+        case "text.turn":
+            if state.caller is None or state.persona is None or state.scenario is None:
+                hub.to_trainee(session_id, ErrorEvent(
+                    code=ErrorKind.MODELS_WARMING_UP,
+                    message="Текстовый диалог пока не готов. Обновите занятие или заполните карточку по вводной.",
+                ))
+                return
+            turn = _text_turn(state, event.text)
+            operator_entry = state.append(Speaker.OPERATOR, event.text)
+            accepted = TextTurnAccepted(text=event.text, at=operator_entry.at)
+            hub.to_trainee(session_id, accepted)
+            hub.to_observers(session_id, TranscriptAppend(entry=operator_entry))
+            if hub.journal:
+                await hub.journal.utterance(session_id, operator_entry)
+            try:
+                slots = state.slots if state.slots is not None else _TextSlotView(state)
+                line = await state.caller.reply(turn, state.persona, slots)
+            except Exception as exc:  # noqa: BLE001
+                # The model/provider exception can contain the prompt and incident facts.
+                log.error("text dialogue failed for session %s (%s)",
+                          session_id, type(exc).__name__)
+                hub.to_trainee(session_id, ErrorEvent(
+                    code=ErrorKind.INTERNAL, message="Не удалось получить ответ заявителя. Попробуйте ещё раз.",
+                ))
+                return
+            caller_entry = state.append(Speaker.CALLER, line.text, line.mood)
+            hub.to_trainee(session_id, CallerUtterance(
+                utterance_id=uuid4(), text=line.text,
+                at=caller_entry.at, mood=line.mood, source=line.source,
+            ))
+            hub.to_observers(session_id, TranscriptAppend(entry=caller_entry))
+            if hub.journal:
+                await hub.journal.utterance(session_id, caller_entry)
         case "card.submit":
+            state.on_event("card.submit")
             state.kio.registered_at = state.started_at or now_utc()
             state.kio.response_status = ResponseStatus.TRANSFERRED
             state.dispatched_card = state.kio.model_copy(deep=True)
             state.dispatched_at = now_utc()
             if state.handoff_to_dds:
-                state.on_event("dds.dispatch")
+                prepare_handoff_queue(
+                    state,
+                    state.pending_dds_scenarios,
+                    arrival_interval_seconds=state.dds_arrival_interval_seconds,
+                    max_waiting=state.dds_max_waiting,
+                )
+                state.pending_dds_scenarios = []
             else:
                 state.ended_at = state.dispatched_at
                 state.end_reason = CallEndReason.COMPLETE
@@ -135,15 +266,17 @@ async def _handle(session_id: UUID, state, event) -> None:
                     )
                 await finish(session_id, state)
         case "call.answer":
-            state.on_event("call.answer")
-            state.started_at = now_utc()
+            first_answer = state.started_at is None
+            if first_answer:
+                state.on_event("call.answer")
+                state.started_at = now_utc()
+                if hub.journal:
+                    await hub.journal.session_started(session_id, state.started_at)
             hub.to_trainee(session_id, CallStarted(started_at=state.started_at))
             hub.to_observers(session_id, state.snapshot())
-            if hub.journal:
-                await hub.journal.session_started(session_id, state.started_at)
             if state.recorder is None:
                 state.recorder = start_recording(session_id)
-            _start_voice(session_id, state)
+            _start_voice(session_id, state, initial_statement=first_answer)
 
         case "kio.patch":
             old_code, old_notify = state.kio.incident_code, list(state.kio.notify)
@@ -219,12 +352,16 @@ async def _handle(session_id: UUID, state, event) -> None:
             state.on_event("callback.dial")
 
         case "self_assessment.submit":
+            if hub.journal and not await hub.journal.self_assessment(
+                session_id, event.missed, event.comment, now_utc()
+            ):
+                hub.to_trainee(session_id, ErrorEvent(
+                    code=ErrorKind.INTERNAL,
+                    message="Не удалось сохранить самооценку и аудит; итог пока не выдан.",
+                ))
+                return
             state.self_assessed = True
             state.self_assessment = {"missed": event.missed, "comment": event.comment}
-            if hub.journal:
-                await hub.journal.self_assessment(
-                    session_id, event.missed, event.comment, now_utc()
-                )
             await refresh_archived_report(session_id, state)
             # Оценка могла быть готова раньше самооценки — теперь её можно отдать.
             await release_score(session_id, state)
@@ -246,7 +383,7 @@ async def _handle(session_id: UUID, state, event) -> None:
     await hub.checkpoint(session_id)
 
 
-def _start_voice(session_id: UUID, state) -> None:
+def _start_voice(session_id: UUID, state, *, initial_statement: bool = True) -> None:
     """Голос включается, когда курсант снял трубку: звонящий сразу кричит первую реплику."""
     models = get_voice_models()
     scenario = store.get(state.scenario_id)
@@ -269,7 +406,8 @@ def _start_voice(session_id: UUID, state) -> None:
     if scenario.background:
         event = BgStart(loop=scenario.background.loop, gain_db=scenario.background.gain_db)
         hub.broadcast(session_id, event)
-    state.voice.speak(scenario.first_line, state.persona.mood)
+    if initial_statement:
+        state.voice.speak(scenario.first_line, state.persona.mood)
 
 
 async def _pump(ws: WebSocket, queue: asyncio.Queue) -> None:
@@ -280,6 +418,10 @@ async def _pump(ws: WebSocket, queue: asyncio.Queue) -> None:
             await ws.send_bytes(item)
         else:
             await ws.send_text(item.model_dump_json())
+            if (isinstance(item, ErrorEvent) and item.code is ErrorKind.INTERNAL
+                    and item.message == LEASE_FENCED_MESSAGE):
+                await ws.close(code=1012)
+                return
 
 
 async def _reject(ws: WebSocket, message: str) -> None:
@@ -292,6 +434,12 @@ async def _reject(ws: WebSocket, message: str) -> None:
 
 @router.websocket("/ws/call/{session_id}")
 async def call(ws: WebSocket, session_id: UUID) -> None:
+    if not websocket_origin_allowed(ws):
+        await ws.close(code=1008)
+        return
+    if hub.is_lease_fenced(session_id):
+        await ws.close(code=1012)
+        return
     await ws.accept()
 
     # АРМ курсанта. Преподаватель допущен, чтобы показать приём вызова группе.
@@ -302,6 +450,14 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
 
     state = hub.get(session_id)
     if state is None:
+        await ws.send_text(
+            ErrorEvent(
+                code=ErrorKind.SESSION_NOT_FOUND, message="Занятие ещё не запущено преподавателем"
+            ).model_dump_json()
+        )
+        await ws.close()
+        return
+    if who.role is Role.INSTRUCTOR and state.owner_login != who.login:
         await ws.send_text(
             ErrorEvent(
                 code=ErrorKind.SESSION_NOT_FOUND, message="Занятие ещё не запущено преподавателем"
@@ -343,6 +499,12 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
             if state.score is not None and state.self_assessed:
                 hub.to_trainee(session_id, ScoreReady(session_id=session_id))
             hub.to_trainee(session_id, TimerTick(timers=state.timers.snapshot()))
+            if state.started_at is not None and not state.ended and state.voice is None:
+                # Rebuild non-serializable audio services after backend recovery;
+                # the audio journal rehydrates the existing recording timeline.
+                if state.recorder is None:
+                    state.recorder = start_recording(session_id)
+                _start_voice(session_id, state, initial_statement=False)
         writer = asyncio.create_task(_pump(ws, queue))
         try:
             while True:
@@ -376,7 +538,8 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
                         ErrorEvent(code=ErrorKind.UNSUPPORTED_EVENT, message=str(payload)[:200]),
                     )
                     continue
-                await _handle(session_id, state, event)
+                async with hub.durable_transition(session_id):
+                    await _handle(session_id, state, event)
         except WebSocketDisconnect:
             return
         finally:

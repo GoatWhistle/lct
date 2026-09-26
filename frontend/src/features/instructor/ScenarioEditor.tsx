@@ -10,6 +10,9 @@ type Draft = {
   body: JsonObject;
 };
 type Validation = { valid: boolean; errors: string[]; ground_truth?: JsonObject };
+type GrammarCheck = { valid: boolean; checks: Array<{
+  field: string; passed: boolean; errors: string[]; source: string;
+}> };
 
 async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   const response = await fetch(path, {
@@ -21,7 +24,7 @@ async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> 
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = data && typeof data === "object" && "detail" in data ? data.detail : response.statusText;
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new Error(typeof detail === "string" ? detail : "Не удалось выполнить действие. Проверьте поля и повторите попытку.");
   }
   return data as T;
 }
@@ -49,10 +52,6 @@ function diff(before: JsonObject, after: JsonObject): JsonObject {
   return patch;
 }
 
-function pretty(body: JsonObject): string {
-  return JSON.stringify(body, null, 2);
-}
-
 function stringField(body: JsonObject, key: string): string {
   return typeof body[key] === "string" ? body[key] : "";
 }
@@ -61,6 +60,40 @@ function generationLabel(generation: Draft["generation"]): string {
   if (generation === "ai_full") return "новый сюжет и эталон локальной модели";
   if (generation === "ai_variant") return "вариант локальной модели";
   return "копия шаблона";
+}
+
+const SCENARIO_CONTENT_LABELS: Record<string, string> = {
+  f_address: "Адрес", f_caller: "Данные заявителя", f_conscious: "Состояние сознания",
+  f_fled: "Сведения о скрывшемся", f_gas: "Запах газа", f_observer: "Сведения очевидца",
+  f_people: "Люди на месте", f_scale: "Масштаб происшествия", f_smoke: "Дым",
+  f_suspects: "Сведения о подозреваемых", f_threat: "Угроза", f_vehicle: "Транспортное средство",
+  f_victims: "Пострадавшие", f_what_burns: "Что горит", f_what_happened: "Что произошло",
+  f_who: "Кто пострадал или участвует", q_address: "Уточнить адрес",
+  q_address_check: "Проверить адрес", q_caller: "Уточнить данные заявителя",
+  q_can_move: "Может ли человек передвигаться", q_conscious: "Проверить сознание",
+  q_fled: "Уточнить сведения о скрывшемся", q_gas: "Уточнить запах газа",
+  q_observer: "Уточнить сведения очевидца", q_people: "Спросить о людях на месте",
+  q_scale: "Уточнить масштаб происшествия", q_smoke: "Уточнить сведения о дыме",
+  q_suspects: "Уточнить сведения о подозреваемых", q_threat: "Уточнить угрозу",
+  q_vehicle: "Уточнить сведения о транспорте", q_victims: "Спросить о пострадавших",
+  q_what_burns: "Уточнить, что горит", q_what_happened: "Уточнить, что произошло",
+  q_who: "Уточнить, кто пострадал или участвует",
+};
+
+function contentLabel(id: unknown, kind: "fact" | "question", index: number): string {
+  const key = typeof id === "string" ? id : "";
+  return SCENARIO_CONTENT_LABELS[key]
+    ?? `${kind === "fact" ? "Дополнительный факт" : "Дополнительный вопрос"} ${index + 1}`;
+}
+
+function grammarFieldLabel(field: string): string {
+  if (field === "first_line") return "Первая реплика звонящего";
+  const fact = /^facts\.([^.]+)\.(value|refined)$/.exec(field);
+  if (fact) {
+    const subject = SCENARIO_CONTENT_LABELS[fact[1]] ?? "Факт сценария";
+    return `${fact[2] === "refined" ? "Уточнённый ответ" : "Ответ звонящего"}: ${subject}`;
+  }
+  return "Текст сценария";
 }
 
 export function ScenarioEditor({
@@ -80,8 +113,10 @@ export function ScenarioEditor({
   const [revisionComment, setRevisionComment] = useState("");
   const [draftId, setDraftId] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [bodyText, setBodyText] = useState("");
+  const [editorBody, setEditorBody] = useState<JsonObject | null>(null);
   const [validation, setValidation] = useState<Validation | null>(null);
+  const [grammarCheck, setGrammarCheck] = useState<GrammarCheck | null>(null);
+  const [manualEdits, setManualEdits] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -93,8 +128,10 @@ export function ScenarioEditor({
   function openDraft(value: Draft) {
     setDraft(value);
     setDraftId(value.id);
-    setBodyText(pretty(value.body));
+    setEditorBody(value.body);
     setValidation(null);
+    setGrammarCheck(null);
+    setManualEdits(false);
     setError("");
     setNotice("");
   }
@@ -155,21 +192,49 @@ export function ScenarioEditor({
 
   async function save(): Promise<Draft> {
     if (!draft) throw new Error("Сначала создайте или откройте черновик");
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(bodyText);
-    } catch (cause) {
-      throw new Error(`Некорректный JSON: ${cause instanceof Error ? cause.message : String(cause)}`);
-    }
-    if (!isObject(parsed)) throw new Error("Тело сценария должно быть JSON-объектом");
-    if (parsed.id !== draft.id) throw new Error("id черновика менять нельзя");
-    const patch = diff(draft.body, parsed);
+    if (!editorBody) throw new Error("Откройте черновик заново.");
+    const patch = diff(draft.body, editorBody);
     if (!Object.keys(patch).length) return draft;
     const updated = await api<Draft>(`/api/scenarios/drafts/${encodeURIComponent(draft.id)}`, "PATCH", patch);
     setDraft(updated);
-    setBodyText(pretty(updated.body));
+    setEditorBody(updated.body);
     setValidation(null);
     return updated;
+  }
+
+  function editBodyField(key: string, value: unknown) {
+    setEditorBody((previous) => previous ? { ...previous, [key]: value } : previous);
+    setValidation(null);
+    setGrammarCheck(null);
+    setManualEdits(true);
+  }
+
+  function editArrayField(arrayKey: string, index: number, key: string, value: unknown) {
+    setEditorBody((previous) => {
+      if (!previous || !Array.isArray(previous[arrayKey])) return previous;
+      const items = [...previous[arrayKey] as unknown[]];
+      if (!isObject(items[index])) return previous;
+      items[index] = { ...items[index], [key]: value };
+      return { ...previous, [arrayKey]: items };
+    });
+    setValidation(null);
+    setGrammarCheck(null);
+    setManualEdits(true);
+  }
+
+  function editDdsDecision(key: "expected" | "reason", value: string) {
+    setEditorBody((previous) => {
+      if (!previous) return previous;
+      const current = isObject(previous.dds_decision)
+        ? previous.dds_decision : { expected: "accept" };
+      const decision = { ...current, [key]: value };
+      if (key === "expected" && value === "accept") delete decision.reason;
+      if (key === "expected" && value === "decline" && typeof decision.reason !== "string") {
+        decision.reason = "";
+      }
+      return { ...previous, dds_decision: decision };
+    });
+    setValidation(null);
   }
 
   async function validate() {
@@ -178,6 +243,20 @@ export function ScenarioEditor({
       const result = await api<Validation>(`/api/scenarios/drafts/${encodeURIComponent(current.id)}/validate`, "POST");
       setValidation(result);
       setNotice(result.valid ? "Черновик прошёл проверку и может быть утверждён." : "Найдены ошибки в сценарии.");
+    });
+  }
+
+  async function checkGrammar() {
+    await perform(async () => {
+      const current = await save();
+      const result = await api<GrammarCheck>(
+        `/api/scenarios/drafts/${encodeURIComponent(current.id)}/grammar-check`, "POST",
+      );
+      setGrammarCheck(result);
+      setManualEdits(!result.valid);
+      setNotice(result.valid
+        ? "Языковая проверка пройдена для первой реплики и текстовых фактов."
+        : "Языковая проверка нашла замечания; исправьте их и запустите проверку повторно.");
     });
   }
 
@@ -231,6 +310,16 @@ export function ScenarioEditor({
       await onLibraryChanged();
     });
   }
+
+  const workingBody = editorBody ?? draft?.body ?? {};
+  const ddsDecision = isObject(workingBody.dds_decision) ? workingBody.dds_decision : {};
+  const expectedDdsDecision = ddsDecision.expected === "decline" ? "decline" : "accept";
+  const editableFacts = Array.isArray(workingBody.facts)
+    ? workingBody.facts.map((item, index) => ({ item, index })).filter(({ item }) => isObject(item)) as Array<{ item: JsonObject; index: number }>
+    : [];
+  const editableChecklist = Array.isArray(workingBody.checklist)
+    ? workingBody.checklist.map((item, index) => ({ item, index })).filter(({ item }) => isObject(item)) as Array<{ item: JsonObject; index: number }>
+    : [];
 
   return (
     <section className="scenario-editor" id="ai-scenario-editor" aria-busy={busy}>
@@ -290,14 +379,71 @@ export function ScenarioEditor({
       </div>
       {draft && (
         <>
-          <p className="ref">Черновик {draft.id} ({generationLabel(draft.generation)}). Факты и эталон доступны только преподавателю до утверждения. Поле score_weights позволяет задать веса метрик (0–10), например {"{\"address\": 3, \"dds_ack\": 2}"}.</p>
+          <p className="ref">Черновик {draft.id} ({generationLabel(draft.generation)}). Факты и эталон доступны только преподавателю до утверждения. Веса критериев занятия настраиваются отдельно при запуске.</p>
           <div className="scenario-editor-result">
-            <strong>Предпросмотр: {stringField(draft.body, "title")}</strong>
-            <p>Первая реплика: «{stringField(draft.body, "first_line")}»</p>
-            <p className="ref">Сюжетные факты — проверьте, что они согласуются друг с другом и с эталоном:</p>
-            <ul>{Array.isArray(draft.body.facts) && draft.body.facts.map((item, index) =>
-              isObject(item) ? <li key={`${index}-${String(item.id)}`}>{String(item.id)}: {String(item.value ?? "")}</li> : null
+            <strong>Предпросмотр: {stringField(workingBody, "title")}</strong>
+            <p>Первая реплика: «{stringField(workingBody, "first_line")}»</p>
+            <p>Эталон первичного решения ДДС: {expectedDdsDecision === "decline"
+              ? `отказать — ${stringField(ddsDecision, "reason") || "нужно указать причину"}`
+              : "принять карточку"}</p>
+            <p className="ref">Проверьте, что сюжетные факты и ответы согласуются друг с другом.</p>
+            <ul>{editableFacts.map(({ item, index }) =>
+              <li key={`${index}-${String(item.id)}`}><strong>{contentLabel(item.id, "fact", index)}:</strong> {String(item.value ?? "")}</li>
             )}</ul>
+          </div>
+          <div className="scenario-human-editor">
+            <h3>Содержание сценария</h3>
+            <label>Название занятия
+              <input value={stringField(workingBody, "title")} maxLength={200}
+                onChange={(event) => editBodyField("title", event.target.value)} />
+            </label>
+            <label>Первая реплика звонящего
+              <textarea rows={3} value={stringField(workingBody, "first_line")}
+                onChange={(event) => editBodyField("first_line", event.target.value)} />
+            </label>
+            <fieldset className="scenario-dds-decision">
+              <legend>Эталон первичного решения ДДС</legend>
+              <p className="ref">Оставьте «Принять», если карточка относится к компетенции службы. Выберите отказ только для подтверждённого исключения: например, дубль или неподведомственная территория.</p>
+              <label>Какое решение считается правильным
+                <select value={expectedDdsDecision}
+                  onChange={(event) => editDdsDecision("expected", event.target.value)}>
+                  <option value="accept">Принять карточку</option>
+                  <option value="decline">Не принять карточку</option>
+                </select>
+              </label>
+              {expectedDdsDecision === "decline" && <label>Почему отказ здесь правильный
+                <input aria-label="Причина эталонного отказа ДДС" value={stringField(ddsDecision, "reason")}
+                  maxLength={500} placeholder="Например: дубликат уже передан по карточке…"
+                  onChange={(event) => editDdsDecision("reason", event.target.value)} />
+                <small className="ref">Причина обязательна; она войдёт в норму оценки и отчёт курсанта.</small>
+              </label>}
+            </fieldset>
+            <h4>Факты и ответы</h4>
+            {editableFacts.map(({ item, index }) => <fieldset key={`${index}-${String(item.id)}`}>
+              <legend>{contentLabel(item.id, "fact", index)}</legend>
+              <label>Что сообщает звонящий
+                <textarea rows={2} value={stringField(item, "value")}
+                  onChange={(event) => editArrayField("facts", index, "value", event.target.value)} />
+              </label>
+              {typeof item.refined === "string" && <label>Уточнённый ответ после переспроса
+                <input value={item.refined} onChange={(event) => editArrayField("facts", index, "refined", event.target.value)} />
+              </label>}
+            </fieldset>)}
+            {editableChecklist.length > 0 && <>
+              <h4>Контрольные вопросы и эталонные ответы</h4>
+              {editableChecklist.map(({ item, index }) => <fieldset key={`${index}-${String(item.id)}`}>
+                <legend>{contentLabel(item.id, "question", index)}</legend>
+                <label>Ожидаемый вопрос оператора
+                  <input value={stringField(item, "question")}
+                    onChange={(event) => editArrayField("checklist", index, "question", event.target.value)} />
+                </label>
+                <label>Факт, который нужно выяснить
+                  <textarea rows={2} value={stringField(item, "fact")}
+                    onChange={(event) => editArrayField("checklist", index, "fact", event.target.value)} />
+                </label>
+              </fieldset>)}
+            </>}
+            <p className="ref">После правок сохраните черновик, проверьте сценарий и повторите языковую проверку перед утверждением.</p>
           </div>
           <div className="scenario-editor-create">
             <label>Комментарий для переработки
@@ -308,19 +454,33 @@ export function ScenarioEditor({
             <button type="button" onClick={revise}
               disabled={busy || revisionComment.trim().length < 10}>Переработать с ИИ</button>
           </div>
-          <label className="scenario-editor-json">JSON тела сценария
-            <textarea value={bodyText} onChange={(event) => { setBodyText(event.target.value); setValidation(null); }} spellCheck={false} />
-          </label>
           <div className="scenario-editor-actions">
             <button type="button" onClick={() => void perform(async () => { await save(); setNotice("Черновик сохранён."); })} disabled={busy}>Сохранить</button>
             <button type="button" onClick={validate} disabled={busy}>Проверить</button>
-            <button type="button" className="start" onClick={approve} disabled={busy || !validation?.valid}>Утвердить</button>
+            {manualEdits && <button type="button" onClick={checkGrammar} disabled={busy}>Проверить грамматику после правок</button>}
+            <button type="button" className="start" onClick={approve}
+              disabled={busy || !validation?.valid || manualEdits}>Утвердить</button>
           </div>
         </>
       )}
       {validation && <div className={validation.valid ? "scenario-editor-result" : "scenario-editor-result violated"}>
-        {validation.valid ? <><strong>Проверка пройдена</strong><pre>{pretty(validation.ground_truth ?? {})}</pre></> :
+        {validation.valid ? <><strong>Проверка пройдена</strong><dl className="scenario-ground-truth">
+          {typeof validation.ground_truth?.incident_type === "string" && <div><dt>Тип происшествия</dt><dd>{validation.ground_truth.incident_type}</dd></div>}
+          {typeof validation.ground_truth?.dds === "string" && <div><dt>Ответственная служба</dt><dd>{validation.ground_truth.dds}</dd></div>}
+          {typeof validation.ground_truth?.incident_code === "string" && <div><dt>Код ЕКП</dt><dd>{validation.ground_truth.incident_code}</dd></div>}
+          {typeof validation.ground_truth?.address === "string" && <div><dt>Адрес</dt><dd>{validation.ground_truth.address}</dd></div>}
+          {typeof validation.ground_truth?.victims === "number" && <div><dt>Пострадавших</dt><dd>{validation.ground_truth.victims}</dd></div>}
+          {Array.isArray(validation.ground_truth?.notify) && <div><dt>Оповещаемые службы</dt><dd>{validation.ground_truth.notify.map(String).join(", ") || "не назначены"}</dd></div>}
+          {Array.isArray(validation.ground_truth?.required_facts) && <div><dt>Обязательные факты</dt><dd>{validation.ground_truth.required_facts.map(String).join(", ") || "не заданы"}</dd></div>}
+        </dl></> :
           <><strong>Ошибки проверки</strong><ul>{validation.errors.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul></>}
+      </div>}
+      {grammarCheck && <div className={grammarCheck.valid ? "scenario-editor-result" : "scenario-editor-result violated"}>
+        <strong>{grammarCheck.valid ? "Грамматика: замечаний нет" : "Замечания к грамматике"}</strong>
+        <ul>{grammarCheck.checks.flatMap((item) => item.errors.map((message, index) =>
+          <li key={`${item.field}-${index}`}><strong>{grammarFieldLabel(item.field)}:</strong> {message}</li>
+        ))}</ul>
+        <small className="ref">Проверены первая реплика и текстовые значения фактов; код не переписывает текст. Источник проверки для каждого поля: правила или Vikhr.</small>
       </div>}
       {error && <p className="violated" role="alert">{error}</p>}
       {notice && <p className="state-ok" role="status">{notice}</p>}

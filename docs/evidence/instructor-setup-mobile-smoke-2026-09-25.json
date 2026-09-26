@@ -1,0 +1,548 @@
+{
+  "checked_at": "2026-09-25T19:52:58Z",
+  "base_url": "http://127.0.0.1:5174",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "device_scale_factor": 2,
+    "touch_target_minimum_px": 40
+  },
+  "screens": {
+    "instructor": {
+      "viewport": 390,
+      "document_width": 390,
+      "lesson_start_position": "static",
+      "visible_json": false,
+      "overflowing": [],
+      "small_controls": []
+    },
+    "trainee": {
+      "viewport": 390,
+      "document_width": 390,
+      "lesson_start_position": null,
+      "visible_json": false,
+      "overflowing": [],
+      "small_controls": []
+    },
+    "instructor_results": {
+      "viewport": 390,
+      "document_width": 390,
+      "lesson_start_position": "static",
+      "visible_json": false,
+      "overflowing": [
+        {
+          "tag": "table",
+          "class": "grid",
+          "text": "КурсантУпражнение · карточкаХодДДСЗадержкиДемо-курсантtraining · 0 мин 1 сВозгор",
+          "left": 28,
+          "right": 748
+        },
+        {
+          "tag": "thead",
+          "class": "",
+          "text": "КурсантУпражнение · карточкаХодДДСЗадержки",
+          "left": 29,
+          "right": 748
+        },
+        {
+          "tag": "tr",
+          "class": "",
+          "text": "КурсантУпражнение · карточкаХодДДСЗадержки",
+          "left": 29,
+          "right": 748
+        },
+        {
+          "tag": "th",
+          "class": "",
+          "text": "Упражнение · карточка",
+          "left": 154,
+          "right": 405
+        },
+        {
+          "tag": "th",
+          "class": "",
+          "text": "Ход",
+          "left": 405,
+          "right": 496
+        },
+        {
+          "tag": "th",
+          "class": "",
+          "text": "ДДС",
+          "left": 496,
+          "right": 547
+        },
+        {
+          "tag": "th",
+          "class": "",
+          "text": "Задержки",
+          "left": 547,
+          "right": 670
+        },
+        {
+          "tag": "th",
+          "class": "",
+          "text": "",
+          "left": 670,
+          "right": 748
+        },
+        {
+          "tag": "tbody",
+          "class": "",
+          "text": "Демо-курсантtraining · 0 мин 1 сВозгорание мусорного контейнераt01-1-fire-contai",
+          "left": 29,
+          "right": 748
+        },
+        {
+          "tag": "tr",
+          "class": "",
+          "text": "Демо-курсантtraining · 0 мин 1 сВозгорание мусорного контейнераt01-1-fire-contai",
+          "left": 29,
+          "right": 748
+        },
+        {
+          "tag": "td",
+          "class": "",
+          "text": "Возгорание мусорного контейнераt01-1-fire-container",
+          "left": 154,
+          "right": 405
+        },
+        {
+          "tag": "td",
+          "class": "",
+          "text": "Упражнение выполняется",
+          "left": 405,
+          "right": 496
+        },
+        {
+          "tag": "td",
+          "class": "",
+          "text": "—",
+          "left": 496,
+          "right": 547
+        },
+        {
+          "tag": "td",
+          "class": "state-ok",
+          "text": "Нормативы не нарушены",
+          "left": 547,
+          "right": 670
+        },
+        {
+          "tag": "td",
+          "class": "",
+          "text": "Открыто",
+          "left": 670,
+          "right": 748
+        },
+        {
+          "tag": "button",
+          "class": "",
+          "text": "Открыто",
+          "left": 679,
+          "right": 739
+        }
+      ],
+      "small_controls": []
+    },
+    "dds": {
+      "viewport": 390,
+      "document_width": 390,
+      "lesson_start_position": null,
+      "visible_json": false,
+      "overflowing": [],
+      "small_controls": []
+    },
+    "dds_card": {
+      "viewport": 390,
+      "document_width": 390,
+      "lesson_start_position": null,
+      "visible_json": false,
+      "overflowing": [
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "Аппарат МЭРАДобавлена",
+          "left": 351,
+          "right": 468
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "Аппарат МЭРА",
+          "left": 362,
+          "right": 456
+        },
+        {
+          "tag": "small",
+          "class": "",
+          "text": "Добавлена",
+          "left": 362,
+          "right": 456
+        },
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "ОАТИДобавлена",
+          "left": 468,
+          "right": 583
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "ОАТИ",
+          "left": 479,
+          "right": 571
+        },
+        {
+          "tag": "small",
+          "class": "",
+          "text": "Добавлена",
+          "left": 479,
+          "right": 571
+        },
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "Территориальные ОИВДобавлена",
+          "left": 583,
+          "right": 757
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "Территориальные ОИВ",
+          "left": 594,
+          "right": 745
+        },
+        {
+          "tag": "small",
+          "class": "",
+          "text": "Добавлена",
+          "left": 594,
+          "right": 745
+        },
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "Территориальные ОИВ ТиНАОДобавлена",
+          "left": 757,
+          "right": 978
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "Территориальные ОИВ ТиНАО",
+          "left": 768,
+          "right": 966
+        },
+        {
+          "tag": "small",
+          "class": "",
+          "text": "Добавлена",
+          "left": 768,
+          "right": 966
+        },
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "ГКУ НТУДобавлена",
+          "left": 978,
+          "right": 1093
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "ГКУ НТУ",
+          "left": 989,
+          "right": 1081
+        },
+        {
+          "tag": "small",
+          "class": "",
+          "text": "Добавлена",
+          "left": 989,
+          "right": 1081
+        },
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "ФСОДобавлена",
+          "left": 1093,
+          "right": 1208
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "ФСО",
+          "left": 1104,
+          "right": 1196
+        },
+        {
+          "tag": "small",
+          "class": "",
+          "text": "Добавлена",
+          "left": 1104,
+          "right": 1196
+        },
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "ГУП МСРДобавлена",
+          "left": 1208,
+          "right": 1323
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "ГУП МСР",
+          "left": 1219,
+          "right": 1311
+        }
+      ],
+      "small_controls": []
+    },
+    "dds_workflow": {
+      "viewport": 390,
+      "document_width": 390,
+      "lesson_start_position": null,
+      "visible_json": false,
+      "overflowing": [
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "Аппарат МЭРАДобавлена",
+          "left": 351,
+          "right": 468
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "Аппарат МЭРА",
+          "left": 362,
+          "right": 456
+        },
+        {
+          "tag": "small",
+          "class": "",
+          "text": "Добавлена",
+          "left": 362,
+          "right": 456
+        },
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "ОАТИДобавлена",
+          "left": 468,
+          "right": 583
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "ОАТИ",
+          "left": 479,
+          "right": 571
+        },
+        {
+          "tag": "small",
+          "class": "",
+          "text": "Добавлена",
+          "left": 479,
+          "right": 571
+        },
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "Территориальные ОИВДобавлена",
+          "left": 583,
+          "right": 757
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "Территориальные ОИВ",
+          "left": 594,
+          "right": 745
+        },
+        {
+          "tag": "small",
+          "class": "",
+          "text": "Добавлена",
+          "left": 594,
+          "right": 745
+        },
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "Территориальные ОИВ ТиНАОДобавлена",
+          "left": 757,
+          "right": 978
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "Территориальные ОИВ ТиНАО",
+          "left": 768,
+          "right": 966
+        },
+        {
+          "tag": "small",
+          "class": "",
+          "text": "Добавлена",
+          "left": 768,
+          "right": 966
+        },
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "ГКУ НТУДобавлена",
+          "left": 978,
+          "right": 1093
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "ГКУ НТУ",
+          "left": 989,
+          "right": 1081
+        },
+        {
+          "tag": "small",
+          "class": "",
+          "text": "Добавлена",
+          "left": 989,
+          "right": 1081
+        },
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "ФСОДобавлена",
+          "left": 1093,
+          "right": 1208
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "ФСО",
+          "left": 1104,
+          "right": 1196
+        },
+        {
+          "tag": "small",
+          "class": "",
+          "text": "Добавлена",
+          "left": 1104,
+          "right": 1196
+        },
+        {
+          "tag": "button",
+          "class": "dds-service-recipient ",
+          "text": "ГУП МСРДобавлена",
+          "left": 1208,
+          "right": 1323
+        },
+        {
+          "tag": "b",
+          "class": "",
+          "text": "ГУП МСР",
+          "left": 1219,
+          "right": 1311
+        }
+      ],
+      "small_controls": []
+    },
+    "dds_queue": {
+      "viewport": 390,
+      "document_width": 390,
+      "lesson_start_position": null,
+      "visible_json": false,
+      "overflowing": [],
+      "small_controls": []
+    }
+  },
+  "workflow": {
+    "lesson_setup": {
+      "ordered_steps": [
+        "1 Сценарий",
+        "2 Упражнение",
+        "3 Режим",
+        "4 Курсант"
+      ],
+      "empty_search_explains_next_action": true,
+      "filter_reset_restores_scenario": true
+    },
+    "results_summary": {
+      "visible_after_finish": true,
+      "technical_details_collapsed": true,
+      "json_visible": false
+    },
+    "service": "Служба 101",
+    "status": "Принята",
+    "crew": "Служба 101 — бригада №1",
+    "brief_recorded": true,
+    "session_finished": true
+  },
+  "queue": {
+    "cards_visible": 2,
+    "active_cards": 1,
+    "arrival_interval_seconds": 6,
+    "max_waiting": 1,
+    "managed_service": "Служба 101",
+    "first_card_status_preserved_after_second_arrival": true,
+    "switched_to_second_and_back": true,
+    "session_finished": true
+  },
+  "problems": {
+    "instructor": {
+      "horizontal_overflow": false,
+      "visible_json": false,
+      "small_controls": 0,
+      "start_button_overlay": false,
+      "touch_target_check_applies": true
+    },
+    "trainee": {
+      "horizontal_overflow": false,
+      "visible_json": false,
+      "small_controls": 0,
+      "start_button_overlay": false,
+      "touch_target_check_applies": true
+    },
+    "instructor_results": {
+      "horizontal_overflow": false,
+      "visible_json": false,
+      "small_controls": 0,
+      "start_button_overlay": false,
+      "touch_target_check_applies": true
+    },
+    "dds": {
+      "horizontal_overflow": false,
+      "visible_json": false,
+      "small_controls": 0,
+      "start_button_overlay": false,
+      "touch_target_check_applies": true
+    },
+    "dds_card": {
+      "horizontal_overflow": false,
+      "visible_json": false,
+      "small_controls": 0,
+      "start_button_overlay": false,
+      "touch_target_check_applies": true
+    },
+    "dds_workflow": {
+      "horizontal_overflow": false,
+      "visible_json": false,
+      "small_controls": 0,
+      "start_button_overlay": false,
+      "touch_target_check_applies": true
+    },
+    "dds_queue": {
+      "horizontal_overflow": false,
+      "visible_json": false,
+      "small_controls": 0,
+      "start_button_overlay": false,
+      "touch_target_check_applies": true
+    }
+  },
+  "browser_errors": [],
+  "passed": true
+}

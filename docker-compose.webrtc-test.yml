@@ -1,0 +1,14 @@
+# Unique backend/SIP tags let the smoke build without replacing tags used by
+# the long-running project. The frontend runtime image is read-only reused;
+# the current production bundle and TLS template are bind-mounted for fidelity.
+services:
+  backend:
+    image: lct-hack-backend:webrtc-test
+  frontend:
+    image: lct-hack-frontend:local
+    pull_policy: never
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./frontend/nginx.tls.conf.template:/etc/nginx/templates-tls/default.conf.template:ro
+  sip:
+    image: lct-hack-sip:webrtc-test

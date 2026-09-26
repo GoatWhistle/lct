@@ -61,7 +61,7 @@ export function Director({
         рвёт звук немедленно.
       </p>
       <p>
-        <input type="text" value={free} placeholder="своя реплика — нужна локальная модель"
+        <input type="text" aria-label="Своя реплика звонящему" value={free} placeholder="своя реплика — нужна локальная модель"
           onChange={(event) => setFree(event.target.value)} />{" "}
         <button type="button" disabled={disabled || !free.trim()}
           onClick={() => { fire(`своя реплика: ${free.trim()}`, free.trim()); setFree(""); }}>

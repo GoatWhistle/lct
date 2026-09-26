@@ -1,16 +1,16 @@
-# Билет 5, вызов 3 (docs/spec/TICKETS.md). Ситуация и адрес — из билета,
-# факты выведены из ситуации: чего в строке нет, того звонящий не знает.
+# Билет 5, вызов 3 (docs/spec/TICKETS.md). Источник сообщает только о падении
+# рабочего в котлован: об обрушении/подземных коммуникациях и состоянии человека
+# сведений нет. Точного признака ЕКП для этого описания не назначаем.
 id: t05-3-worker-in-pit
 title: Рабочий упал в котлован на стройке
 ticket: 5
 position: 3
 type: other
 level: L3
-topics: [police]
+topics: [rescue]
 modes: [training, exam, self]
 
-extends: checklists/police.yaml
-signs: ["Зажало, придавило, завалило, застрял человек", подземные коммуникации]
+signs: []
 
 persona:
   base: worried
@@ -28,17 +28,26 @@ facts:
     value: на стройке жилого дома рабочий упал в котлован
     reveal_on: { question: q_what_happened }
   - id: f_victims
-    value: "один рабочий упал в котлован; его состояние неизвестно"
+    value: "один рабочий упал в котлован; его состояние в исходной карточке не указано"
     reveal_on: { question: q_victims }
   - id: f_caller
     value: "Иванова Елена Сергеевна, телефон 916 896 3254"
     reveal_on: { question: q_caller }
 
 checklist:
-  - { id: q_address, fact: f_address }
-  - { id: q_what_happened, fact: f_what_happened }
-  - { id: q_victims, fact: f_victims }
-  - { id: q_caller, fact: f_caller }
+  - id: q_address
+    question: "Где находится стройка? Назовите город, улицу или ориентир."
+    fact: f_address
+  - id: q_address_check
+  - id: q_what_happened
+    question: "Что произошло с рабочим?"
+    fact: f_what_happened
+  - id: q_victims
+    question: "Сколько человек упали или пострадали? Что известно об их состоянии?"
+    fact: f_victims
+  - id: q_caller
+    question: "Представьтесь и оставьте контактный телефон."
+    fact: f_caller
 
 required_fields: [address, incident_type, description, victims_count]
 

@@ -1,0 +1,1308 @@
+{
+  "model": "Qwen3-1.7B",
+  "temperature": 0.8,
+  "offline": true,
+  "scenario_count": 96,
+  "selected_count": 96,
+  "evaluated_count": 96,
+  "safe_count": 96,
+  "leak_count": 0,
+  "slot_gate_failure_count": 0,
+  "no_fact_question_count": 0,
+  "fallback_count": 69,
+  "accepted_model_count": 27,
+  "required_fact_missing_count": 0,
+  "elapsed_seconds": 93.65,
+  "results": [
+    {
+      "id": "t01-1-fire-container",
+      "ticket": 1,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.174
+    },
+    {
+      "id": "t01-2-mass-fight",
+      "ticket": 1,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.153
+    },
+    {
+      "id": "t01-3-child-other-region",
+      "ticket": 1,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.153
+    },
+    {
+      "id": "t02-1-smoke-chute",
+      "ticket": 2,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.25
+    },
+    {
+      "id": "t02-2-megafon-consultation",
+      "ticket": 2,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.219
+    },
+    {
+      "id": "t02-3-car-in-water",
+      "ticket": 2,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.639
+    },
+    {
+      "id": "t03-1-fire-private-house",
+      "ticket": 3,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.604
+    },
+    {
+      "id": "t03-2-loud-music",
+      "ticket": 3,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.579
+    },
+    {
+      "id": "t03-3-log-blocked-driver",
+      "ticket": 3,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.687
+    },
+    {
+      "id": "t04-1-balcony-fire",
+      "ticket": 4,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.582
+    },
+    {
+      "id": "t04-2-unconscious-parking",
+      "ticket": 4,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.579
+    },
+    {
+      "id": "t04-3-open-door",
+      "ticket": 4,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.616
+    },
+    {
+      "id": "t05-1-window-fire-people",
+      "ticket": 5,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.353
+    },
+    {
+      "id": "t05-2-wrong-medicine",
+      "ticket": 5,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.498
+    },
+    {
+      "id": "t05-3-worker-in-pit",
+      "ticket": 5,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.584
+    },
+    {
+      "id": "t06-1-car-fire",
+      "ticket": 6,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.616
+    },
+    {
+      "id": "t06-2-man-in-car",
+      "ticket": 6,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.618
+    },
+    {
+      "id": "t06-3-men-on-ice",
+      "ticket": 6,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.615
+    },
+    {
+      "id": "t07-1-toyota-fire",
+      "ticket": 7,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.613
+    },
+    {
+      "id": "t07-2-headache-ryazan",
+      "ticket": 7,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.586
+    },
+    {
+      "id": "t07-3-lost-elderly",
+      "ticket": 7,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.62
+    },
+    {
+      "id": "t08-1-mall-smoke",
+      "ticket": 8,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.595
+    },
+    {
+      "id": "t08-2-unconscious-roadside",
+      "ticket": 8,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.704
+    },
+    {
+      "id": "t08-3-drowning",
+      "ticket": 8,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.649
+    },
+    {
+      "id": "t09-1-platform-smoke",
+      "ticket": 9,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.62
+    },
+    {
+      "id": "t09-2-labour",
+      "ticket": 9,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.668
+    },
+    {
+      "id": "t09-3-fell-from-bridge",
+      "ticket": 9,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.641
+    },
+    {
+      "id": "t10-1-ticket-office-fire",
+      "ticket": 10,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.626
+    },
+    {
+      "id": "t10-2-elderly-crossroads",
+      "ticket": 10,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.667
+    },
+    {
+      "id": "t10-3-help-behind-door",
+      "ticket": 10,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.611
+    },
+    {
+      "id": "t11-1-bus-cabin-fire",
+      "ticket": 11,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.667
+    },
+    {
+      "id": "t11-2-dizziness",
+      "ticket": 11,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.124
+    },
+    {
+      "id": "t11-3-lost-in-forest",
+      "ticket": 11,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.662
+    },
+    {
+      "id": "t12-1-restaurant-smoke",
+      "ticket": 12,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.667
+    },
+    {
+      "id": "t12-2-heart-pain",
+      "ticket": 12,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.738
+    },
+    {
+      "id": "t12-3-men-on-bridge-rail",
+      "ticket": 12,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.633
+    },
+    {
+      "id": "t13-1-park-trees-fire",
+      "ticket": 13,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.674
+    },
+    {
+      "id": "t13-2-birth-in-car",
+      "ticket": 13,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.7
+    },
+    {
+      "id": "t13-3-man-on-roadside",
+      "ticket": 13,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.662
+    },
+    {
+      "id": "t14-1-grass-fire-azs",
+      "ticket": 14,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.629
+    },
+    {
+      "id": "t14-2-asthma",
+      "ticket": 14,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.649
+    },
+    {
+      "id": "t14-3-abduction",
+      "ticket": 14,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.081
+    },
+    {
+      "id": "t15-1-forest-fire",
+      "ticket": 15,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.595
+    },
+    {
+      "id": "t15-2-dived-head-injury",
+      "ticket": 15,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.627
+    },
+    {
+      "id": "t15-3-knife-wound",
+      "ticket": 15,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.681
+    },
+    {
+      "id": "t16-1-smoke-column",
+      "ticket": 16,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.64
+    },
+    {
+      "id": "t16-2-child-bicycle-volzhsky",
+      "ticket": 16,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.168
+    },
+    {
+      "id": "t16-3-sleeping-pills",
+      "ticket": 16,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.661
+    },
+    {
+      "id": "t17-1-fire-alarm",
+      "ticket": 17,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.436
+    },
+    {
+      "id": "t17-2-seizure-in-shop",
+      "ticket": 17,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.64
+    },
+    {
+      "id": "t17-3-beaten-woman",
+      "ticket": 17,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.596
+    },
+    {
+      "id": "t18-1-unknown-fire",
+      "ticket": 18,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.667
+    },
+    {
+      "id": "t18-2-husband-wont-wake",
+      "ticket": 18,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.672
+    },
+    {
+      "id": "t18-3-cries-for-help",
+      "ticket": 18,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.959
+    },
+    {
+      "id": "t19-1-field-fire",
+      "ticket": 19,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.775
+    },
+    {
+      "id": "t19-2-snake-bite",
+      "ticket": 19,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.677
+    },
+    {
+      "id": "t19-3-train-injury",
+      "ticket": 19,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.944
+    },
+    {
+      "id": "t20-1-three-fighting",
+      "ticket": 20,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.214
+    },
+    {
+      "id": "t20-2-stroke",
+      "ticket": 20,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.676
+    },
+    {
+      "id": "t20-3-rape",
+      "ticket": 20,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.139
+    },
+    {
+      "id": "t21-1-mass-fight-embassy",
+      "ticket": 21,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.722
+    },
+    {
+      "id": "t21-2-axe-wound",
+      "ticket": 21,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.648
+    },
+    {
+      "id": "t21-3-child-locked-in-car",
+      "ticket": 21,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.974
+    },
+    {
+      "id": "t22-1-flat-fight",
+      "ticket": 22,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.681
+    },
+    {
+      "id": "t22-2-child-stomach",
+      "ticket": 22,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.727
+    },
+    {
+      "id": "t22-3-suicide-sms",
+      "ticket": 22,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.36
+    },
+    {
+      "id": "t23-1-drunk-husband",
+      "ticket": 23,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.688
+    },
+    {
+      "id": "t23-2-eardrum",
+      "ticket": 23,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.679
+    },
+    {
+      "id": "t23-3-lost-child",
+      "ticket": 23,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.656
+    },
+    {
+      "id": "t24-1-parking-quarrel",
+      "ticket": 24,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.152
+    },
+    {
+      "id": "t24-2-child-slide-fall",
+      "ticket": 24,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.648
+    },
+    {
+      "id": "t24-3-begging-with-baby",
+      "ticket": 24,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.074
+    },
+    {
+      "id": "t25-1-drunk-at-stop",
+      "ticket": 25,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.69
+    },
+    {
+      "id": "t25-2-accident-vegas",
+      "ticket": 25,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.619
+    },
+    {
+      "id": "t25-3-body-found",
+      "ticket": 25,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.685
+    },
+    {
+      "id": "t26-1-vandals-stadium",
+      "ticket": 26,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.584
+    },
+    {
+      "id": "t26-2-accident-melnitsa",
+      "ticket": 26,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.413
+    },
+    {
+      "id": "t26-3-death-care-home",
+      "ticket": 26,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.478
+    },
+    {
+      "id": "t27-1-suspicious-car",
+      "ticket": 27,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.425
+    },
+    {
+      "id": "t27-2-accident-tunnel",
+      "ticket": 27,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.682
+    },
+    {
+      "id": "t27-3-wall-crack",
+      "ticket": 27,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.656
+    },
+    {
+      "id": "t28-1-stranger-at-door",
+      "ticket": 28,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.345
+    },
+    {
+      "id": "t28-2-accident-mid",
+      "ticket": 28,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.636
+    },
+    {
+      "id": "t28-3-loose-board",
+      "ticket": 28,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.126
+    },
+    {
+      "id": "t29-1-ticking-box",
+      "ticket": 29,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.684
+    },
+    {
+      "id": "t29-2-accident-fight",
+      "ticket": 29,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.582
+    },
+    {
+      "id": "t29-3-threat-to-blow-up",
+      "ticket": 29,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.704
+    },
+    {
+      "id": "t30-1-car-theft-yesterday",
+      "ticket": 30,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 2.377
+    },
+    {
+      "id": "t30-2-pedestrian-hit",
+      "ticket": 30,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.847
+    },
+    {
+      "id": "t30-3-gas-smell-house",
+      "ticket": 30,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.651
+    },
+    {
+      "id": "t31-1-car-theft-witnessed",
+      "ticket": 31,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.771
+    },
+    {
+      "id": "t31-2-hit-and-run",
+      "ticket": 31,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 2.819
+    },
+    {
+      "id": "t31-3-gas-pipe-whistle",
+      "ticket": 31,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.953
+    },
+    {
+      "id": "t32-1-carjacking",
+      "ticket": 32,
+      "position": 1,
+      "status": "safe",
+      "model_fallback": false,
+      "model_rejection_reasons": [],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 1.966
+    },
+    {
+      "id": "t32-2-trolleybus-accident",
+      "ticket": 32,
+      "position": 2,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.803
+    },
+    {
+      "id": "t32-3-street-lights",
+      "ticket": 32,
+      "position": 3,
+      "status": "safe",
+      "model_fallback": true,
+      "model_rejection_reasons": [
+        "required_fact_not_verbatim"
+      ],
+      "required_fact_present": true,
+      "prompt_leaks": [],
+      "answer_leaks": [],
+      "latency_seconds": 0.764
+    }
+  ]
+}
