@@ -283,19 +283,27 @@ export function Instructor() {
       && !(exercise === "dds" && wholeTicket)
       ? visibleScenarios.filter((item) => item.outcome === "card").map((item) => item.id)
       : undefined;
-    const sent = control.start(sessionId, primaryScenarioId, mode, selected?.name || trainee || "Демо-курсант",
-      exercise === "card_dds" ? "card" : exercise,
-      undefined, selected?.id, selected?.service ?? undefined,
-      scenarioIds && scenarioIds.length > 1 ? scenarioIds : undefined,
-      ddsArrivalIntervalSeconds, ddsMaxWaiting,
-      exercise === "card_dds", {
+    const sent = control.start(sessionId, {
+      scenarioId: primaryScenarioId,
+      mode,
+      trainee: selected?.name || trainee || "Демо-курсант",
+      exercise: exercise === "card_dds" ? "card" : exercise,
+      traineeId: selected?.id,
+      ddsService: selected?.service ?? undefined,
+      scenarioIds: scenarioIds && scenarioIds.length > 1 ? scenarioIds : undefined,
+      randomScenarioIds,
+      ddsArrivalIntervalSeconds,
+      ddsMaxWaiting,
+      handoffToDds: exercise === "card_dds",
+      criteria: {
         decision_time_limit_seconds: decisionTimeLimit,
         card_fill_time_limit_seconds: cardFillTimeLimit,
         dds_card_work_time_limit_seconds: ddsCardWorkTimeLimit,
         allowed_errors: allowedErrors,
         require_correct_grammar: requireCorrectGrammar,
         score_weights: lessonScoreWeights,
-      }, randomScenarioIds);
+      },
+    });
     if (sent) toStart.current = null;
   }, [sessionId, control, scenarioId, extraScenarioIds, mode, trainee, traineeId, trainees.data,
     exercise, decisionTimeLimit, cardFillTimeLimit, ddsCardWorkTimeLimit, allowedErrors, requireCorrectGrammar, wholeTicket, selectedTicketScenarios,

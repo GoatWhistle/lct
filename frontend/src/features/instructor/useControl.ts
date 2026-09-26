@@ -8,7 +8,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { controlChannel, type ChannelStatus } from "@/shared/api/ws";
-import type { LessonCriteria, SessionMode } from "@/shared/types/generated";
+
+import { scenarioStartMessage, type ScenarioStartOptions } from "./start.mjs";
 
 export function useControl(sessionId: string | null) {
   const [status, setStatus] = useState<ChannelStatus>("closed");
@@ -37,30 +38,11 @@ export function useControl(sessionId: string | null) {
     };
   }, [sessionId]);
 
-  const start = useCallback(
-    (targetSessionId: string, scenarioId: string, mode: SessionMode, trainee: string, exercise: "dds" | "call" | "card" = "dds", group?: string, traineeId?: string, ddsService?: string, scenarioIds?: string[], ddsArrivalIntervalSeconds = 60, ddsMaxWaiting = 3, handoffToDds = false, criteria?: LessonCriteria, randomScenarioIds?: string[]) => {
-      const message = {
-        type: "scenario.start",
-        scenario_id: scenarioId,
-        mode,
-        trainee,
-        group_id: group || null,
-        trainee_id: traineeId || null,
-        dds_service: ddsService || null,
-        exercise,
-        handoff_to_dds: handoffToDds,
-        scenario_ids: scenarioIds?.length ? scenarioIds : undefined,
-        random_scenario_ids: randomScenarioIds?.length ? randomScenarioIds : undefined,
-        dds_arrival_interval_seconds: ddsArrivalIntervalSeconds,
-        dds_max_waiting: ddsMaxWaiting,
-        criteria,
-      } as const;
-      const current = channel.current;
-      if (!current || current.sessionId !== targetSessionId) return false;
-      return current.socket.send(message);
-    },
-    [],
-  );
+  const start = useCallback((targetSessionId: string, options: ScenarioStartOptions) => {
+    const current = channel.current;
+    if (!current || current.sessionId !== targetSessionId) return false;
+    return current.socket.send(scenarioStartMessage(options));
+  }, []);
 
   const note = useCallback(
     (transcriptRef: string, text: string) =>

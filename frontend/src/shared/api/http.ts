@@ -3,7 +3,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { Level, SessionMode, StationSnapshot } from "@/shared/types/generated";
+import type { Level, SessionMode, SessionReport, StationSnapshot } from "@/shared/types/generated";
+
+import { reportErrorMessage, reportRetryDelay, shouldRetryReport } from "./report.mjs";
 
 export class ApiError extends Error {
   constructor(
@@ -327,6 +329,30 @@ export const useProfile = (traineeId: string | null) =>
     queryFn: () => request<Profile>(`/api/trainees/${traineeId}/profile`),
     enabled: Boolean(traineeId),
   });
+
+const errorStatus = (error: unknown) => (error instanceof ApiError ? error.status : null);
+
+/**
+ * Отчёт сессии. `ready = false` — запроса нет и отчёт не показывается: его
+ * просят после `score.ready` или у уже завершённой сессии. 409 (оценка ещё
+ * считается) повторяется сам с ограниченным числом попыток.
+ */
+export function useSessionReport(sessionId: string | null, ready: boolean) {
+  const enabled = Boolean(sessionId) && ready;
+  const query = useQuery({
+    queryKey: ["session-report", sessionId],
+    queryFn: () => request<SessionReport>(`/api/sessions/${sessionId}/report`),
+    enabled,
+    retry: (failureCount, error) => shouldRetryReport(failureCount, errorStatus(error)),
+    retryDelay: reportRetryDelay,
+  });
+  return {
+    report: enabled ? query.data ?? null : null,
+    loading: enabled && query.isFetching,
+    error: enabled && query.isError ? reportErrorMessage(errorStatus(query.error)) : "",
+    refetch: query.refetch,
+  };
+}
 
 export const useCreateSession = () =>
   useMutation({

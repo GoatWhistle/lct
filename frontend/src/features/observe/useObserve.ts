@@ -4,9 +4,11 @@
 // и он должен показать текущее состояние, а не ждать событий. Отправлять в этот
 // канал нечего и нельзя: тип `Out` — `never` (docs/arch/CONTRACT.md).
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { type CardState, applyState, empty as emptyCard } from "@/features/kio-card/merge";
+import { useSessionReport } from "@/shared/api/http";
 import { observeChannel, type ChannelStatus } from "@/shared/api/ws";
 import type {
   SessionMode,
@@ -43,7 +45,12 @@ export function useObserve(sessionId: string | null): ObservedSession {
   const [hintsUsed, setHintsUsed] = useState(0);
   const [notes, setNotes] = useState<Map<string, string>>(new Map());
   const [ended, setEnded] = useState(false);
-  const [report, setReport] = useState<SessionReport | null>(null);
+  // Сессия, для которой отчёт уже стоит просить. Привязка к id, а не флаг:
+  // при переключении истории старый флаг не должен дёрнуть запрос новой сессии.
+  const [reportFor, setReportFor] = useState<string | null>(null);
+  // Ошибку отчёта наблюдение не показывает: пока оценки нет, это не ошибка.
+  const { report } = useSessionReport(sessionId, reportFor === sessionId);
+  const queries = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,7 +65,6 @@ export function useObserve(sessionId: string | null): ObservedSession {
     setHintsUsed(0);
     setNotes(new Map());
     setEnded(false);
-    setReport(null);
     setError(null);
     if (!sessionId) return;
     let active = true;
@@ -66,23 +72,7 @@ export function useObserve(sessionId: string | null): ObservedSession {
     // could only return score_not_ready, competing with the snapshot under load.
     // Ask for the report only after completion or when no live session exists
     // (e.g. history opened after a backend restart).
-    let reportLoading = false;
-    let reportLoaded = false;
-    const loadReport = () => {
-      if (reportLoading || reportLoaded) return;
-      reportLoading = true;
-      void fetch(`/api/sessions/${sessionId}/report`, { credentials: "same-origin" })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((saved) => {
-          if (!active) return;
-          if (saved) {
-            reportLoaded = true;
-            setReport(saved as SessionReport);
-          }
-        })
-        .catch(() => undefined)
-        .finally(() => { reportLoading = false; });
-    };
+    const loadReport = () => setReportFor(sessionId);
     const channel = observeChannel(sessionId, {
       onStatus: (next) => { if (active) setStatus(next); },
       onEvent: (event) => {
@@ -128,12 +118,14 @@ export function useObserve(sessionId: string | null): ObservedSession {
             break;
           case "score.ready":
             loadReport();
+            // После session.ended hook мог исчерпать повторы 409 до готовности оценки.
+            void queries.invalidateQueries({ queryKey: ["session-report", sessionId] });
             break;
         }
       },
     }).connect();
     return () => { active = false; channel.close(); };
-  }, [sessionId]);
+  }, [sessionId, queries]);
 
   return { status, title, mode, trainee, card, requiredFields, transcript, timers, hintsUsed, notes, ended, report, error };
 }

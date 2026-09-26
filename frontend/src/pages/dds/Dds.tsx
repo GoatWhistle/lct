@@ -7,9 +7,10 @@ import { Timers } from "@/features/timers/Timers";
 import { applyState, empty as emptyCard, readPath, type CardState } from "@/features/kio-card/merge";
 import { ackDeadline } from "./ack.mjs";
 import { filterSortHistory } from "./history.mjs";
+import { useSessionReport } from "@/shared/api/http";
 import { sessionIdFromUrl } from "@/shared/api/session";
 import { stationChannel, type ChannelStatus } from "@/shared/api/ws";
-import type { DdsQueueCard, ServiceStatus, SessionReport, StationSnapshot, StationToServer, TimerSnapshot } from "@/shared/types/generated";
+import type { DdsQueueCard, ServiceStatus, StationSnapshot, StationToServer, TimerSnapshot } from "@/shared/types/generated";
 import { ALARMING, CARD_STATUS_LABELS, SERVICE_STATUS_LABELS } from "./statuses";
 
 const SipPhone = lazy(() => import("@/features/sip/SipPhone").then(({ SipPhone }) => ({ default: SipPhone })));
@@ -232,9 +233,10 @@ export function Dds() {
   const [checkText, setCheckText] = useState("");
   const [error, setError] = useState("");
   const [ended, setEnded] = useState(false);
-  const [report, setReport] = useState<SessionReport | null>(null);
-  const [reportState, setReportState] = useState<"idle" | "loading" | "ready" | "error">("idle");
-  const [reportError, setReportError] = useState("");
+  // Разбор просим только после `score.ready`; новая карточка снимает флаг.
+  const [scoreReady, setScoreReady] = useState(false);
+  const { report, loading: reportLoading, error: reportError, refetch: refetchReport } =
+    useSessionReport(sessionId, scoreReady);
   const [zone, setZone] = useState<boolean | null>(null);
   const [reply, setReply] = useState({ text: "", dirty: false });
   const [advancePending, setAdvancePending] = useState(false);
@@ -244,28 +246,6 @@ export function Dds() {
 
   useEffect(() => {
     if (!sessionId) return;
-    const controller = new AbortController();
-    async function loadReport() {
-      setReportState("loading");
-      setReportError("");
-      try {
-        const response = await fetch(`/api/sessions/${sessionId}/report`, {
-          credentials: "same-origin",
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          if (response.status === 403) throw new Error("Отчёт недоступен: это занятие другого обучающегося.");
-          if (response.status === 409) throw new Error("Оценка ещё не готова. Попробуйте получить разбор чуть позже.");
-          throw new Error(`Не удалось получить отчёт (HTTP ${response.status}).`);
-        }
-        setReport(await response.json() as SessionReport);
-        setReportState("ready");
-      } catch (cause) {
-        if (controller.signal.aborted) return;
-        setReportState("error");
-        setReportError(cause instanceof Error ? cause.message : "Не удалось получить отчёт.");
-      }
-    }
     const ch = stationChannel(sessionId, role, {
       onStatus: (next) => { setStatus(next); if (next !== "open") setDialing(false); },
       onEvent: (event) => {
@@ -300,8 +280,7 @@ export function Dds() {
             setBrief({ address: "", incident: "", request: "" });
             setCheckText("");
             setZone(null);
-            setReport(null);
-            setReportState("idle");
+            setScoreReady(false);
             setView(openCardAfterSwitch.current ? "card" : "registry");
             openCardAfterSwitch.current = false;
             setPane(null);
@@ -319,7 +298,7 @@ export function Dds() {
         } else if (event.type === "timer.tick") setTimers(event.timers);
         else if (event.type === "error") { setError(event.message); setDialing(false); setAdvancePending(false); }
         else if (event.type === "session.ended") { setEnded(true); setDialing(false); setAdvancePending(false); setPane(null); setView("registry"); }
-        else if (event.type === "score.ready") { void loadReport(); }
+        else if (event.type === "score.ready") setScoreReady(true);
         else if (event.type === "phone.report") {
           setLastReport(event);
           setDialing(false);
@@ -331,7 +310,7 @@ export function Dds() {
       },
     }).connect();
     channel.current = ch;
-    return () => { controller.abort(); ch.close(); channel.current = null; };
+    return () => { ch.close(); channel.current = null; };
   }, [sessionId, role]);
 
   useEffect(() => {
@@ -390,7 +369,7 @@ export function Dds() {
     </span>
     {error && <div className="dds-alert" role="alert">Действие не принято: {error}</div>}
     {ended && <div className="dds-alert dds-done">Занятие завершено. Оценка появится после расчёта.</div>}
-    {(ended || reportState !== "idle") && <section className="dds-panel" aria-live="polite">
+    {(ended || scoreReady) && <section className="dds-panel" aria-live="polite">
       <div className="dds-panel-title"><h2>Итог упражнения</h2></div>
       {report ? <div style={{ padding: 12 }}>
         <p><strong>Итоговая оценка: {report.score_final.toFixed(0)} из 100</strong>
@@ -425,20 +404,8 @@ export function Dds() {
           {report.findings.length === 0 && <tr><td>Замечаний нет.</td></tr>}
         </tbody></table>
       </div> : <div style={{ padding: 12 }}>
-        {reportState === "loading" ? "Подготавливаем разбор…" : reportError || "Ожидаем итоговую оценку…"}
-        {reportState === "error" && <button type="button" onClick={() => {
-          setReportState("loading");
-          void fetch(`/api/sessions/${sessionId}/report`, { credentials: "same-origin" }).then(async (response) => {
-            if (response.status === 403) throw new Error("Отчёт недоступен: это занятие другого обучающегося.");
-            if (response.status === 409) throw new Error("Оценка ещё не готова. Попробуйте получить разбор чуть позже.");
-            if (!response.ok) throw new Error(`Не удалось получить отчёт (HTTP ${response.status}).`);
-            setReport(await response.json() as SessionReport);
-            setReportState("ready");
-          }).catch((cause: unknown) => {
-            setReportError(cause instanceof Error ? cause.message : "Не удалось получить отчёт.");
-            setReportState("error");
-          });
-        }}>Повторить запрос</button>}
+        {reportLoading ? "Подготавливаем разбор…" : reportError || "Ожидаем итоговую оценку…"}
+        {reportError && <button type="button" onClick={() => void refetchReport()}>Повторить запрос</button>}
       </div>}
     </section>}
 
