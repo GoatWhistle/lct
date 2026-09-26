@@ -66,7 +66,8 @@ TASK-<id>.md      исполнительный гайд: файл → что с�
 - **Хуки** включаются на клоне один раз: `git config core.hooksPath .claude/git-hooks`.
   `commit-msg` проверяет формат, 20 слов, `#N` и стоп-лист (`.claude/git-hooks/stopwords`),
   `pre-commit` — стоп-лист в добавленных строках, `pre-push` — отказ на прямой push в `main`.
-- **`main` — только через PR:** ветка `feat/<что>` → push ветки → PR (`.claude/tracker.md`).
+- **`main` — только через PR:** один issue — своя сессия и worktree, ветка `feat/<slug>` →
+  push ветки → PR (`.claude/tracker.md`).
   Серверной защиты нет (приватный репо организации на бесплатном тарифе) — держит хук.
 - **Сдача:** `.claude/scripts/scrub-history.sh` собирает bare-копию без `.claude/`, `CLAUDE.md`,
   `AGENTS.md`, `PROMPT-*`, `TASK-*`, `.agents/` и без `#N` в сообщениях во всей истории.
