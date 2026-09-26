@@ -31,11 +31,12 @@ from app.domain.events import Exercise, SessionMode
 from app.domain.roles import Role
 from app.main import LIBRARY, app
 from app.scenarios import store
-from app.session.dds import prepare_card
 from app.session.checkpoint import load_state
+from app.session.dds import build_card
 from app.session.hub import hub
 from app.session.journal import DbJournal, SessionLeaseLost
 from app.session.state import SessionState
+from app.session.timers import SessionTimers
 
 
 @pytest.fixture
@@ -894,16 +895,10 @@ async def test_kio_submission_moderation_and_dds_card_persist_on_real_postgres(
 
             scenario = store.get(scenario_id)
             assert scenario is not None and scenario.student_card is not None
-            state = SessionState(
-                session_id=UUID("00000000-0000-4000-8000-000000000702"),
-                scenario_id=scenario.id, scenario_title=scenario.title,
-                level=scenario.level.value, mode=SessionMode.TRAINING, exercise=Exercise.DDS,
-            )
-            prepare_card(state, scenario)
-            assert state.dispatched_card is not None
-            assert state.dispatched_card.address == kio["address"]
-            assert state.dispatched_card.caller_name == kio["caller_name"]
-            assert state.dispatched_card.fire.object_kind == "мусорный контейнер"
+            card = build_card(scenario, 0, SessionTimers().limits)
+            assert card.dispatched_card.address == kio["address"]
+            assert card.dispatched_card.caller_name == kio["caller_name"]
+            assert card.dispatched_card.fire.object_kind == "мусорный контейнер"
 
             # Simulate a peer backend with a cold process-local scenario cache:
             # scenario.start must resolve the approved row from shared Postgres.
@@ -950,9 +945,9 @@ async def test_kio_submission_moderation_and_dds_card_persist_on_real_postgres(
                         deadline = time.monotonic() + 3
                         while time.monotonic() < deadline:
                             state = hub.get(session_id)
-                            if state and any(
+                            if state and state.desk.active and any(
                                 mark.service == service and mark.status.value == expected
-                                for mark in state.status_log
+                                for mark in state.desk.active.status_log
                             ):
                                 break
                             time.sleep(0.01)

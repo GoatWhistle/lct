@@ -180,7 +180,7 @@ def test_dispatcher_sets_a_status_and_the_card_follows(client):
         station.send_json({"type": "card.status", "service": "Служба 101", "status": "accepted"})
         error = read_until(station, "error")
         assert "комментар" in error["message"]
-        assert hub.get(session_id).status_log == []
+        assert hub.get(session_id).desk.active.status_log == []
         command_id = str(uuid4())
         accepted = {
             "type": "card.status", "service": "Служба 101", "status": "accepted",
@@ -196,7 +196,7 @@ def test_dispatcher_sets_a_status_and_the_card_follows(client):
         station.send_json(accepted)
         assert read_until(station, "command.ack")["command_id"] == command_id
         runtime = hub.get(session_id)
-        assert sum(item.service == "Служба 101" for item in runtime.status_log) == 1
+        assert sum(item.service == "Служба 101" for item in runtime.desk.active.status_log) == 1
         assert "responding" in state["snapshot"]["available"]["Служба 101"]
         assert "accepted" not in state["snapshot"]["available"]["Служба 101"]
     finally:
@@ -212,7 +212,7 @@ def test_out_of_order_status_is_rejected_with_a_reason(client):
                            "comment": "Бригада доложила старшему о прибытии."})
         error = read_until(station, "error")
         assert "Принята" in error["message"]
-        assert hub.get(session_id).status_log == []
+        assert hub.get(session_id).desk.active.status_log == []
     finally:
         close_all(contexts)
 

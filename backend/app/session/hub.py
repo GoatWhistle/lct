@@ -20,7 +20,6 @@ from app.domain.events import (
     CardReceived,
     ErrorEvent,
     ErrorKind,
-    Exercise,
     StationState,
     TimerTick,
 )
@@ -131,7 +130,7 @@ class SessionHub:
         return any(
             not state.ended and not state.lease_fenced and (
                 state.scenario_id == scenario_id
-                or any(item.id == scenario_id for item in state.dds_scenarios)
+                or any(item.id == scenario_id for item in state.desk.scenarios)
             )
             for state in self._sessions.values()
         )
@@ -316,19 +315,17 @@ class SessionHub:
                 state = self.get(session_id)
                 if state is None or state.ended:
                     return
-                if state.exercise is Exercise.DDS or (state.handoff_to_dds and state.dds_scenarios):
-                    from app.session.dds import deliver_due_cards
-
-                    active_before = state.dds_active_card_id
-                    delivered = deliver_due_cards(state)
-                    if state.dds_active_card_id != active_before and state.dds_active_card_id:
+                if state.dds_phase:
+                    active_before = state.desk.active_id
+                    delivered = state.desk.deliver_due()
+                    if state.desk.active_id != active_before and state.desk.active_id:
                         self.to_station(session_id, state.card_received_event())
                     if delivered:
                         await self.checkpoint(session_id)
                     # Keep the pending count and countdown live even while
                     # the active dispatcher card is being handled.
                     self.to_station(session_id, StationState(snapshot=state.station_snapshot()))
-                tick = TimerTick(timers=state.timers.snapshot())
+                tick = TimerTick(timers=state.shown_timers().snapshot())
                 self.broadcast(session_id, tick)
                 # Срок первичного решения пульт берёт отсюда: после передачи
                 # из 112 без очереди ДДС лимит преподавателя больше нигде не виден.

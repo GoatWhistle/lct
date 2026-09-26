@@ -31,8 +31,9 @@ def offline_finish(monkeypatch):
 
 
 def accept_active_card(state: SessionState) -> None:
-    service = state.notified_services()[0]
-    state.set_service_status(
+    card = state.desk.active
+    service = card.dispatched_card.notify[0]
+    card.set_service_status(
         service, ServiceStatus.ACCEPTED,
         "Основание: доклад старшего.\nСведения: карточка принята.",
     )
@@ -41,8 +42,7 @@ def accept_active_card(state: SessionState) -> None:
 def assert_active_card_kept(state: SessionState, active_id, active_status) -> None:
     assert active_status is not CardStatus.REGISTERED
     assert state.score["card_status"] == active_status.value
-    assert state.dds_active_card_id == active_id
-    assert state.dispatched_card.card_id == active_id
+    assert state.desk.active_id == active_id
     assert len(state.score["card_results"]) == 2
 
 
@@ -54,8 +54,8 @@ def test_dds_finish_reports_status_of_active_card_not_last_scored():
         level=first.level.value, mode=SessionMode.TRAINING, exercise=Exercise.DDS,
     )
     prepare_queue(state, [first, second])
-    assert len(state.dds_live_cards) == 2
-    active_id = state.dds_active_card_id
+    assert len(state.desk.cards) == 2
+    active_id = state.desk.active_id
     accept_active_card(state)
     active_status = state.station_snapshot().card
 
@@ -78,8 +78,8 @@ def test_handoff_finish_reports_status_of_active_card_not_last_scored():
     )
     state.dispatch()
     prepare_handoff_queue(state, state.pending_dds_scenarios)
-    assert len(state.dds_live_cards) == 2
-    active_id = state.dds_active_card_id
+    assert len(state.desk.cards) == 2
+    active_id = state.desk.active_id
     accept_active_card(state)
     active_status = state.station_snapshot().card
 

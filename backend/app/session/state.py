@@ -7,7 +7,7 @@
 
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -18,7 +18,6 @@ from app.domain.events import (
     CallEndReason,
     Exercise,
     LessonCriteria,
-    Metric,
     Mood,
     SessionMode,
     SessionSnapshot,
@@ -31,77 +30,17 @@ from app.domain.statuses import (
     CardStatus,
     DdsCardSummary,
     DdsQueueCard,
-    PhoneCallPending,
-    PhoneLineRecord,
-    PhoneReportRecord,
     ServiceStatus,
     StationSnapshot,
-    StatusEntry,
     card_status,
-    check,
     current,
 )
-from app.domain.taxonomy import Finding
 from app.domain.timers import TimerCode
 from app.scenarios.schema import Scenario
-from app.session.timers import SessionTimers
+from app.session.dds import DdsCardRecord, DdsDesk, DdsLiveCard
+from app.session.timers import SessionTimers, now_utc
 
-
-def now_utc() -> datetime:
-    """Часы серверные. Метрика, посчитанная по часам браузера, недоказуема."""
-    return datetime.now(UTC)
-
-
-@dataclass
-class DdsCardRecord:
-    card_id: UUID
-    scenario_id: str
-    reply_text: str
-    metrics: list[Metric]
-    findings: list[Finding]
-    actions: list[dict[str, Any]]
-    duration_ms: int
-    title: str | None = None
-    address: str | None = None
-    description: str | None = None
-    incident_type: str | None = None
-    victims_count: int | None = None
-    received_at: datetime | None = None
-    managed_service: str | None = None
-    recipient_services: list[str] = field(default_factory=list)
-
-    @property
-    def score_auto(self) -> float:
-        total = sum(metric.weight for metric in self.metrics)
-        passed = sum(metric.weight * (metric.credit if metric.credit is not None
-                                      else float(metric.passed)) for metric in self.metrics)
-        return round(100 * passed / total, 1) if total else 0.0
-
-
-@dataclass
-class DdsLiveCard:
-    """Изолированное живое состояние одной одновременно выданной карточки."""
-
-    original_index: int
-    scenario: Scenario
-    kio: KIO
-    dispatched_card: KIO
-    dispatched_at: datetime
-    timers: SessionTimers
-    bounced_fields: list[str] = field(default_factory=list)
-    dds_log: list[tuple[str, datetime, str | None]] = field(default_factory=list)
-    status_log: list[StatusEntry] = field(default_factory=list)
-    crew_selected: str | None = None
-    crew_assignments: dict[str, str] = field(default_factory=dict)
-    phone_reports: list[PhoneReportRecord] = field(default_factory=list)
-    phone_lines: list[PhoneLineRecord] = field(default_factory=list)
-    phone_pending: PhoneCallPending | None = None
-    reply_text: str = ""
-    reply_log: list[tuple[datetime, str]] = field(default_factory=list)
-
-    @property
-    def card_id(self) -> UUID:
-        return self.dispatched_card.card_id
+__all__ = ["DdsCardRecord", "DdsLiveCard", "SessionState", "now_utc"]
 
 
 @dataclass
@@ -167,34 +106,18 @@ class SessionState:
     started_at: datetime | None = None
     ended_at: datetime | None = None
     end_reason: CallEndReason | None = None
+    #: Карточка оператора 112, замороженная при передаче в ДДС.
     dispatched_card: KIO | None = None
     dispatched_at: datetime | None = None
     #: Поля, из-за которых диспетчер вернул карточку, — основание E6.
     bounced_fields: list[str] = field(default_factory=list)
-    dds_log: list[tuple[str, datetime, str | None]] = field(default_factory=list)
-    #: Отметки служб по списку оповещения — предмет второго режима занятия.
-    status_log: list[StatusEntry] = field(default_factory=list)
-    crew_selected: str | None = None
-    crew_assignments: dict[str, str] = field(default_factory=dict)
-    phone_reports: list[PhoneReportRecord] = field(default_factory=list)
-    phone_lines: list[PhoneLineRecord] = field(default_factory=list)
-    phone_pending: PhoneCallPending | None = None
-    dds_scenarios: list[Scenario] = field(default_factory=list)
+    #: Готовые карточки связки 112→ДДС ждут, пока курсант не сдаст свою.
     pending_dds_scenarios: list[Scenario] = field(default_factory=list)
-    #: Исходная часть упражнения 112→ДДС сохраняется отдельно от активной
-    #: карточки ДДС, которая может переключаться по очереди.
+    #: Исходная часть упражнения 112→ДДС сохраняется отдельно от карточек пульта.
     operator_kio: KIO | None = None
     operator_scenario: Scenario | None = None
-    dds_live_cards: list[DdsLiveCard] = field(default_factory=list)
-    dds_active_card_id: UUID | None = None
-    dds_card_index: int = 0
-    dds_completed: list[DdsCardRecord] = field(default_factory=list)
-    dds_arrival_interval_seconds: int = 0
-    dds_max_waiting: int = 3
-    dds_next_scenario_index: int = 0
-    dds_next_arrival_at: datetime | None = None
-    reply_text: str = ""
-    reply_log: list[tuple[datetime, str]] = field(default_factory=list)
+    #: Работа диспетчера живёт только здесь — в карточках пульта.
+    desk: DdsDesk = field(default_factory=DdsDesk)
     #: Чем курсант закрыл вызов, если не карточкой (lct-36).
     resolved_outcome: str | None = None
     resolve_comment: str = ""
@@ -230,7 +153,47 @@ class SessionState:
         self.kio.response_status = ResponseStatus.TRANSFERRED
         self.dispatched_card = self.kio.model_copy(deep=True)
         self.dispatched_at = now_utc()
+        if self.exercise is Exercise.CALL:
+            self._receive_call_card()
         return self.dispatched_card
+
+    def _receive_call_card(self) -> None:
+        """Живой диспетчер упражнения 112 работает с переданной карточкой на пульте.
+
+        Таймеры общие с оператором: норматив приёма ДДС в этом упражнении
+        часть одной цепочки 112 → ДДС и оценивается вместе с ней. Повторная
+        передача обновляет содержимое карточки, не стирая работу диспетчера.
+        """
+        if self.scenario is None or self.dispatched_card is None:
+            return
+        card = self.desk.cards.get(self.dispatched_card.card_id)
+        if card is None:
+            card = self.desk.add(DdsLiveCard(
+                original_index=0,
+                scenario=self.scenario,
+                kio=self.kio,
+                dispatched_card=self.dispatched_card,
+                dispatched_at=self.dispatched_at,
+                timers=self.timers,
+            ))
+        else:
+            card.kio = self.kio
+            card.dispatched_card = self.dispatched_card
+            card.dispatched_at = self.dispatched_at
+        self.desk.open(card.card_id)
+
+    @property
+    def dds_phase(self) -> bool:
+        """Экран курсанта — пульт с очередью: упражнение ДДС или вторая часть связки."""
+        return self.exercise is Exercise.DDS or (self.handoff_to_dds and bool(self.desk.scenarios))
+
+    def shown_card(self) -> DdsLiveCard | None:
+        """Карточка, которую монитор показывает вместо КИО оператора."""
+        return self.desk.active if self.dds_phase else None
+
+    def shown_timers(self) -> SessionTimers:
+        card = self.shown_card()
+        return card.timers if card is not None else self.timers
 
     def notified_services(self) -> list[str]:
         """Список оповещения переданной карточки. До передачи — пусто:
@@ -269,105 +232,52 @@ class SessionState:
         return [recipients[0]]
 
     def managed_services(self) -> list[str]:
+        """Службы обучающегося: по активной карточке пульта, до неё — по КИО 112."""
+        card = self.desk.active
+        if card is not None:
+            return self.card_services(card)
         return self._managed_services_for(self.notified_services())
 
-    def capture_active_dds(self) -> None:
-        """Сохранить изменяемые поля активной карточки перед переключением."""
-        if not self.dispatched_card:
-            return
-        card = next(
-            (item for item in self.dds_live_cards
-             if item.card_id == self.dispatched_card.card_id),
-            None,
-        )
-        if card is None:
-            return
-        card.scenario = self.scenario
-        card.kio = self.kio
-        card.dispatched_card = self.dispatched_card
-        card.dispatched_at = self.dispatched_at or card.dispatched_at
-        card.timers = self.timers
-        card.bounced_fields = self.bounced_fields
-        card.dds_log = self.dds_log
-        card.status_log = self.status_log
-        card.crew_selected = self.crew_selected
-        card.crew_assignments = self.crew_assignments
-        card.phone_reports = self.phone_reports
-        card.phone_lines = self.phone_lines
-        card.phone_pending = self.phone_pending
-        card.reply_text = self.reply_text
-        card.reply_log = self.reply_log
-        self.dds_active_card_id = card.card_id
+    def card_services(self, card: DdsLiveCard) -> list[str]:
+        """Службы карточки пульта, от имени которых работает обучающийся."""
+        return self._managed_services_for(list(card.dispatched_card.notify))
 
-    def activate_dds_card(self, card_id: UUID, *, capture: bool = True) -> bool:
-        """Переключить рабочее место на карточку, не останавливая остальные."""
-        if capture:
-            self.capture_active_dds()
-        card = next((item for item in self.dds_live_cards if item.card_id == card_id), None)
-        if card is None:
-            return False
-        scenario = card.scenario
-        self.scenario = scenario
-        self.scenario_id = scenario.id
-        self.scenario_title = scenario.title
-        self.level = scenario.level.value
-        self.required_fields = list(scenario.required_fields)
-        self.kio = card.kio
-        self.dispatched_card = card.dispatched_card
-        self.dispatched_at = card.dispatched_at
-        self.timers = card.timers
-        self.bounced_fields = card.bounced_fields
-        self.dds_log = card.dds_log
-        self.status_log = card.status_log
-        self.crew_selected = card.crew_selected
-        self.crew_assignments = card.crew_assignments
-        self.phone_reports = card.phone_reports
-        self.phone_lines = card.phone_lines
-        self.phone_pending = card.phone_pending
-        self.reply_text = card.reply_text
-        self.reply_log = card.reply_log
-        self.dds_card_index = card.original_index
-        self.dds_active_card_id = card.card_id
-        return True
+    @staticmethod
+    def _crew_options_for(services: list[str]) -> list[str]:
+        return [f"{service} — бригада №{number}" for service in services for number in (1, 2)]
 
-    def crew_options(self) -> list[str]:
-        return [f"{service} — бригада №{number}"
-                for service in self.managed_services() for number in (1, 2)]
+    def crew_options(self, card: DdsLiveCard) -> list[str]:
+        return self._crew_options_for(self.card_services(card))
 
-    def crew_service(self, crew: str) -> str | None:
-        return next((service for service in self.managed_services()
+    def crew_service(self, card: DdsLiveCard, crew: str) -> str | None:
+        return next((service for service in self.card_services(card)
                      if crew in (f"{service} — бригада №1", f"{service} — бригада №2")), None)
-
-    def set_service_status(
-        self, service: str, status: ServiceStatus, comment: str = "", author: str = ""
-    ) -> StatusEntry:
-        """Отметка службы. Проверка перехода — до записи: недопустимый статус
-        не должен попасть в журнал даже отвергнутым."""
-        check(self.status_log, service, status, comment)
-        entry = StatusEntry(
-            service=service, status=status, at=now_utc(), comment=comment, author=author
-        )
-        self.status_log.append(entry)
-        return entry
 
     def station_snapshot(self) -> StationSnapshot:
         """Что видит диспетчер: службы, их статусы и доступные переходы."""
-        self.capture_active_dds()
-        has_active_dds_card = any(
-            item.card_id == self.dds_active_card_id for item in self.dds_live_cards
-        )
-        recipients = self.notified_services() if has_active_dds_card or not self.dds_scenarios else []
+        desk = self.desk
+        card = desk.active
+        if card is not None:
+            recipients = list(card.dispatched_card.notify)
+        elif not desk.scenarios:
+            # Пульт ещё пуст (до передачи из 112) или упражнение без ДДС:
+            # показываем список оповещения карточки оператора.
+            recipients = self.notified_services()
+        else:
+            recipients = []
         services = self._managed_services_for(recipients)
-        statuses = {service: current(self.status_log, service) for service in services}
-        elapsed = self.timers.measured_ms(TimerCode.DDS_ACK)
-        limit = self.timers.limits[TimerCode.DDS_ACK]
-        overdue = has_active_dds_card and self.dispatched_at is not None and (
-            elapsed is None
-            and (now_utc() - self.dispatched_at).total_seconds() * 1000 > limit
-        )
+        log = list(card.status_log) if card is not None else []
+        statuses = {service: current(log, service) for service in services}
+        overdue = False
+        if card is not None:
+            elapsed = card.timers.measured_ms(TimerCode.DDS_ACK)
+            limit = card.timers.limits[TimerCode.DDS_ACK]
+            overdue = elapsed is None and (
+                (now_utc() - card.dispatched_at).total_seconds() * 1000 > limit
+            )
         now_mono = time.monotonic()
         queue_cards: list[DdsQueueCard] = []
-        for item in sorted(self.dds_live_cards, key=lambda queued: queued.original_index):
+        for item in (desk.ordered() if self.dds_phase else []):
             recipients_for_card = list(item.dispatched_card.notify)
             managed = self._managed_services_for(recipients_for_card)
             service = managed[0] if managed else None
@@ -395,60 +305,62 @@ class SessionState:
                 elapsed_ms=elapsed_ms,
                 limit_ms=limit_ms,
                 timer_stopped=stopped,
-                active=item.card_id == self.dds_active_card_id,
+                active=item.card_id == desk.active_id,
             ))
+        shows_card = card is not None or not desk.scenarios
         return StationSnapshot(
             services=services,
             recipient_services=recipients,
             managed_service=services[0] if services else None,
             statuses=statuses,
             available={service: list(NEXT[status]) for service, status in statuses.items()},
-            card=(card_status(self.status_log, services, notify_deadline_passed=overdue)
-                  if has_active_dds_card or not self.dds_scenarios else CardStatus.REGISTERED),
-            log=list(self.status_log),
-            crew_options=(self.crew_options() if has_active_dds_card or not self.dds_scenarios else []),
-            crew_selected=self.crew_selected if has_active_dds_card else None,
+            card=(card_status(log, services, notify_deadline_passed=overdue)
+                  if shows_card else CardStatus.REGISTERED),
+            log=log,
+            crew_options=(self._crew_options_for(services) if shows_card else []),
+            crew_selected=card.crew_selected if card is not None else None,
             zone_decision=(
-                next((detail == "в зоне" for action, _at, detail in reversed(self.dds_log)
+                next((detail == "в зоне" for action, _at, detail in reversed(card.dds_log)
                       if action == "zone.decision"), None)
-                if has_active_dds_card else None
+                if card is not None else None
             ),
-            phone_reports=list(self.phone_reports) if has_active_dds_card else [],
-            phone_lines=list(self.phone_lines) if has_active_dds_card else [],
-            phone_pending=self.phone_pending if has_active_dds_card else None,
-            card_id=(self.dispatched_card.card_id if self.dispatched_card and has_active_dds_card else None),
-            card_index=(self.dds_card_index + 1 if has_active_dds_card
-                        else min(self.dds_next_scenario_index + 1, len(self.dds_scenarios))),
-            card_total=len(self.dds_scenarios) or 1,
-            reply_text=self.reply_text if has_active_dds_card else "",
+            phone_reports=list(card.phone_reports) if card is not None else [],
+            phone_lines=list(card.phone_lines) if card is not None else [],
+            phone_pending=card.phone_pending if card is not None else None,
+            card_id=card.card_id if card is not None else None,
+            card_index=(desk.card_index + 1 if card is not None
+                        else min(desk.next_index + 1, len(desk.scenarios))),
+            card_total=len(desk.scenarios) or 1,
+            reply_text=card.reply_text if card is not None else "",
             completed_cards=[DdsCardSummary(card_id=item.card_id,
                                             scenario_id=item.scenario_id,
                                             score_auto=item.score_auto)
-                             for item in self.dds_completed],
+                             for item in desk.completed],
             queue_cards=queue_cards,
             pending_cards_count=max(
-                0, len(self.dds_scenarios) - len(self.dds_completed)
-                - (1 if has_active_dds_card else 0),
+                0, len(desk.scenarios) - len(desk.completed)
+                - (1 if card is not None else 0),
             ),
             next_arrival_in_seconds=(
-                max(0, int((self.dds_next_arrival_at - now_utc()).total_seconds() + 0.999))
-                if self.dds_next_arrival_at is not None else None
+                max(0, int((desk.next_arrival_at - now_utc()).total_seconds() + 0.999))
+                if desk.next_arrival_at is not None else None
             ),
-            max_waiting_cards=self.dds_max_waiting,
+            max_waiting_cards=desk.max_waiting,
         )
 
     def card_received_event(self):
         """Снимок карточки для станции ДДС."""
         from app.domain.events import CardReceived
 
+        card = self.desk.active
         return CardReceived(
-            card=self.dispatched_card,
+            card=card.dispatched_card if card is not None else self.dispatched_card,
             from_operator=("учебный сценарий" if self.exercise is Exercise.DDS
-                           or (self.handoff_to_dds and self.dds_card_index > 0)
+                           or (self.handoff_to_dds and self.desk.card_index > 0)
                            else self.trainee_name or "оператор 112"),
-            at=self.dispatched_at or now_utc(),
-            card_index=self.dds_card_index + 1,
-            card_total=len(self.dds_scenarios) or 1,
+            at=(card.dispatched_at if card is not None else self.dispatched_at) or now_utc(),
+            card_index=self.desk.card_index + 1,
+            card_total=len(self.desk.scenarios) or 1,
         )
 
     @property
@@ -458,20 +370,22 @@ class SessionState:
     def snapshot(self) -> SessionSnapshot:
         """Полное состояние. Монитор в классе включают посреди занятия —
         он обязан показать текущее, а не ждать следующего события."""
+        card = self.shown_card()
         return SessionSnapshot(
             session_id=self.session_id,
-            scenario_id=self.scenario_id,
-            scenario_title=self.scenario_title,
-            level=self.level,
+            scenario_id=card.scenario.id if card is not None else self.scenario_id,
+            scenario_title=card.scenario.title if card is not None else self.scenario_title,
+            level=card.scenario.level.value if card is not None else self.level,
             mode=self.mode,
             exercise=self.exercise,
             criteria=self.criteria,
             trainee_name=self.trainee_name,
             started_at=self.started_at,
-            kio=self.kio,
-            required_fields=self.required_fields,
+            kio=card.kio if card is not None else self.kio,
+            required_fields=(list(card.scenario.required_fields) if card is not None
+                             else self.required_fields),
             transcript=list(self.transcript),
-            timers=self.timers.snapshot(),
+            timers=self.shown_timers().snapshot(),
             hints_used=len(self.hints_shown),
             ended=self.ended,
         )

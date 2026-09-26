@@ -436,7 +436,7 @@ def test_handoff_report_and_checklist_follow_operator_scenario(client, monkeypat
         wait_for(lambda: hub.get(session_id).score)
         state = hub.get(session_id)
         # Предусловие ошибки: к завершению активна не карточка курсанта.
-        assert state.scenario_id == "t01-1-fire-container"
+        assert state.desk.active.scenario.id == "t01-1-fire-container"
         operator = store.get("fire-apartment-l2")
 
         checklist = client.get(f"/api/sessions/{session_id}/checklist").json()

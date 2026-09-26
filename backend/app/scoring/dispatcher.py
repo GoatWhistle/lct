@@ -286,6 +286,8 @@ def dispatcher_metrics(
     deadline_ms: int,
     expected_decision: str = "accept",
     expected_decision_reason: str | None = None,
+    *,
+    services: list[str] | None = None,
 ) -> list[Metric]:
     """Числовая часть оценки ДДС; каждый проверяемый шаг имеет факт и норму.
 
@@ -293,7 +295,7 @@ def dispatcher_metrics(
     источник информации, но не обязательный шлюз статуса.
     """
     metrics: list[Metric] = []
-    for service in state.managed_services():
+    for service in (services if services is not None else state.managed_services()):
         marks = [mark for mark in state.status_log if mark.service == service]
         statuses = {mark.status for mark in marks}
 

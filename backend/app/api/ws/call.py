@@ -244,8 +244,8 @@ async def _handle(session_id: UUID, state, event) -> None:
                 prepare_handoff_queue(
                     state,
                     state.pending_dds_scenarios,
-                    arrival_interval_seconds=state.dds_arrival_interval_seconds,
-                    max_waiting=state.dds_max_waiting,
+                    arrival_interval_seconds=state.desk.arrival_interval_seconds,
+                    max_waiting=state.desk.max_waiting,
                 )
                 state.pending_dds_scenarios = []
             else:

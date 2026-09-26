@@ -272,14 +272,13 @@ async def _start(session_id: UUID, event, who=None) -> None:
             use_pregenerated=scenario.tree.pregenerated,
         )
     elif event.exercise is Exercise.DDS:
-        state.dds_scenarios = [item.model_copy(deep=True) for item in scenarios]
         prepare_queue(
             state,
-            state.dds_scenarios,
+            [item.model_copy(deep=True) for item in scenarios],
             arrival_interval_seconds=event.dds_arrival_interval_seconds,
             max_waiting=event.dds_max_waiting,
         )
-        state.started_at = state.dispatched_at
+        state.started_at = state.desk.active.dispatched_at if state.desk.active else None
     else:
         state.started_at = now_utc()
         if event.exercise is Exercise.CARD:
@@ -293,8 +292,8 @@ async def _start(session_id: UUID, event, who=None) -> None:
             state.on_event("card.start")
         if event.handoff_to_dds:
             state.pending_dds_scenarios = [item.model_copy(deep=True) for item in scenarios[1:]]
-            state.dds_arrival_interval_seconds = event.dds_arrival_interval_seconds
-            state.dds_max_waiting = event.dds_max_waiting
+            state.desk.arrival_interval_seconds = event.dds_arrival_interval_seconds
+            state.desk.max_waiting = event.dds_max_waiting
     hub.register(state)
     if event.exercise is not Exercise.CALL and hub.journal and state.started_at is not None:
         await hub.journal.session_started(session_id, state.started_at)
