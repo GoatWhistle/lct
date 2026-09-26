@@ -6,15 +6,23 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from app.domain.events import CommandAck, CallStarted, Exercise, LessonCriteria, SessionMode
+from app.domain.events import (
+    CallStarted,
+    CommandAck,
+    Exercise,
+    LessonCriteria,
+    Metric,
+    SessionMode,
+)
 from app.domain.kio import KIO
 from app.domain.statuses import PhoneCallPending, ServiceStatus
+from app.domain.taxonomy import ErrorCode, Finding, FindingSource
 from app.domain.timers import TimerCode
 from app.scenarios.loader import load_file
 from app.session.checkpoint import dump_state, load_state
 from app.session.dds import deliver_due_cards, prepare_handoff_queue, prepare_queue
 from app.session.hub import LEASE_FENCED_MESSAGE, SessionHub
-from app.session.state import SessionState, now_utc
+from app.session.state import DdsCardRecord, SessionState, now_utc
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
 
@@ -78,6 +86,62 @@ def test_active_dds_session_round_trips_without_losing_work():
     timer = next(item for item in restored.timers.snapshot() if item.code is TimerCode.DDS_ACK)
     assert timer.elapsed_ms >= 1_900
     assert timer.limit_ms == 45_000
+
+
+def completed_card() -> DdsCardRecord:
+    return DdsCardRecord(
+        card_id=uuid4(),
+        scenario_id="fire-apartment-l2",
+        reply_text="Бригада направлена.",
+        metrics=[Metric(key="dds_ack", title="Приём", fact="20 с", norm="30 с", passed=True)],
+        findings=[Finding(code=ErrorCode.D1, source=FindingSource.DISPATCHER,
+                          summary="Поздний статус", fact="статус через 5 мин")],
+        actions=[{"action": "crew.select", "detail": "АЦ-1"}],
+        duration_ms=61_000,
+        title="Пожар в квартире",
+        address="улица Ленина, 14, кв. 5",
+        description="дым из окна",
+        incident_type="пожар",
+        victims_count=2,
+        received_at=datetime(2026, 9, 26, 10, 15, 30, 123000, tzinfo=UTC),
+        managed_service="01",
+        recipient_services=["01", "03"],
+    )
+
+
+def test_text_revealed_facts_and_completed_cards_round_trip_whole():
+    before = dds_state()
+    before.text_revealed_facts = {"address": "улица Ленина, 14", "floor": "5 этаж, уточнено"}
+    before.dds_completed = [completed_card()]
+
+    restored = load_state(dump_state(before), now_utc())
+
+    assert restored.text_revealed_facts == before.text_revealed_facts
+    assert restored.dds_completed == before.dds_completed
+    assert restored.dds_completed[0].received_at.tzinfo is not None
+
+
+def test_legacy_checkpoint_without_new_keys_gets_defaults():
+    before = dds_state()
+    before.text_revealed_facts = {"address": "улица Ленина, 14"}
+    before.dds_completed = [completed_card()]
+    payload = dump_state(before)
+    del payload["text_revealed_facts"]
+    legacy_keys = {"card_id", "scenario_id", "reply_text", "metrics",
+                   "findings", "actions", "duration_ms"}
+    payload["dds_completed"] = [
+        {key: value for key, value in item.items() if key in legacy_keys}
+        for item in payload["dds_completed"]
+    ]
+
+    restored = load_state(payload, now_utc())
+
+    assert restored.text_revealed_facts == {}
+    card = restored.dds_completed[0]
+    assert card.card_id == before.dds_completed[0].card_id
+    assert (card.title, card.address, card.description, card.incident_type,
+            card.victims_count, card.received_at, card.managed_service) == (None,) * 7
+    assert card.recipient_services == []
 
 
 def test_checkpoint_rejects_unknown_format_version():
