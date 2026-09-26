@@ -138,13 +138,24 @@ def score_current_dds(state) -> DdsCardRecord:
     )
 
 
+def scoring_scenario(state):
+    """Сценарий, по которому оценивается и разбирается занятие.
+
+    После передачи 112→ДДС `state.scenario` — активная карточка очереди,
+    а КИО курсанта оценивается по эталону упражнения 112. Балл, разбор
+    и чек-лист самооценки обязаны брать один и тот же сценарий.
+    """
+    if state.handoff_to_dds and state.operator_scenario:
+        return state.operator_scenario
+    return state.scenario or store.get(state.scenario_id)
+
+
 async def finish(session_id: UUID, state) -> None:
     if state.recorder is not None:
         path = await asyncio.to_thread(state.recorder.finalize)
         state.recording_path = str(path) if path else None
     # Сценарий занятия, а не библиотечный: директивы могли поправить эталон.
-    scenario = (state.operator_scenario if state.handoff_to_dds and state.operator_scenario
-                else state.scenario or store.get(state.scenario_id))
+    scenario = scoring_scenario(state)
     if scenario is None:
         return
 
@@ -346,7 +357,7 @@ async def refresh_archived_report(session_id: UUID, state) -> None:
     """Дополнить сохранённый разбор самооценкой, пришедшей после hangup."""
     if state.score is None:
         return
-    scenario = state.scenario or store.get(state.scenario_id)
+    scenario = scoring_scenario(state)
     if scenario is None:
         return
     state.score["full_report"] = build_report(session_id, state, scenario).model_dump(mode="json")
