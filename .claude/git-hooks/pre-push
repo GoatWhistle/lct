@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# В main — только через PR: прямой push, в том числе удаление и force, отклоняется.
+# Чистка истории пушит из отдельного bare-клона, где этот хук не подключён.
+set -euo pipefail
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  if [[ $remote_ref == refs/heads/main ]]; then
+    printf 'pre-push: прямой push в main запрещён — ветка feat/<что> и PR\n' >&2
+    exit 1
+  fi
+done

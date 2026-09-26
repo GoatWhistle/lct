@@ -141,7 +141,8 @@ git config core.hooksPath .claude/git-hooks
 ```
 
 `commit-msg` проверяет формат `{type}: {desc}`, лимит 20 слов, стоп-лист и ссылки `#N`;
-`pre-commit` — стоп-лист в добавленных строках. Хукам нужен `bash`, скрипту
+`pre-commit` — стоп-лист в добавленных строках, `pre-push` не пускает прямой push в `main`:
+изменения идут через ветку `feat/<что>` и PR. Хукам нужен `bash`, скрипту
 `.claude/scripts/scrub-history.sh` — `uvx`. Задачи в сообщениях — по id карточки
 (`lct-12`), не `#N`: issues перед сдачей удаляются.
 
