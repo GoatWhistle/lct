@@ -169,3 +169,4 @@ LICENSE и NOTICE каждого пакета, контейнера, испол�
 | Vikhr 1B GGUF | отдельная загрузка из репозитория модели | сохранить LICENSE и model card конкретной версии |
 | Whisper small GGML | отдельная загрузка из whisper.cpp | сохранить LICENSE и model card конкретной версии |
 | Silero VAD и TTS | отдельная загрузка | сохранить LICENSE и условия конкретного артефакта |
+| DejaVu Sans, Sans Bold | 2.35, `backend/app/assets/fonts/` | Bitstream Vera Fonts License, изменения DejaVu — public domain; текст в `backend/app/assets/fonts/LICENSE-DejaVu.txt` |
