@@ -5,13 +5,13 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { KioCard } from "@/features/kio-card/KioCard";
 import { Timers } from "@/features/timers/Timers";
 import { applyState, empty as emptyCard, readPath, type CardState } from "@/features/kio-card/merge";
+import { ackDeadline } from "./ack.mjs";
 import { filterSortHistory } from "./history.mjs";
 import { sessionIdFromUrl } from "@/shared/api/session";
 import { stationChannel, type ChannelStatus } from "@/shared/api/ws";
 import type { DdsQueueCard, ServiceStatus, SessionReport, StationSnapshot, StationToServer, TimerSnapshot } from "@/shared/types/generated";
 import { ALARMING, CARD_STATUS_LABELS, SERVICE_STATUS_LABELS } from "./statuses";
 
-const ACK_LIMIT_S = 30;
 const SipPhone = lazy(() => import("@/features/sip/SipPhone").then(({ SipPhone }) => ({ default: SipPhone })));
 type ReportPhase = "dispatched" | "arrived" | "working" | "completed";
 interface PhoneReport { service: string; crew: string; phase: ReportPhase; text: string; at: string }
@@ -224,7 +224,6 @@ export function Dds() {
   const [card, setCard] = useState<CardState | null>(null);
   const [from, setFrom] = useState("");
   const [receivedAt, setReceivedAt] = useState<number | null>(null);
-  const [elapsed, setElapsed] = useState(0);
   const [station, setStation] = useState<DdsSnapshot | null>(null);
   const [timers, setTimers] = useState<TimerSnapshot[]>([]);
   const [lastReport, setLastReport] = useState<PhoneReport | null>(null);
@@ -307,6 +306,7 @@ export function Dds() {
             openCardAfterSwitch.current = false;
             setPane(null);
             setActiveService(null);
+            setTimers([]);
           }
           setCard(applyState(emptyCard, { ...event.card }));
           setFrom(event.from_operator);
@@ -334,15 +334,6 @@ export function Dds() {
     return () => { controller.abort(); ch.close(); channel.current = null; };
   }, [sessionId, role]);
 
-  const primaryRecorded = Boolean(station?.services.length && station.services.every((service) =>
-    ["accepted", "declined", "responding", "arrived", "working", "completed", "refused"]
-      .includes(station.statuses[service])));
-  useEffect(() => {
-    if (receivedAt === null || primaryRecorded) return;
-    const timer = setInterval(() => setElapsed((Date.now() - receivedAt) / 1000), 200);
-    return () => clearInterval(timer);
-  }, [receivedAt, primaryRecorded]);
-
   useEffect(() => {
     const timer = setInterval(() => setClockNow(new Date()), 1000);
     return () => clearInterval(timer);
@@ -366,6 +357,7 @@ export function Dds() {
     if (!completedCards.some((item) => item.card_id === archived.card_id)) completedCards.push(archived);
   }
   const queueCards = station?.queue_cards ?? [];
+  const ack = ackDeadline(timers, queueCards);
   const query = search.trim().toLocaleLowerCase("ru-RU");
   const filteredCompletedCards = statusFilter === "pending" ? [] : completedCards.filter((item) => {
     const serviceMatches = serviceFilter === "all" || item.managed_service === serviceFilter;
@@ -497,9 +489,6 @@ export function Dds() {
         </tr>)}
         {visibleQueueCards.map((item) => {
           const received = new Date(item.received_at);
-          const liveElapsed = item.timer_stopped ? item.elapsed_ms / 1000 : Math.max(
-            item.elapsed_ms / 1000, (clockNow.getTime() - received.getTime()) / 1000,
-          );
           const openCard = () => {
             if (item.active) {
               send({ type: "card.open", card_id: item.card_id });
@@ -527,8 +516,8 @@ export function Dds() {
           <td data-label="Адрес">{item.address || "—"}</td>
           <td data-label="Статус службы"><span className="dds-cell-value">
             <span>{item.managed_service || "ДДС"}: {SERVICE_STATUS_LABELS[item.service_status]}</span>
-            <small className={!item.timer_stopped && liveElapsed * 1000 > item.limit_ms ? "state-violated" : ""}>
-              {item.timer_stopped ? "решение за" : "до первичного решения"} {liveElapsed.toFixed(0)} с
+            <small className={!item.timer_stopped && item.elapsed_ms > item.limit_ms ? "state-violated" : ""}>
+              {item.timer_stopped ? "решение за" : "до первичного решения"} {Math.ceil(item.elapsed_ms / 1000)} с
             </small>
           </span></td>
         </tr>})}
@@ -612,8 +601,8 @@ export function Dds() {
       {pane === "status" && <section className="dds-panel"><div className="dds-panel-title"><h2>Реагирование служб</h2>
         <span className={station && ALARMING.includes(station.card) ? "state-violated" : "state-ok"}>
           {station ? CARD_STATUS_LABELS[station.card] : "—"}</span></div>
-        {!primaryRecorded && receivedAt !== null && <div className={`dds-deadline ${elapsed > ACK_LIMIT_S ? "state-violated" : "state-ok"}`}>
-          Первичное решение «Принята» / «Не принята»: {elapsed.toFixed(0)} из {ACK_LIMIT_S} секунд</div>}
+        {ack && <div className={`dds-deadline ${ack.violated ? "state-violated" : "state-ok"}`}>
+          Первичное решение «Принята» / «Не принята»: {Math.ceil(ack.elapsedMs / 1000)} из {Math.ceil(ack.limitMs / 1000)} секунд</div>}
         <Timers timers={timers.filter((timer) => timer.code === "dds_ack" || timer.code === "dds_work")} />
         {station && station.services.length > 0 ? <>
           <div className="dds-status-history"><strong>Служба {activeService ?? station.services[0]}</strong>
