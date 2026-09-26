@@ -110,8 +110,8 @@ def complete_phone_call(station, state, expected_phase):
         station.send_json(
             {
                 "type": "phone.brief",
-                "address": state.dispatched_card.address,
-                "incident": state.scenario_title,
+                "address": state.desk.active.dispatched_card.address,
+                "incident": state.desk.active.scenario.title,
                 "request": "Прошу подтвердить выезд и сообщить о прибытии",
             }
         )
@@ -131,9 +131,9 @@ def test_dds_starts_with_prepared_card_without_call(client):
     try:
         state = hub.get(session_id)
         assert state.exercise.value == "dds"
-        assert state.dispatched_card is not None
-        assert state.kio.address == "улица Ленина, 14"
-        assert state.kio.notify
+        assert state.desk.active.dispatched_card is not None
+        assert state.desk.active.kio.address == "улица Ленина, 14"
+        assert state.desk.active.kio.notify
         assert state.timers.measured_ms(TimerCode.ANSWER) is None
         with client.websocket_connect(f"/ws/station/{session_id}") as station:
             card = read_until(station, "card.received")
@@ -162,12 +162,12 @@ def test_repeated_ack_and_crew_selection_do_not_duplicate_dds_log(client):
             station.send_json({"type": "card.ack", "comment": "Основание: карточка передана диспетчеру."})
             station.send_json({"type": "crew.select", "crew": crew})
             read_until(station, "station.state")
-            assert sum(action == "card.ack" for action, *_ in state.dds_log) == 1
+            assert sum(action == "card.ack" for action, *_ in state.desk.active.dds_log) == 1
 
             station.send_json({"type": "crew.select", "crew": crew})
             station.send_json({"type": "zone.decision", "in_zone": True})
             read_until(station, "station.state")
-            assert sum(action == "crew.select" for action, *_ in state.dds_log) == 1
+            assert sum(action == "crew.select" for action, *_ in state.desk.active.dds_log) == 1
     finally:
         control.__exit__(None, None, None)
 
@@ -184,14 +184,14 @@ def test_zone_decision_is_one_shot_and_restored_in_station_snapshot(client):
             accepted = read_until(station, "station.state")["snapshot"]
             assert accepted["zone_decision"] is True
             state = hub.get(session_id)
-            assert sum(action == "zone.decision" for action, *_ in state.dds_log) == 1
+            assert sum(action == "zone.decision" for action, *_ in state.desk.active.dds_log) == 1
 
             station.send_json({"type": "zone.decision", "in_zone": True})
-            assert sum(action == "zone.decision" for action, *_ in state.dds_log) == 1
+            assert sum(action == "zone.decision" for action, *_ in state.desk.active.dds_log) == 1
             station.send_json({"type": "zone.decision", "in_zone": False})
             error = read_until(station, "error")
             assert "уже записано" in error["message"]
-            assert sum(action == "zone.decision" for action, *_ in state.dds_log) == 1
+            assert sum(action == "zone.decision" for action, *_ in state.desk.active.dds_log) == 1
 
             station.close()
         with client.websocket_connect(f"/ws/station/{session_id}") as station:
@@ -212,11 +212,11 @@ def test_server_randomly_selects_only_from_instructor_filtered_card_pool(
     session_id, control = start(client, random_scenario_ids=pool)
     try:
         state = hub.get(session_id)
-        assert state.scenario_id == "t01-1-fire-container"
-        assert state.dispatched_card is not None
-        assert [item.id for item in state.dds_scenarios] == pool[::-1]
-        assert state.dds_next_scenario_index == 2
-        assert state.dds_next_arrival_at is None
+        assert state.desk.active.scenario.id == "t01-1-fire-container"
+        assert state.desk.active.dispatched_card is not None
+        assert [item.id for item in state.desk.scenarios] == pool[::-1]
+        assert state.desk.next_index == 2
+        assert state.desk.next_arrival_at is None
     finally:
         hub.stop_ticker(session_id)
         control.__exit__(None, None, None)
@@ -276,7 +276,7 @@ def test_instructor_live_registry_shows_owned_dds_session_and_deadline_state(cli
         assert row["dds_snapshot"]["queue_cards"][0]["service_status"] == "added"
         assert row["dds_snapshot"]["phone_reports"] == []
         state = hub.get(session_id)
-        live_card = state.dds_live_cards[0]
+        live_card = state.desk.ordered()[0]
         live_card.timers.on_event("dds.open")
         live_card.timers.timers[TimerCode.DDS_WORK].started_at = time.monotonic() - 181
         overdue_response = client.get("/api/sessions/active")
@@ -304,10 +304,10 @@ def test_instructor_live_registry_includes_current_crew_report(client, monkeypat
         state = hub.get(session_id)
         with client.websocket_connect(f"/ws/station/{session_id}?role=dds") as station:
             read_until(station, "station.state")
-            crew = state.crew_options()[0]
+            crew = state.crew_options(state.desk.active)[0]
             station.send_json({"type": "crew.select", "crew": crew})
             read_until(station, "station.state")
-            service = state.crew_service(crew)
+            service = state.crew_service(state.desk.active, crew)
             station.send_json({
                 "type": "card.status", "service": service, "status": "accepted",
                 "comment": "Основание: профиль полномочий ДДС.\nСведения: карточка принята.",
@@ -329,9 +329,9 @@ def test_ticket_dds_card_uses_source_caller_identity_and_phone(client):
     session_id, control = start(client, scenario_id="t01-1-fire-container")
     try:
         state = hub.get(session_id)
-        assert state.kio.caller_name == "Сидоров Иван Сергеевич"
-        assert state.kio.caller_number == "916-126-34-71"
-        assert state.kio.caller_contact == "916-126-34-71"
+        assert state.desk.active.kio.caller_name == "Сидоров Иван Сергеевич"
+        assert state.desk.active.kio.caller_number == "916-126-34-71"
+        assert state.desk.active.kio.caller_contact == "916-126-34-71"
         with client.websocket_connect(f"/ws/station/{session_id}") as station:
             card = read_until(station, "card.received")["card"]
             assert card["caller_name"] == "Сидоров Иван Сергеевич"
@@ -345,9 +345,9 @@ def test_ticket_with_multiple_witnesses_does_not_guess_caller_name(client):
     session_id, control = start(client, scenario_id="t20-1-three-fighting")
     try:
         state = hub.get(session_id)
-        assert state.kio.caller_name is None
-        assert state.kio.caller_number == "916-123-98-78"
-        assert state.kio.caller_contact == "916-123-98-78"
+        assert state.desk.active.kio.caller_name is None
+        assert state.desk.active.kio.caller_number == "916-123-98-78"
+        assert state.desk.active.kio.caller_contact == "916-123-98-78"
     finally:
         control.__exit__(None, None, None)
 
@@ -432,7 +432,7 @@ def test_instructor_criteria_change_timer_and_success_threshold(client, monkeypa
                 }
             )
             read_until(station, "station.state")
-            assert len(state.reply_log) == 1
+            assert len(state.desk.active.reply_log) == 1
             station.send_json({"type": "station.finish"})
             read_until(station, "score.ready")
 
@@ -624,10 +624,10 @@ def test_phone_dial_requires_brief_and_rejects_wrong_card_facts(client):
                 read_until(station, "station.state")["snapshot"]["phone_pending"]
                 is None
             )
-            assert not hub.get(session_id).phone_reports
+            assert not hub.get(session_id).desk.active.phone_reports
             complete_phone_call(station, hub.get(session_id), "dispatched")
             read_until(station, "station.state")
-            assert len(hub.get(session_id).phone_reports) == 1
+            assert len(hub.get(session_id).desk.active.phone_reports) == 1
             station.send_json({"type": "phone.dial"})
             read_until(station, "phone.line")
             read_until(station, "station.state")
@@ -635,7 +635,7 @@ def test_phone_dial_requires_brief_and_rejects_wrong_card_facts(client):
                 {"type": "phone.check", "text": "Здравствуйте, хорошая погода"}
             )
             assert "обстановку" in read_until(station, "error")["message"]
-            assert len(hub.get(session_id).phone_reports) == 1
+            assert len(hub.get(session_id).desk.active.phone_reports) == 1
     finally:
         control.__exit__(None, None, None)
 
@@ -718,7 +718,7 @@ def test_dds_card_over_three_minutes_has_e3_finding_and_actual_deviation(client)
                  "comment": "Основание: доклад старшего.\nСведения: карточка принята."}
             )
             snapshot = read_until(station, "station.state")["snapshot"]
-            state.timers.timers[TimerCode.DDS_WORK].started_at = time.monotonic() - 61
+            state.desk.active.timers.timers[TimerCode.DDS_WORK].started_at = time.monotonic() - 61
             crew = next(
                 option
                 for option in snapshot["crew_options"]
@@ -789,13 +789,13 @@ def test_complete_dds_workflow_with_training_calls_and_status_updates(client):
             read_until(station, "score.ready")
         score = wait_for(lambda: state.score)
         assert score["score_auto"] == 100.0
-        assert [report.phase for report in state.phone_reports] == [
+        assert [report.phase for report in state.desk.active.phone_reports] == [
             "dispatched",
             "arrived",
             "working",
             "completed",
         ]
-        assert all(report.crew == crew for report in state.phone_reports)
+        assert all(report.crew == crew for report in state.desk.active.phone_reports)
         assert not score["findings"]
     finally:
         control.__exit__(None, None, None)
@@ -828,7 +828,7 @@ def test_concurrent_dds_cards_keep_independent_state_and_timers(client):
             assert first_row["active"] is True and second_row["active"] is False
             first_live = next(
                 item
-                for item in state.dds_live_cards
+                for item in state.desk.cards.values()
                 if str(item.card_id) == first_card_id
             )
             assert TimerCode.DDS_WORK not in first_live.timers.timers
@@ -860,7 +860,7 @@ def test_concurrent_dds_cards_keep_independent_state_and_timers(client):
             assert second["card"]["card_id"] == second_card_id
             second_live = next(
                 item
-                for item in state.dds_live_cards
+                for item in state.desk.cards.values()
                 if str(item.card_id) == second_card_id
             )
             assert TimerCode.DDS_WORK in second_live.timers.timers
@@ -907,7 +907,7 @@ def test_concurrent_dds_cards_keep_independent_state_and_timers(client):
             read_until(station, "score.ready")
 
         state = hub.get(session_id)
-        assert state.ended and len(state.dds_completed) == 2
+        assert state.ended and len(state.desk.completed) == 2
         assert len(state.score["card_results"]) == 2
         assert state.score["card_results"][0]["scenario_id"] == "fire-apartment-l2"
         assert state.score["card_results"][1]["scenario_id"] == "t20-2-stroke"
@@ -965,8 +965,8 @@ def test_each_dds_card_uses_its_own_scenario_weights():
 
     from app.domain.events import Exercise, SessionMode
     from app.scenarios.loader import load_file
-    from app.session.dds import prepare_card
-    from app.session.finish import score_current_dds
+    from app.session.dds import prepare_queue
+    from app.session.finish import score_dds_card
     from app.session.state import SessionState
 
     root = Path(__file__).resolve().parents[2] / "scenarios"
@@ -982,13 +982,11 @@ def test_each_dds_card_uses_its_own_scenario_weights():
         level=base.level.value,
         mode=SessionMode.TRAINING,
         exercise=Exercise.DDS,
-        dds_scenarios=[first, second],
     )
-    prepare_card(state, first)
-    first_record = score_current_dds(state)
-    state.dds_card_index = 1
-    prepare_card(state, second)
-    second_record = score_current_dds(state)
+    prepare_queue(state, [first, second])
+    first_card, second_card = state.desk.ordered()
+    first_record = score_dds_card(state, first_card)
+    second_record = score_dds_card(state, second_card)
     assert (
         next(item.weight for item in first_record.metrics if item.key == "dds_primary")
         == 7.0

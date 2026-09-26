@@ -1,23 +1,109 @@
-"""Одновременная выдача учебных карточек ДДС в рамках одного занятия."""
+"""Пульт ДДС: одновременно выданные учебные карточки одного занятия.
+
+Живое состояние карточки существует в одном экземпляре — в `DdsLiveCard`.
+Пульт хранит карточки и id активной; переключение меняет id и ничего не
+копирует, поэтому обработчики станции пишут прямо в `desk.active`.
+"""
 
 import re
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from uuid import uuid4
+from typing import Any
+from uuid import UUID, uuid4
 
 from app.domain import ekp
-from app.domain.kio import KIO, ResponseStatus
+from app.domain.events import Metric
+from app.domain.kio import KIO, ResponseStatus, apply_patch
+from app.domain.statuses import (
+    PhoneCallPending,
+    PhoneLineRecord,
+    PhoneReportRecord,
+    ServiceStatus,
+    StatusEntry,
+    check,
+)
+from app.domain.taxonomy import Finding
+from app.domain.timers import TimerCode
 from app.scenarios.schema import Scenario
-from app.session.state import DdsLiveCard, SessionState, now_utc
-from app.session.timers import SessionTimers
+from app.session.timers import SessionTimers, now_utc
 
 
-def prepare_card(state: SessionState, scenario: Scenario) -> None:
-    """Сменить активную карточку, сохранив общий ID занятия и прошлые результаты."""
-    state.scenario = scenario.model_copy(deep=True)
-    state.scenario_id = scenario.id
-    state.scenario_title = scenario.title
-    state.level = scenario.level.value
-    state.required_fields = list(scenario.required_fields)
+@dataclass
+class DdsCardRecord:
+    card_id: UUID
+    scenario_id: str
+    reply_text: str
+    metrics: list[Metric]
+    findings: list[Finding]
+    actions: list[dict[str, Any]]
+    duration_ms: int
+    title: str | None = None
+    address: str | None = None
+    description: str | None = None
+    incident_type: str | None = None
+    victims_count: int | None = None
+    received_at: datetime | None = None
+    managed_service: str | None = None
+    recipient_services: list[str] = field(default_factory=list)
+
+    @property
+    def score_auto(self) -> float:
+        total = sum(metric.weight for metric in self.metrics)
+        passed = sum(metric.weight * (metric.credit if metric.credit is not None
+                                      else float(metric.passed)) for metric in self.metrics)
+        return round(100 * passed / total, 1) if total else 0.0
+
+
+@dataclass
+class DdsLiveCard:
+    """Изолированное живое состояние одной одновременно выданной карточки."""
+
+    original_index: int
+    scenario: Scenario
+    kio: KIO
+    dispatched_card: KIO
+    dispatched_at: datetime
+    timers: SessionTimers
+    bounced_fields: list[str] = field(default_factory=list)
+    dds_log: list[tuple[str, datetime, str | None]] = field(default_factory=list)
+    status_log: list[StatusEntry] = field(default_factory=list)
+    crew_selected: str | None = None
+    crew_assignments: dict[str, str] = field(default_factory=dict)
+    phone_reports: list[PhoneReportRecord] = field(default_factory=list)
+    phone_lines: list[PhoneLineRecord] = field(default_factory=list)
+    phone_pending: PhoneCallPending | None = None
+    reply_text: str = ""
+    reply_log: list[tuple[datetime, str]] = field(default_factory=list)
+
+    @property
+    def card_id(self) -> UUID:
+        return self.dispatched_card.card_id
+
+    def on_event(self, event_type: str) -> None:
+        self.timers.on_event(event_type)
+
+    def set_service_status(
+        self, service: str, status: ServiceStatus, comment: str = "", author: str = ""
+    ) -> StatusEntry:
+        """Отметка службы. Проверка перехода — до записи: недопустимый статус
+        не должен попасть в журнал даже отвергнутым."""
+        check(self.status_log, service, status, comment)
+        entry = StatusEntry(
+            service=service, status=status, at=now_utc(), comment=comment, author=author
+        )
+        self.status_log.append(entry)
+        return entry
+
+
+def build_card(
+    scenario: Scenario, index: int, limits: dict[TimerCode, int]
+) -> DdsLiveCard:
+    """Готовая карточка сценария, переданная в ДДС в момент вызова.
+
+    Каждая карточка получает свою копию сценария, свою историю и свой таймер
+    с лимитом преподавателя: 30 секунд идут с поступления, а не с открытия.
+    """
+    scenario = scenario.model_copy(deep=True)
     truth = scenario.ground_truth
     address_fact = next(
         (fact.value for fact in scenario.facts if "address" in fact.id), ""
@@ -58,7 +144,7 @@ def prepare_card(state: SessionState, scenario: Scenario) -> None:
     if scenario.student_card is not None:
         # A moderated learner-authored KIO is the card itself; do not flatten
         # it to title/description and silently discard its structured fields.
-        state.kio = scenario.student_card.model_copy(
+        kio = scenario.student_card.model_copy(
             deep=True,
             update={
                 "card_id": uuid4(),
@@ -69,7 +155,7 @@ def prepare_card(state: SessionState, scenario: Scenario) -> None:
             },
         )
     else:
-        state.kio = KIO(
+        kio = KIO(
             registered_at=now_utc(),
             caller_number=caller_phone,
             caller_name=caller_name,
@@ -91,130 +177,157 @@ def prepare_card(state: SessionState, scenario: Scenario) -> None:
             description="; ".join(fact.value for fact in scenario.facts[:3])
             or scenario.first_line,
         )
-    state.dispatched_card = None
     if service:
-        state.dispatch(service)
-    else:
-        state.kio.response_status = ResponseStatus.TRANSFERRED
-        state.dispatched_card = state.kio.model_copy(deep=True)
-        state.dispatched_at = now_utc()
-
-    # A live DДС card keeps references to the current working collections.
-    # Never clear them in place when preparing the next card: that would also
-    # erase the previous card's history. Replace the working collections so
-    # every queued card retains an isolated snapshot.
-    state.status_log = []
-    state.dds_log = []
-    state.bounced_fields = []
-    state.crew_selected = None
-    state.crew_assignments = {}
-    state.phone_reports = []
-    state.phone_lines = []
-    state.phone_pending = None
-    state.reply_text = ""
-    state.reply_log = []
-    # Настроенный преподавателем лимит копируется в независимый таймер карточки.
-    state.timers = SessionTimers(limits=dict(state.timers.limits))
-    state.on_event("dds.dispatch")
-
-
-def _append_live_card(
-    state: SessionState, scenario: Scenario, index: int
-) -> DdsLiveCard:
-    state.dds_card_index = index
-    prepare_card(state, scenario)
-    card = DdsLiveCard(
+        kio = apply_patch(kio, {"dds": service})
+    kio.response_status = ResponseStatus.TRANSFERRED
+    timers = SessionTimers(limits=dict(limits))
+    timers.on_event("dds.dispatch")
+    return DdsLiveCard(
         original_index=index,
-        scenario=state.scenario,
-        kio=state.kio,
-        dispatched_card=state.dispatched_card,
-        dispatched_at=state.dispatched_at,
-        timers=state.timers,
-        bounced_fields=state.bounced_fields,
-        dds_log=state.dds_log,
-        status_log=state.status_log,
-        crew_selected=state.crew_selected,
-        crew_assignments=state.crew_assignments,
-        phone_reports=state.phone_reports,
-        phone_lines=state.phone_lines,
-        phone_pending=state.phone_pending,
-        reply_text=state.reply_text,
-        reply_log=state.reply_log,
+        scenario=scenario,
+        kio=kio,
+        dispatched_card=kio.model_copy(deep=True),
+        dispatched_at=now_utc(),
+        timers=timers,
     )
-    state.dds_live_cards.append(card)
-    return card
 
 
-def deliver_due_cards(state: SessionState, now: datetime | None = None) -> int:
-    """Выдать всё, чему настал срок и для чего есть место в ожидании.
+@dataclass
+class DdsDesk:
+    """Живые карточки занятия, активная из них и очередь поступления."""
 
-    Активная карточка не считается ожидающей. Каждый вызов prepare_card
-    запускает собственный 30-секундный таймер ровно при поступлении.
-    """
-    now = now or now_utc()
-    if state.dds_next_arrival_at is None or state.dds_next_arrival_at > now:
-        return 0
+    scenarios: list[Scenario] = field(default_factory=list)
+    cards: dict[UUID, DdsLiveCard] = field(default_factory=dict)
+    active_id: UUID | None = None
+    #: Номер карточки на экране. После завершения последней из поступивших
+    #: остаётся прежним, пока не придёт следующая.
+    card_index: int = 0
+    completed: list[DdsCardRecord] = field(default_factory=list)
+    limits: dict[TimerCode, int] = field(default_factory=lambda: dict(SessionTimers().limits))
+    arrival_interval_seconds: int = 0
+    max_waiting: int = 3
+    next_index: int = 0
+    next_arrival_at: datetime | None = None
 
-    delivered = 0
-    while state.dds_next_scenario_index < len(state.dds_scenarios):
-        active_id = (
-            state.dds_active_card_id
-            if any(
-                item.card_id == state.dds_active_card_id
-                for item in state.dds_live_cards
-            )
-            else None
+    @property
+    def active(self) -> DdsLiveCard | None:
+        return self.cards.get(self.active_id) if self.active_id is not None else None
+
+    def ordered(self) -> list[DdsLiveCard]:
+        return sorted(self.cards.values(), key=lambda card: card.original_index)
+
+    def open(self, card_id: UUID) -> bool:
+        """Сделать карточку активной; остальные продолжают идти."""
+        card = self.cards.get(card_id)
+        if card is None:
+            return False
+        self.active_id = card_id
+        self.card_index = card.original_index
+        return True
+
+    def add(self, card: DdsLiveCard) -> DdsLiveCard:
+        self.cards[card.card_id] = card
+        return card
+
+    def is_completed(self, card_id: UUID) -> bool:
+        return any(item.card_id == card_id for item in self.completed)
+
+    def complete(self, card_id: UUID, record: DdsCardRecord) -> DdsLiveCard | None:
+        """Закрыть карточку и открыть следующую по порядку поступления.
+
+        Если поступивших больше нет, пульт остаётся между карточками: номер
+        завершённой сохраняется, пока очередь не выдаст следующую.
+        """
+        card = self.cards.pop(card_id)
+        self.completed.append(record)
+        remaining = self.ordered()
+        if not remaining:
+            self.active_id = None
+            self.card_index = card.original_index
+            return None
+        following = next(
+            (item for item in remaining if item.original_index > card.original_index),
+            remaining[0],
         )
-        active_exists = active_id is not None
-        waiting_count = len(state.dds_live_cards) - int(active_exists)
-        if waiting_count >= state.dds_max_waiting:
-            break
+        self.open(following.card_id)
+        return following
 
-        index = state.dds_next_scenario_index
-        card = _append_live_card(state, state.dds_scenarios[index], index)
-        state.dds_next_scenario_index += 1
-        delivered += 1
-        if not active_exists:
-            state.activate_dds_card(card.card_id, capture=False)
-        else:
-            # prepare_card builds the new snapshot through SessionState's
-            # working fields; restore the trainee's active card immediately.
-            state.activate_dds_card(active_id, capture=False)
+    def start(
+        self,
+        scenarios: list[Scenario],
+        *,
+        limits: dict[TimerCode, int],
+        arrival_interval_seconds: int = 0,
+        max_waiting: int = 3,
+        now: datetime | None = None,
+    ) -> int:
+        """Начать поступление очереди с первой карточки; остальные идут по темпу."""
+        self.cards.clear()
+        self.active_id = None
+        self.scenarios = scenarios
+        self.limits = dict(limits)
+        self.arrival_interval_seconds = arrival_interval_seconds
+        self.max_waiting = max_waiting
+        self.next_index = 0
+        self.next_arrival_at = now or now_utc()
+        return self.deliver_due(self.next_arrival_at)
 
-        if state.dds_next_scenario_index >= len(state.dds_scenarios):
-            state.dds_next_arrival_at = None
-            break
-        if state.dds_arrival_interval_seconds:
-            # Pace from actual delivery time. If the cap was full, the next
-            # card becomes due one full interval after this release.
-            state.dds_next_arrival_at = card.dispatched_at + timedelta(
-                seconds=state.dds_arrival_interval_seconds
-            )
-            break
-        # Zero interval means fill active + available waiting slots now.
-        state.dds_next_arrival_at = now
+    def deliver_due(self, now: datetime | None = None) -> int:
+        """Выдать всё, чему настал срок и для чего есть место в ожидании.
 
-    return delivered
+        Активная карточка не считается ожидающей. Каждая карточка запускает
+        собственный 30-секундный таймер ровно при поступлении.
+        """
+        now = now or now_utc()
+        if self.next_arrival_at is None or self.next_arrival_at > now:
+            return 0
+
+        delivered = 0
+        while self.next_index < len(self.scenarios):
+            waiting_count = len(self.cards) - int(self.active is not None)
+            if waiting_count >= self.max_waiting:
+                break
+
+            index = self.next_index
+            card = self.add(build_card(self.scenarios[index], index, self.limits))
+            self.next_index += 1
+            delivered += 1
+            if self.active is None:
+                self.open(card.card_id)
+
+            if self.next_index >= len(self.scenarios):
+                self.next_arrival_at = None
+                break
+            if self.arrival_interval_seconds:
+                # Pace from actual delivery time. If the cap was full, the next
+                # card becomes due one full interval after this release.
+                self.next_arrival_at = card.dispatched_at + timedelta(
+                    seconds=self.arrival_interval_seconds
+                )
+                break
+            # Zero interval means fill active + available waiting slots now.
+            self.next_arrival_at = now
+
+        return delivered
 
 
 def prepare_queue(
-    state: SessionState,
+    state,
     scenarios: list[Scenario],
     arrival_interval_seconds: int = 0,
     max_waiting: int = 3,
 ) -> None:
-    """Начать поступление очереди с первой карточки; остальные идут по темпу."""
-    state.dds_live_cards.clear()
-    state.dds_scenarios = scenarios
-    state.dds_arrival_interval_seconds = arrival_interval_seconds
-    state.dds_max_waiting = max_waiting
-    state.dds_next_scenario_index = 0
-    state.dds_next_arrival_at = now_utc()
-    deliver_due_cards(state)
+    """Упражнение ДДС: очередь готовых карточек с лимитами занятия."""
+    state.desk.start(
+        scenarios,
+        limits=state.timers.limits,
+        arrival_interval_seconds=arrival_interval_seconds,
+        max_waiting=max_waiting,
+    )
 
 
 def prepare_handoff_queue(
-    state: SessionState,
+    state,
     additional_scenarios: list[Scenario],
     arrival_interval_seconds: int = 0,
     max_waiting: int = 3,
@@ -237,12 +350,14 @@ def prepare_handoff_queue(
         dispatched_at=state.dispatched_at or now,
         timers=dds_timers,
     )
-    state.dds_live_cards = [first]
-    state.dds_scenarios = [state.operator_scenario, *additional_scenarios]
-    state.dds_arrival_interval_seconds = arrival_interval_seconds
-    state.dds_max_waiting = max_waiting
-    state.dds_next_scenario_index = 1
-    state.dds_next_arrival_at = (
+    desk = state.desk
+    desk.cards = {first.card_id: first}
+    desk.scenarios = [state.operator_scenario, *additional_scenarios]
+    desk.limits = dict(state.timers.limits)
+    desk.arrival_interval_seconds = arrival_interval_seconds
+    desk.max_waiting = max_waiting
+    desk.next_index = 1
+    desk.next_arrival_at = (
         (
             now + timedelta(seconds=arrival_interval_seconds)
             if additional_scenarios and arrival_interval_seconds
@@ -251,5 +366,5 @@ def prepare_handoff_queue(
         if additional_scenarios
         else None
     )
-    state.activate_dds_card(first.card_id, capture=False)
-    deliver_due_cards(state)
+    desk.open(first.card_id)
+    desk.deliver_due(now)

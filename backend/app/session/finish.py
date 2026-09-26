@@ -28,42 +28,47 @@ from app.scoring.taxonomy import METRIC_WEIGHTS
 from app.scoring.timing import time_credit
 from app.scoring.weights import apply_weights
 from app.session.hub import hub
-from app.session.state import DdsCardRecord, now_utc
+from app.session.state import DdsCardRecord, DdsLiveCard, now_utc
 
 log = logging.getLogger(__name__)
 
 
-def score_current_dds(state) -> DdsCardRecord:
-    """Оценить активную карточку отдельно, до выдачи следующей."""
-    number = state.dds_card_index + 1
-    decision_limit_ms = state.timers.limits[TimerCode.DDS_ACK]
-    dds_decision = state.scenario.dds_decision
+def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
+    """Оценить одну карточку пульта; активная карточка при этом не меняется.
+
+    Из сессии берутся только служба обучающегося и критерии занятия.
+    """
+    number = card.original_index + 1
+    services = state.card_services(card)
+    decision_limit_ms = card.timers.limits[TimerCode.DDS_ACK]
+    dds_decision = card.scenario.dds_decision
     findings = evaluate_dispatcher(
-        entries=state.status_log,
-        services=state.managed_services(),
-        crew_assignments=state.crew_assignments,
+        entries=card.status_log,
+        services=services,
+        crew_assignments=card.crew_assignments,
         deadline_ms=decision_limit_ms,
-        elapsed_ms=state.timers.measured_ms(TimerCode.DDS_ACK),
-        reply_text=state.reply_text,
+        elapsed_ms=card.timers.measured_ms(TimerCode.DDS_ACK),
+        reply_text=card.reply_text,
         expected_decision=dds_decision.expected,
         expected_decision_reason=dds_decision.reason,
     )
     metrics = dispatcher_metrics(
-        state, decision_limit_ms, dds_decision.expected, dds_decision.reason
+        card, decision_limit_ms, dds_decision.expected, dds_decision.reason,
+        services=services,
     )
     weighted = GostResult(metrics=metrics, findings=findings)
-    work_limit_ms = state.timers.limits[TimerCode.DDS_WORK]
-    work_timer = state.timers.timers.get(TimerCode.DDS_WORK)
-    work_elapsed_ms = state.timers.measured_ms(TimerCode.DDS_WORK)
+    work_limit_ms = card.timers.limits[TimerCode.DDS_WORK]
+    work_timer = card.timers.timers.get(TimerCode.DDS_WORK)
+    work_elapsed_ms = card.timers.measured_ms(TimerCode.DDS_WORK)
     if work_elapsed_ms is None and work_timer is not None and work_timer.started_at is not None:
         work_elapsed_ms = work_timer.current_ms(time.monotonic())
-    terminal = bool(state.managed_services()) and all(
-        current(state.status_log, service) in {
+    terminal = bool(services) and all(
+        current(card.status_log, service) in {
             ServiceStatus.COMPLETED,
             ServiceStatus.DECLINED,
             ServiceStatus.REFUSED,
         }
-        for service in state.managed_services()
+        for service in services
     )
     work_passed = terminal and work_elapsed_ms is not None and work_elapsed_ms <= work_limit_ms
     work_delta_ms = (work_elapsed_ms - work_limit_ms) if work_elapsed_ms is not None else None
@@ -98,78 +103,71 @@ def score_current_dds(state) -> DdsCardRecord:
             ref="ТЗ задачи № 9; сессия вопросов и ответов 16.09.2026",
             competency=Competency.NORMS,
         ))
-    apply_weights(weighted, {**state.scenario.score_weights, **state.criteria.score_weights})
+    apply_weights(weighted, {**card.scenario.score_weights, **state.criteria.score_weights})
     actions = [
         {"type": "card.status", "service": mark.service, "status": mark.status.value,
          "comment": mark.comment, "at": mark.at.isoformat()}
-        for mark in state.status_log
+        for mark in card.status_log
     ] + [
         {"type": "phone.report", "service": report.service, "crew": report.crew,
          "phase": report.phase, "text": report.text, "at": report.at.isoformat()}
-        for report in state.phone_reports
+        for report in card.phone_reports
     ] + [
         {"type": "card.reply", "text": text, "at": at.isoformat()}
-        for at, text in state.reply_log
+        for at, text in card.reply_log
     ] + [
         {"type": kind, "text": text or "", "at": at.isoformat()}
-        for kind, at, text in state.dds_log
+        for kind, at, text in card.dds_log
     ]
     actions.sort(key=lambda item: item["at"])
     return DdsCardRecord(
-        card_id=state.dispatched_card.card_id,
-        scenario_id=state.scenario_id,
-        reply_text=state.reply_text,
+        card_id=card.card_id,
+        scenario_id=card.scenario.id,
+        reply_text=card.reply_text,
         metrics=[metric.model_copy(update={"title": f"Карточка {number}: {metric.title}"})
                  for metric in weighted.metrics],
         findings=[finding.model_copy(update={"summary": f"Карточка {number}: {finding.summary}"})
                   for finding in weighted.findings],
         actions=actions,
-        duration_ms=(max(0, int((now_utc() - state.dispatched_at).total_seconds() * 1000))
-                     if state.dispatched_at else 0),
-        title=state.scenario.title,
-        address=state.dispatched_card.address,
-        description=state.dispatched_card.description,
-        incident_type=(state.dispatched_card.incident_type.value
-                       if state.dispatched_card.incident_type else None),
-        victims_count=state.dispatched_card.victims_count,
-        received_at=state.dispatched_at,
-        managed_service=(state.managed_services()[0] if state.managed_services() else None),
-        recipient_services=list(state.dispatched_card.notify),
+        duration_ms=max(0, int((now_utc() - card.dispatched_at).total_seconds() * 1000)),
+        title=card.scenario.title,
+        address=card.dispatched_card.address,
+        description=card.dispatched_card.description,
+        incident_type=(card.dispatched_card.incident_type.value
+                       if card.dispatched_card.incident_type else None),
+        victims_count=card.dispatched_card.victims_count,
+        received_at=card.dispatched_at,
+        managed_service=services[0] if services else None,
+        recipient_services=list(card.dispatched_card.notify),
     )
 
 
 def scoring_scenario(state):
     """Сценарий, по которому оценивается и разбирается занятие.
 
-    После передачи 112→ДДС `state.scenario` — активная карточка очереди,
-    а КИО курсанта оценивается по эталону упражнения 112. Балл, разбор
-    и чек-лист самооценки обязаны брать один и тот же сценарий.
+    После передачи 112→ДДС КИО курсанта оценивается по эталону упражнения
+    112. Балл, разбор и чек-лист самооценки обязаны брать один и тот же
+    сценарий.
     """
     if state.handoff_to_dds and state.operator_scenario:
         return state.operator_scenario
+    if state.scenario is None and state.desk.scenarios:
+        return state.desk.scenarios[0]
     return state.scenario or store.get(state.scenario_id)
 
 
 def score_live_dds_cards(state) -> list[DdsCardRecord]:
-    """Оценить все неоценённые карточки очереди и вернуть пульт курсанту.
+    """Все карточки занятия: завершённые и оценка ещё открытых.
 
-    Оценка переключает рабочие поля сессии на каждую карточку по очереди.
-    Без возврата отчёт взял бы card_status у карточки, оценённой последней,
-    а пульт после завершения показывал бы чужую карточку.
+    Открытые карточки оцениваются по месту, пульт не переключается: отчёт
+    берёт card_status у карточки, активной у курсанта при завершении.
     """
-    cards = list(state.dds_completed)
-    state.capture_active_dds()
-    active_id = state.dds_active_card_id
-    active_card = state.dispatched_card
-    for live in sorted(state.dds_live_cards, key=lambda item: item.original_index):
-        if any(item.card_id == live.card_id for item in cards):
-            continue
-        state.activate_dds_card(live.card_id, capture=False)
-        cards.append(score_current_dds(state))
-    state.dds_completed = cards
-    if active_id is None or not state.activate_dds_card(active_id, capture=False):
-        state.dds_active_card_id = active_id
-        state.dispatched_card = active_card
+    desk = state.desk
+    cards = list(desk.completed)
+    for live in desk.ordered():
+        if not desk.is_completed(live.card_id):
+            cards.append(score_dds_card(state, live))
+    desk.completed = cards
     return cards
 
 
@@ -273,30 +271,32 @@ async def finish(session_id: UUID, state) -> None:
     # Работа диспетчера — вторая роль и вторая таксономия. Отметки D1–D6 идут
     # рядом с E1–E6, а не вместо: в живой цепочке 112 → ДДС в одном занятии
     # участвуют оба (docs/spec/DATASET.md#статусы-реагирования).
-    if state.dispatched_card is not None and state.exercise is Exercise.CALL:
-        decision_limit_ms = state.timers.limits[TimerCode.DDS_ACK]
+    live_card = state.desk.active
+    if live_card is not None and state.exercise is Exercise.CALL:
+        decision_limit_ms = live_card.timers.limits[TimerCode.DDS_ACK]
+        services = state.card_services(live_card)
         dispatcher_findings = evaluate_dispatcher(
-            entries=state.status_log,
-            services=state.managed_services(),
-            crew_assignments=state.crew_assignments,
+            entries=live_card.status_log,
+            services=services,
+            crew_assignments=live_card.crew_assignments,
             deadline_ms=decision_limit_ms,
-            elapsed_ms=state.timers.measured_ms(TimerCode.DDS_ACK),
-            reply_text=state.reply_text,
+            elapsed_ms=live_card.timers.measured_ms(TimerCode.DDS_ACK),
+            reply_text=live_card.reply_text,
             expected_decision=scenario.dds_decision.expected,
             expected_decision_reason=scenario.dds_decision.reason,
         )
         result.findings.extend(dispatcher_findings)
         result.metrics.extend(dispatcher_metrics(
-            state, decision_limit_ms, scenario.dds_decision.expected,
-            scenario.dds_decision.reason,
+            live_card, decision_limit_ms, scenario.dds_decision.expected,
+            scenario.dds_decision.reason, services=services,
         ))
-    # DDS cards were weighted individually in score_current_dds using each
+    # DDS cards were weighted individually in score_dds_card using each
     # card's scenario defaults plus the lesson override. Reapplying the first
     # scenario's weights here would corrupt the other ticket cards.
     if state.exercise is not Exercise.DDS:
         apply_weights(result, {**scenario.score_weights, **state.criteria.score_weights})
 
-    if state.handoff_to_dds and state.dds_scenarios:
+    if state.handoff_to_dds and state.desk.scenarios:
         # В связке КИО оценивается относительно эталона и весов упражнения
         # 112, а каждая карточка очереди уже взвешена собственным сценарием.
         cards = score_live_dds_cards(state)

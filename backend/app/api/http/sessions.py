@@ -228,11 +228,13 @@ async def active(
                    if state.started_at else 0)
         station = state.station_snapshot() if state.exercise is Exercise.DDS else None
         queue = station.queue_cards if station else []
+        card = state.desk.active
+        status_log = card.status_log if card is not None else []
         managed_services = state.managed_services()
         latest_statuses = {
-            service: SERVICE_STATUS_LABELS[current(state.status_log, service)]
+            service: SERVICE_STATUS_LABELS[current(status_log, service)]
             for service in managed_services
-            if (state.status_log or state.exercise is Exercise.DDS)
+            if (status_log or state.exercise is Exercise.DDS)
         }
         result.append(ActiveSessionOut(
             session_id=state.session_id,
@@ -243,7 +245,7 @@ async def active(
             exercise=state.exercise,
             started_at=state.started_at,
             elapsed_seconds=elapsed,
-            dds_card_total=len(state.dds_scenarios),
+            dds_card_total=len(state.desk.scenarios),
             dds_open_cards=len(queue),
             dds_overdue_cards=sum(
                 not card.timer_stopped and card.elapsed_ms > card.limit_ms for card in queue
@@ -253,7 +255,7 @@ async def active(
                 and timer.started_at is not None
                 and not timer.stopped
                 and timer.current_ms(time.monotonic()) > card.timers.limits[TimerCode.DDS_WORK]
-                for card in state.dds_live_cards
+                for card in state.desk.cards.values()
             ),
             dds_statuses=latest_statuses,
             dds_snapshot=station,

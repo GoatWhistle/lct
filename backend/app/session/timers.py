@@ -10,8 +10,15 @@
 
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from app.domain.timers import NORMATIVES, TimerCode, TimerSnapshot, state_for
+
+
+def now_utc() -> datetime:
+    """Часы серверные. Метрика, посчитанная по часам браузера, недоказуема."""
+    return datetime.now(UTC)
+
 
 #: Какое событие какой таймер запускает.
 #:

@@ -43,8 +43,8 @@ from app.domain.statuses import (
 )
 from app.domain.timers import TimerCode
 from app.scoring.address import address_matches
-from app.session.dds import deliver_due_cards
-from app.session.finish import finish, score_current_dds
+from app.session.dds import DdsLiveCard
+from app.session.finish import finish, score_dds_card
 from app.session.hub import LEASE_FENCED_MESSAGE, hub
 from app.session.state import now_utc
 
@@ -54,11 +54,15 @@ router = APIRouter()
 _adapter = TypeAdapter(StationToServer)
 
 
-def _start_dds_work_timer(state) -> None:
+def _start_dds_work_timer(card: DdsLiveCard) -> None:
     """Start the three-minute work clock once, when the card is opened."""
-    timer = state.timers.timers.get(TimerCode.DDS_WORK)
+    timer = card.timers.timers.get(TimerCode.DDS_WORK)
     if timer is None or timer.started_at is None:
-        state.on_event("dds.open")
+        card.on_event("dds.open")
+
+
+#: Команды, которым не нужна активная карточка пульта.
+CARDLESS_EVENTS = {"card.open", "station.finish", "card.bounce"}
 
 REPORT_PHASES = ("dispatched", "arrived", "working", "completed")
 REQUIRED_STATUS = {
@@ -78,14 +82,14 @@ def _error(session_id: UUID, message: str) -> None:
     hub.to_station(session_id, ErrorEvent(code=ErrorKind.UNSUPPORTED_EVENT, message=message))
 
 
-def _line(session_id: UUID, state, speaker: str, text: str) -> None:
-    call = state.phone_pending
+def _line(session_id: UUID, card: DdsLiveCard, speaker: str, text: str) -> None:
+    call = card.phone_pending
     if call is None:
         return
     line = PhoneLineRecord(service=call.service, crew=call.crew,
                            speaker=speaker, text=text, at=now_utc())
-    state.phone_lines.append(line)
-    state.dds_log.append((f"phone.line.{speaker}", line.at, f"{call.crew}: {text}"))
+    card.phone_lines.append(line)
+    card.dds_log.append((f"phone.line.{speaker}", line.at, f"{call.crew}: {text}"))
     hub.to_station(session_id, PhoneLine(**line.model_dump()))
 
 
@@ -94,11 +98,11 @@ def _address_matches(expected: str | None, supplied: str) -> bool:
     return address_matches(expected, supplied)
 
 
-def _incident_matches(state, supplied: str) -> bool:
+def _incident_matches(card: DdsLiveCard, supplied: str) -> bool:
     text = supplied.casefold()
     # Описание часто начинается с адреса: его нельзя считать совпадением
     # характера происшествия. Берём только название сценария и признаки ЕКП.
-    source = " ".join((state.scenario_title, " ".join(state.kio.signs)))
+    source = " ".join((card.scenario.title, " ".join(card.kio.signs)))
     anchors = {word[:4] for word in re.findall(r"[а-яё]{5,}", source.casefold())}
     return len(supplied.strip()) >= 8 and any(anchor in text for anchor in anchors)
 
@@ -120,24 +124,23 @@ def _report_text(phase: str, crew: str, address: str) -> str:
             return f"{crew}: работы завершены. Дальнейшая помощь от нашей бригады не требуется."
 
 
-def _finish_phone_call(session_id: UUID, state) -> None:
-    call = state.phone_pending
+def _finish_phone_call(session_id: UUID, card: DdsLiveCard) -> None:
+    call = card.phone_pending
     assert call is not None
-    text = _report_text(call.phase, call.crew, state.dispatched_card.address or "из карточки")
-    _line(session_id, state, "crew", text)
+    text = _report_text(call.phase, call.crew, card.dispatched_card.address or "из карточки")
+    _line(session_id, card, "crew", text)
     report = PhoneReportRecord(service=call.service, crew=call.crew,
                                phase=call.phase, text=text, at=now_utc())
-    state.phone_reports.append(report)
-    state.dds_log.append(("phone.report", now_utc(), f"{call.crew}: {call.phase}"))
-    state.phone_pending = None
+    card.phone_reports.append(report)
+    card.dds_log.append(("phone.report", now_utc(), f"{call.crew}: {call.phase}"))
+    card.phone_pending = None
     hub.to_station(session_id, PhoneReport(**report.model_dump()))
 
 
 async def _finish_dds(session_id: UUID, state) -> None:
     state.ended_at = now_utc()
     state.end_reason = CallEndReason.COMPLETE
-    state.capture_active_dds()
-    for card in state.dds_live_cards:
+    for card in state.desk.cards.values():
         timer = card.timers.timers.get(TimerCode.DDS_WORK)
         if timer is not None and timer.started_at is not None:
             card.timers.on_event("dds.finish")
@@ -154,6 +157,10 @@ async def _handle(session_id: UUID, state, event) -> None:
     if state.ended:
         _error(session_id, "Занятие уже завершено")
         return
+    card = state.desk.active
+    if card is None and event.type not in CARDLESS_EVENTS:
+        _error(session_id, "Нет активной карточки")
+        return
     match event.type:
         case "card.ack":
             # Подтверждение приёма — это статус «Принята» у главной службы.
@@ -162,26 +169,26 @@ async def _handle(session_id: UUID, state, event) -> None:
             if not event.comment.strip():
                 _error(session_id, "Для подтверждения приёма добавьте комментарий с основанием")
                 return
-            if any(action == "card.ack" for action, _at, _detail in state.dds_log):
+            if any(action == "card.ack" for action, _at, _detail in card.dds_log):
                 return
-            state.on_event("card.ack")
-            state.dds_log.append(("card.ack", now_utc(), None))
-            services = state.managed_services()
+            card.on_event("card.ack")
+            card.dds_log.append(("card.ack", now_utc(), None))
+            services = state.card_services(card)
             if services:
-                _start_dds_work_timer(state)
+                _start_dds_work_timer(card)
                 try:
-                    state.set_service_status(
+                    card.set_service_status(
                         services[0], ServiceStatus.ACCEPTED, event.comment, author="диспетчер"
                     )
                 except StatusError:
                     pass  # статус уже стоит: повторное нажатие ничего не меняет
         case "card.status":
-            if event.service not in state.managed_services():
+            if event.service not in state.card_services(card):
                 _error(session_id, "Можно менять статусы только своей ДДС")
                 return
-            _start_dds_work_timer(state)
+            _start_dds_work_timer(card)
             try:
-                state.set_service_status(
+                card.set_service_status(
                     event.service, event.status, event.comment, author="диспетчер"
                 )
             except StatusError as exc:
@@ -192,75 +199,75 @@ async def _handle(session_id: UUID, state, event) -> None:
                 return
             # Первичный статус останавливает норматив 30 секунд.
             if event.status in PRIMARY:
-                state.on_event("card.ack")
+                card.on_event("card.ack")
             if event.status in {
                 ServiceStatus.COMPLETED, ServiceStatus.DECLINED, ServiceStatus.REFUSED,
             }:
-                state.on_event("dds.complete")
+                card.on_event("dds.complete")
         case "crew.select":
-            if event.crew not in state.crew_options():
+            if event.crew not in state.crew_options(card):
                 _error(session_id, "Выберите бригаду из списка доступных")
                 return
-            service = state.crew_service(event.crew)
-            assigned = state.crew_assignments.get(service)
+            service = state.crew_service(card, event.crew)
+            assigned = card.crew_assignments.get(service)
             if assigned and assigned != event.crew and any(
-                report.service == service for report in state.phone_reports
+                report.service == service for report in card.phone_reports
             ):
                 _error(session_id, "После первого доклада бригаду этой службы менять нельзя")
                 return
-            if state.phone_pending is not None:
+            if card.phone_pending is not None:
                 _error(session_id, "Завершите текущий разговор перед сменой бригады")
                 return
-            if state.crew_selected == event.crew and assigned == event.crew:
+            if card.crew_selected == event.crew and assigned == event.crew:
                 return
-            state.crew_selected = event.crew
-            state.crew_assignments[service] = event.crew
-            state.dds_log.append(("crew.select", now_utc(), event.crew))
+            card.crew_selected = event.crew
+            card.crew_assignments[service] = event.crew
+            card.dds_log.append(("crew.select", now_utc(), event.crew))
         case "phone.dial":
-            if state.phone_pending is not None:
+            if card.phone_pending is not None:
                 _error(session_id, "Разговор уже идёт: передайте сведения или завершите звонок")
                 return
-            crew = state.crew_selected
-            service = state.crew_service(crew) if crew else None
+            crew = card.crew_selected
+            service = state.crew_service(card, crew) if crew else None
             if service is None:
                 _error(session_id, "Сначала выберите бригаду")
                 return
-            previous = [report for report in state.phone_reports if report.service == service]
+            previous = [report for report in card.phone_reports if report.service == service]
             if len(previous) >= len(REPORT_PHASES):
                 _error(session_id, "Все доклады этой бригады уже получены")
                 return
             phase = REPORT_PHASES[len(previous)]
             required = REQUIRED_STATUS[phase]
-            if current(state.status_log, service) not in STATUS_AT_OR_AFTER[phase]:
+            if current(card.status_log, service) not in STATUS_AT_OR_AFTER[phase]:
                 _error(session_id, f"Перед звонком нужен статус «{SERVICE_STATUS_LABELS[required]}» этой службы")
                 return
-            state.phone_pending = PhoneCallPending(service=service, crew=crew, phase=phase)
-            state.dds_log.append(("phone.dial", now_utc(), crew))
+            card.phone_pending = PhoneCallPending(service=service, crew=crew, phase=phase)
+            card.dds_log.append(("phone.dial", now_utc(), crew))
             greeting = (f"{crew}, старший группы на связи. Назовите адрес, характер происшествия "
                         "и что требуется от бригады."
                         if phase == "dispatched" else
                         f"{crew}, старший группы на связи. Слушаю ваш запрос по карточке.")
-            _line(session_id, state, "crew", greeting)
+            _line(session_id, card, "crew", greeting)
         case "phone.brief":
-            call = state.phone_pending
+            call = card.phone_pending
             if call is None or call.phase != "dispatched":
                 _error(session_id, "Сначала соединитесь со старшим группы для передачи вызова")
                 return
-            if not _address_matches(state.dispatched_card.address, event.address):
+            if not _address_matches(card.dispatched_card.address, event.address):
                 _error(session_id, "Проверьте адрес: улица и номер дома должны совпадать с карточкой")
                 return
-            if not _incident_matches(state, event.incident):
+            if not _incident_matches(card, event.incident):
                 _error(session_id, "Уточните характер происшествия по данным карточки")
                 return
             if not _has_purpose(event.request, ("выезд", "выех", "направ", "прибыт",
                                                 "реагир", "помощ", "подтверд", "долож")):
                 _error(session_id, "Сформулируйте задачу: выезд, помощь или доклад бригады")
                 return
-            _line(session_id, state, "dispatcher", f"Адрес: {event.address.strip()}. "
+            _line(session_id, card, "dispatcher", f"Адрес: {event.address.strip()}. "
                   f"Происшествие: {event.incident.strip()}. {event.request.strip()}")
-            _finish_phone_call(session_id, state)
+            _finish_phone_call(session_id, card)
         case "phone.check":
-            call = state.phone_pending
+            call = card.phone_pending
             if call is None or call.phase == "dispatched":
                 _error(session_id, "Сначала передайте вызов, затем запросите обстановку")
                 return
@@ -269,17 +276,17 @@ async def _handle(session_id: UUID, state, event) -> None:
                                               "ход", "сообщ", "долож", "уточн")):
                 _error(session_id, "Спросите обстановку, прибытие или ход работ по карточке")
                 return
-            _line(session_id, state, "dispatcher", event.text.strip())
-            _finish_phone_call(session_id, state)
+            _line(session_id, card, "dispatcher", event.text.strip())
+            _finish_phone_call(session_id, card)
         case "phone.hangup":
-            if state.phone_pending is None:
+            if card.phone_pending is None:
                 _error(session_id, "Нет активного разговора")
                 return
-            state.dds_log.append(("phone.hangup", now_utc(), state.phone_pending.crew))
-            state.phone_pending = None
+            card.dds_log.append(("phone.hangup", now_utc(), card.phone_pending.crew))
+            card.phone_pending = None
         case "card.reply":
-            if (state.exercise is not Exercise.DDS and not state.handoff_to_dds) or not state.dispatched_card or (
-                event.card_id != state.dispatched_card.card_id
+            if (state.exercise is not Exercise.DDS and not state.handoff_to_dds) or (
+                event.card_id != card.card_id
             ):
                 _error(session_id, "Ответ относится не к текущей карточке")
                 return
@@ -287,15 +294,15 @@ async def _handle(session_id: UUID, state, event) -> None:
             # committed this replace-style value. Reconnect retries are safe:
             # don't create another journal row
             # when the current card already contains exactly this text.
-            if state.reply_text == event.text:
+            if card.reply_text == event.text:
                 return
-            state.reply_text = event.text
-            state.reply_log.append((now_utc(), event.text))
+            card.reply_text = event.text
+            card.reply_log.append((now_utc(), event.text))
         case "card.open":
-            if (state.exercise is not Exercise.DDS and not state.handoff_to_dds) or not state.activate_dds_card(event.card_id):
+            if (state.exercise is not Exercise.DDS and not state.handoff_to_dds) or not state.desk.open(event.card_id):
                 _error(session_id, "Карточка отсутствует в текущей очереди")
                 return
-            _start_dds_work_timer(state)
+            _start_dds_work_timer(state.desk.active)
             hub.to_station(session_id, state.card_received_event())
             # CardReceived carries the contents, while StationState carries
             # the status journal and current queue. Send both on every switch
@@ -303,41 +310,25 @@ async def _handle(session_id: UUID, state, event) -> None:
             # card's status snapshot until the next periodic tick.
             hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
         case "card.next":
-            if (state.exercise is not Exercise.DDS and not state.handoff_to_dds) or not state.dispatched_card or (
-                event.card_id != state.dispatched_card.card_id
+            if (state.exercise is not Exercise.DDS and not state.handoff_to_dds) or (
+                event.card_id != card.card_id
             ):
                 _error(session_id, "Следующая карточка недоступна: ID текущей не совпадает")
                 return
-            if any(item.card_id == event.card_id for item in state.dds_completed):
+            if state.desk.is_completed(event.card_id):
                 _error(session_id, "Эта карточка уже завершена")
                 return
-            state.dds_completed.append(score_current_dds(state))
-            completed_index = state.dds_card_index
-            state.dds_live_cards = [
-                item for item in state.dds_live_cards if item.card_id != event.card_id
-            ]
-            remaining = sorted(state.dds_live_cards, key=lambda item: item.original_index)
-            if remaining:
-                following = next(
-                    (item for item in remaining if item.original_index > completed_index),
-                    remaining[0],
-                )
-                state.activate_dds_card(following.card_id, capture=False)
+            # Keep the lesson alive if selected cards have not arrived yet.
+            # The next delivery may become the active card immediately or
+            # after its configured interval; no completed card is reused.
+            if state.desk.complete(card.card_id, score_dds_card(state, card)) is not None:
                 hub.to_station(session_id, state.card_received_event())
-            else:
-                # Keep the lesson alive if selected cards have not arrived yet.
-                # The next delivery may become the active card immediately or
-                # after its configured interval; no completed card is reused.
-                state.dds_active_card_id = None
-                state.dispatched_card = None
-                state.dispatched_at = None
-                state.dds_card_index = completed_index
-            active_before_delivery = state.dds_active_card_id
-            deliver_due_cards(state)
-            if state.dds_active_card_id and state.dds_active_card_id != active_before_delivery:
+            active_before_delivery = state.desk.active_id
+            state.desk.deliver_due()
+            if state.desk.active_id and state.desk.active_id != active_before_delivery:
                 hub.to_station(session_id, state.card_received_event())
             hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
-            if not state.dds_live_cards and len(state.dds_completed) >= len(state.dds_scenarios):
+            if not state.desk.cards and len(state.desk.completed) >= len(state.desk.scenarios):
                 await _finish_dds(session_id, state)
         case "station.finish":
             if state.exercise is not Exercise.DDS and not state.handoff_to_dds:
@@ -352,7 +343,7 @@ async def _handle(session_id: UUID, state, event) -> None:
             return
         case "zone.decision":
             previous = next(
-                (detail for action, _at, detail in reversed(state.dds_log)
+                (detail for action, _at, detail in reversed(card.dds_log)
                  if action == "zone.decision"),
                 None,
             )
@@ -361,16 +352,15 @@ async def _handle(session_id: UUID, state, event) -> None:
                 if previous != decision:
                     _error(session_id, "Решение по зоне уже записано для этой карточки")
                 return
-            state.on_event("zone.decision")
-            state.dds_log.append(("zone.decision", now_utc(), decision))
+            card.on_event("zone.decision")
+            card.dds_log.append(("zone.decision", now_utc(), decision))
         case "crew.dispatched":
-            state.kio = state.kio.model_copy(update={"dispatch_order_at": event.at})
-            state.dds_log.append(("crew.dispatched", now_utc(), None))
+            card.kio = card.kio.model_copy(update={"dispatch_order_at": event.at})
+            card.dds_log.append(("crew.dispatched", now_utc(), None))
         case "crew.arrived":
-            state.on_event("crew.arrived")
-            state.kio = state.kio.model_copy(update={"arrival_at": event.at})
-            state.dds_log.append(("crew.arrived", now_utc(), None))
-    state.capture_active_dds()
+            card.on_event("crew.arrived")
+            card.kio = card.kio.model_copy(update={"arrival_at": event.at})
+            card.dds_log.append(("crew.arrived", now_utc(), None))
     await hub.checkpoint(session_id)
     hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
     hub.to_observers(session_id, state.snapshot())
@@ -434,7 +424,7 @@ async def station(ws: WebSocket, session_id: UUID, role: str = "dds") -> None:
         try:
             # Карточка, переданная до подключения станции, не теряется:
             # диспетчер садится за АРМ, когда вызов уже идёт.
-            if state.dispatched_card is not None:
+            if state.desk.active is not None:
                 hub.to_station(session_id, state.card_received_event())
                 hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
             while True:

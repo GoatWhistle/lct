@@ -20,7 +20,7 @@ from app.domain.taxonomy import ErrorCode, Finding, FindingSource
 from app.domain.timers import TimerCode
 from app.scenarios.loader import load_file
 from app.session.checkpoint import dump_state, load_state
-from app.session.dds import deliver_due_cards, prepare_handoff_queue, prepare_queue
+from app.session.dds import prepare_handoff_queue, prepare_queue
 from app.session.hub import LEASE_FENCED_MESSAGE, SessionHub
 from app.session.state import DdsCardRecord, SessionState, now_utc
 
@@ -37,7 +37,6 @@ def dds_state() -> SessionState:
         mode=SessionMode.TRAINING,
         exercise=Exercise.DDS,
         scenario=scenario.model_copy(deep=True),
-        dds_scenarios=[scenario.model_copy(deep=True)],
         required_fields=list(scenario.required_fields),
         trainee_name="Курсант для восстановления",
         attempt=2,
@@ -48,17 +47,18 @@ def dds_state() -> SessionState:
         ),
     )
     state.timers.limits[TimerCode.DDS_ACK] = 45_000
-    prepare_queue(state, state.dds_scenarios)
-    service = state.notified_services()[0]
-    state.set_service_status(service, ServiceStatus.ACCEPTED, "Принято в работу", author="диспетчер")
-    state.crew_selected = state.crew_options()[0]
-    state.crew_assignments[service] = state.crew_selected
-    state.phone_pending = PhoneCallPending(
-        service=service, crew=state.crew_selected, phase="dispatched"
+    prepare_queue(state, [scenario.model_copy(deep=True)])
+    card = state.desk.active
+    service = state.card_services(card)[0]
+    card.set_service_status(service, ServiceStatus.ACCEPTED, "Принято в работу", author="диспетчер")
+    card.crew_selected = state.crew_options(card)[0]
+    card.crew_assignments[service] = card.crew_selected
+    card.phone_pending = PhoneCallPending(
+        service=service, crew=card.crew_selected, phase="dispatched"
     )
-    state.reply_text = "Сообщение принято, бригада направлена."
-    state.reply_log.append((now_utc(), state.reply_text))
-    state.dds_log.append(("crew.select", now_utc(), state.crew_selected))
+    card.reply_text = "Сообщение принято, бригада направлена."
+    card.reply_log.append((now_utc(), card.reply_text))
+    card.dds_log.append(("crew.select", now_utc(), card.crew_selected))
     return state
 
 
@@ -74,16 +74,17 @@ def test_active_dds_session_round_trips_without_losing_work():
     assert restored.session_id == before.session_id
     assert restored.exercise is Exercise.DDS
     assert restored.criteria.decision_time_limit_seconds == 45
-    assert restored.dispatched_card == before.dispatched_card
-    assert restored.status_log == before.status_log
-    assert restored.crew_selected == before.crew_selected
-    assert restored.crew_assignments == before.crew_assignments
-    assert restored.phone_pending == before.phone_pending
-    assert restored.reply_text == before.reply_text
+    card, card_before = restored.desk.active, before.desk.active
+    assert card.dispatched_card == card_before.dispatched_card
+    assert card.status_log == card_before.status_log
+    assert card.crew_selected == card_before.crew_selected
+    assert card.crew_assignments == card_before.crew_assignments
+    assert card.phone_pending == card_before.phone_pending
+    assert card.reply_text == card_before.reply_text
     assert restored.processed_station_commands == before.processed_station_commands
-    assert restored.dds_scenarios[0].id == before.scenario_id
+    assert restored.desk.scenarios[0].id == before.scenario_id
     # Время простоя backend входит в норматив, а не обнуляет таймер.
-    timer = next(item for item in restored.timers.snapshot() if item.code is TimerCode.DDS_ACK)
+    timer = next(item for item in card.timers.snapshot() if item.code is TimerCode.DDS_ACK)
     assert timer.elapsed_ms >= 1_900
     assert timer.limit_ms == 45_000
 
@@ -112,19 +113,19 @@ def completed_card() -> DdsCardRecord:
 def test_text_revealed_facts_and_completed_cards_round_trip_whole():
     before = dds_state()
     before.text_revealed_facts = {"address": "улица Ленина, 14", "floor": "5 этаж, уточнено"}
-    before.dds_completed = [completed_card()]
+    before.desk.completed = [completed_card()]
 
     restored = load_state(dump_state(before), now_utc())
 
     assert restored.text_revealed_facts == before.text_revealed_facts
-    assert restored.dds_completed == before.dds_completed
-    assert restored.dds_completed[0].received_at.tzinfo is not None
+    assert restored.desk.completed == before.desk.completed
+    assert restored.desk.completed[0].received_at.tzinfo is not None
 
 
 def test_legacy_checkpoint_without_new_keys_gets_defaults():
     before = dds_state()
     before.text_revealed_facts = {"address": "улица Ленина, 14"}
-    before.dds_completed = [completed_card()]
+    before.desk.completed = [completed_card()]
     payload = dump_state(before)
     del payload["text_revealed_facts"]
     legacy_keys = {"card_id", "scenario_id", "reply_text", "metrics",
@@ -137,8 +138,8 @@ def test_legacy_checkpoint_without_new_keys_gets_defaults():
     restored = load_state(payload, now_utc())
 
     assert restored.text_revealed_facts == {}
-    card = restored.dds_completed[0]
-    assert card.card_id == before.dds_completed[0].card_id
+    card = restored.desk.completed[0]
+    assert card.card_id == before.desk.completed[0].card_id
     assert (card.title, card.address, card.description, card.incident_type,
             card.victims_count, card.received_at, card.managed_service) == (None,) * 7
     assert card.recipient_services == []
@@ -164,26 +165,25 @@ def test_concurrent_dds_queue_round_trips_with_each_timer_and_status():
         level=first.level.value,
         mode=SessionMode.TRAINING,
         exercise=Exercise.DDS,
-        dds_scenarios=[first, second],
     )
-    prepare_queue(state, state.dds_scenarios)
-    first_id = state.dispatched_card.card_id
-    first_service = state.managed_services()[0]
-    state.set_service_status(first_service, ServiceStatus.ACCEPTED, "Принято в работу")
-    state.on_event("card.ack")
-    second_id = state.dds_live_cards[1].card_id
-    assert state.activate_dds_card(second_id)
+    prepare_queue(state, [first, second])
+    first_card = state.desk.active
+    first_id = first_card.card_id
+    first_service = state.card_services(first_card)[0]
+    first_card.set_service_status(first_service, ServiceStatus.ACCEPTED, "Принято в работу")
+    first_card.on_event("card.ack")
+    second_id = state.desk.ordered()[1].card_id
+    assert state.desk.open(second_id)
 
     restored = load_state(
         dump_state(state),
         datetime.now(UTC) - timedelta(seconds=2),
     )
 
-    assert restored.dds_active_card_id == second_id
-    assert restored.dispatched_card.card_id == second_id
-    assert len(restored.dds_live_cards) == 2
-    first_restored = next(item for item in restored.dds_live_cards if item.card_id == first_id)
-    second_restored = next(item for item in restored.dds_live_cards if item.card_id == second_id)
+    assert restored.desk.active_id == second_id
+    assert len(restored.desk.cards) == 2
+    first_restored = restored.desk.cards[first_id]
+    second_restored = restored.desk.cards[second_id]
     assert first_restored.status_log[-1].status is ServiceStatus.ACCEPTED
     assert first_restored.timers.measured_ms(TimerCode.DDS_ACK) is not None
     second_timer = next(
@@ -209,27 +209,25 @@ def test_delivering_next_dds_card_does_not_clear_previous_card_state():
         level=scenarios[0].level.value,
         mode=SessionMode.TRAINING,
         exercise=Exercise.DDS,
-        dds_scenarios=scenarios,
     )
     prepare_queue(state, scenarios, arrival_interval_seconds=60, max_waiting=1)
-    first_id = state.dds_live_cards[0].card_id
-    service = state.managed_services()[0]
-    state.set_service_status(service, ServiceStatus.ACCEPTED, "Принято в работу")
-    state.capture_active_dds()
+    first = state.desk.active
+    first_id = first.card_id
+    service = state.card_services(first)[0]
+    first.set_service_status(service, ServiceStatus.ACCEPTED, "Принято в работу")
 
-    assert deliver_due_cards(state, now_utc() + timedelta(seconds=61)) == 1
-    first = next(card for card in state.dds_live_cards if card.card_id == first_id)
-    assert first.status_log[-1].status is ServiceStatus.ACCEPTED
-    second = next(card for card in state.dds_live_cards if card.original_index == 1)
-    assert state.activate_dds_card(second.card_id)
+    assert state.desk.deliver_due(now_utc() + timedelta(seconds=61)) == 1
+    assert state.desk.cards[first_id].status_log[-1].status is ServiceStatus.ACCEPTED
+    second = next(card for card in state.desk.ordered() if card.original_index == 1)
+    assert state.desk.open(second.card_id)
 
     restored = load_state(dump_state(state), now_utc())
-    first_restored = next(card for card in restored.dds_live_cards if card.card_id == first_id)
+    first_restored = restored.desk.cards[first_id]
     assert first_restored.status_log[-1].status is ServiceStatus.ACCEPTED
-    assert restored.dds_active_card_id == second.card_id
-    assert len(restored.dds_live_cards) == 2
-    assert restored.dds_next_scenario_index == 2
-    assert restored.dds_next_arrival_at is not None
+    assert restored.desk.active_id == second.card_id
+    assert len(restored.desk.cards) == 2
+    assert restored.desk.next_index == 2
+    assert restored.desk.next_arrival_at is not None
 
 
 def test_mixed_handoff_checkpoint_preserves_operator_card_and_generated_queue():
@@ -249,10 +247,10 @@ def test_mixed_handoff_checkpoint_preserves_operator_card_and_generated_queue():
 
     assert restored.operator_kio.address == "улица Ленина, 14"
     assert restored.operator_scenario.id == first.id
-    assert restored.dds_scenarios[0].id == first.id
-    assert restored.dds_scenarios[1].id == second.id
-    assert len(restored.dds_live_cards) == 2
-    assert restored.dds_active_card_id == state.dds_active_card_id
+    assert restored.desk.scenarios[0].id == first.id
+    assert restored.desk.scenarios[1].id == second.id
+    assert len(restored.desk.cards) == 2
+    assert restored.desk.active_id == state.desk.active_id
 
 
 def test_checkpoint_storage_failure_fences_and_notifies_all_data_channels():

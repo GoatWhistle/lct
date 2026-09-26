@@ -13,11 +13,10 @@ from app.api.http.scenario_submissions import reset_demo_submissions
 from app.config import get_settings
 from app.db.models import AuditLog, Group, Scenario, ScenarioSubmission, Trainee
 from app.domain import ekp
-from app.domain.events import Exercise, SessionMode
 from app.main import app
 from app.scenarios import store
-from app.session.dds import prepare_card
-from app.session.state import SessionState
+from app.session.dds import build_card
+from app.session.timers import SessionTimers
 
 
 @pytest.fixture
@@ -182,19 +181,10 @@ def test_submitted_kio_is_kept_intact_and_becomes_the_dds_card_after_approval(cl
     assert scenario.student_card.fire.object_kind == "мусорный контейнер"
     assert scenario.student_card.signs == source.signs
     assert "moderated-kio" in scenario.topics
-    state = SessionState(
-        session_id=UUID("00000000-0000-4000-8000-000000000701"),
-        scenario_id=scenario.id,
-        scenario_title=scenario.title,
-        level=scenario.level.value,
-        mode=SessionMode.TRAINING,
-        exercise=Exercise.DDS,
-    )
-    prepare_card(state, scenario)
-    assert state.dispatched_card is not None
-    assert state.dispatched_card.address == scenario.student_card.address
-    assert state.dispatched_card.caller_name == "Учебный заявитель"
-    assert state.dispatched_card.fire.object_kind == "мусорный контейнер"
+    card = build_card(scenario, 0, SessionTimers().limits)
+    assert card.dispatched_card.address == scenario.student_card.address
+    assert card.dispatched_card.caller_name == "Учебный заявитель"
+    assert card.dispatched_card.fire.object_kind == "мусорный контейнер"
     assert any(
         item["id"] == scenario.id and item["source"] == "trainee"
         for item in client.get("/api/scenarios").json()

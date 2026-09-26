@@ -75,8 +75,13 @@ def _dump_live_card(item: DdsLiveCard, now: float) -> dict:
 
 
 def dump_state(state: SessionState) -> dict:
-    """Сериализовать только данные, необходимые для точного продолжения."""
-    state.capture_active_dds()
+    """Сериализовать только данные, необходимые для точного продолжения.
+
+    Чистое чтение. Верхние ключи работы диспетчера повторяют активную
+    карточку пульта — так их писал формат до `DdsDesk`.
+    """
+    desk = state.desk
+    active = desk.active
     now = time.monotonic()
     payload = {
         "version": CHECKPOINT_VERSION,
@@ -117,30 +122,28 @@ def dump_state(state: SessionState) -> dict:
         "dispatched_at": state.dispatched_at.isoformat() if state.dispatched_at else None,
         "bounced_fields": state.bounced_fields,
         "dds_log": [
-            [action, at.isoformat(), detail] for action, at, detail in state.dds_log
-        ],
-        "status_log": [item.model_dump(mode="json") for item in state.status_log],
-        "crew_selected": state.crew_selected,
-        "crew_assignments": state.crew_assignments,
-        "phone_reports": [item.model_dump(mode="json") for item in state.phone_reports],
-        "phone_lines": [item.model_dump(mode="json") for item in state.phone_lines],
+            [action, at.isoformat(), detail] for action, at, detail in active.dds_log
+        ] if active else [],
+        "status_log": [item.model_dump(mode="json") for item in active.status_log] if active else [],
+        "crew_selected": active.crew_selected if active else None,
+        "crew_assignments": active.crew_assignments if active else {},
+        "phone_reports": [item.model_dump(mode="json") for item in active.phone_reports] if active else [],
+        "phone_lines": [item.model_dump(mode="json") for item in active.phone_lines] if active else [],
         "phone_pending": (
-            state.phone_pending.model_dump(mode="json") if state.phone_pending else None
+            active.phone_pending.model_dump(mode="json") if active and active.phone_pending else None
         ),
-        "dds_scenarios": [item.model_dump(mode="json") for item in state.dds_scenarios],
+        "dds_scenarios": [item.model_dump(mode="json") for item in desk.scenarios],
         "pending_dds_scenarios": [item.model_dump(mode="json") for item in state.pending_dds_scenarios],
         "operator_kio": state.operator_kio.model_dump(mode="json") if state.operator_kio else None,
         "operator_scenario": state.operator_scenario.model_dump(mode="json") if state.operator_scenario else None,
-        "dds_live_cards": [_dump_live_card(item, now) for item in state.dds_live_cards],
-        "dds_active_card_id": (
-            str(state.dds_active_card_id) if state.dds_active_card_id else None
-        ),
-        "dds_card_index": state.dds_card_index,
-        "dds_arrival_interval_seconds": state.dds_arrival_interval_seconds,
-        "dds_max_waiting": state.dds_max_waiting,
-        "dds_next_scenario_index": state.dds_next_scenario_index,
+        "dds_live_cards": [_dump_live_card(item, now) for item in desk.ordered()],
+        "dds_active_card_id": str(desk.active_id) if desk.active_id else None,
+        "dds_card_index": desk.card_index,
+        "dds_arrival_interval_seconds": desk.arrival_interval_seconds,
+        "dds_max_waiting": desk.max_waiting,
+        "dds_next_scenario_index": desk.next_index,
         "dds_next_arrival_at": (
-            state.dds_next_arrival_at.isoformat() if state.dds_next_arrival_at else None
+            desk.next_arrival_at.isoformat() if desk.next_arrival_at else None
         ),
         "dds_completed": [
             {
@@ -160,10 +163,10 @@ def dump_state(state: SessionState) -> dict:
                 "managed_service": item.managed_service,
                 "recipient_services": item.recipient_services,
             }
-            for item in state.dds_completed
+            for item in desk.completed
         ],
-        "reply_text": state.reply_text,
-        "reply_log": [[at.isoformat(), text] for at, text in state.reply_log],
+        "reply_text": active.reply_text if active else "",
+        "reply_log": [[at.isoformat(), text] for at, text in active.reply_log] if active else [],
         "text_revealed_facts": state.text_revealed_facts,
         "resolved_outcome": state.resolved_outcome,
         "resolve_comment": state.resolve_comment,
@@ -232,6 +235,75 @@ def _restore_live_card(item: dict, saved_at: datetime) -> DdsLiveCard:
     )
 
 
+def _restore_completed(item: dict) -> DdsCardRecord:
+    return DdsCardRecord(
+        card_id=UUID(item["card_id"]),
+        scenario_id=item["scenario_id"],
+        reply_text=item.get("reply_text", ""),
+        metrics=[Metric.model_validate(metric) for metric in item.get("metrics", [])],
+        findings=[Finding.model_validate(finding) for finding in item.get("findings", [])],
+        actions=list(item.get("actions") or []),
+        duration_ms=int(item.get("duration_ms", 0)),
+        title=item.get("title"),
+        address=item.get("address"),
+        description=item.get("description"),
+        incident_type=item.get("incident_type"),
+        victims_count=item.get("victims_count"),
+        received_at=_dt(item.get("received_at")),
+        managed_service=item.get("managed_service"),
+        recipient_services=list(item.get("recipient_services") or []),
+    )
+
+
+def _restore_desk(state: SessionState, payload: dict, saved_at: datetime) -> None:
+    desk = state.desk
+    live = payload.get("dds_live_cards", [])
+    desk.scenarios = [Scenario.model_validate(item) for item in payload.get("dds_scenarios", [])]
+    desk.completed = [_restore_completed(item) for item in payload.get("dds_completed", [])]
+    desk.limits = dict(state.timers.limits)
+    desk.card_index = int(payload.get("dds_card_index", 0))
+    desk.arrival_interval_seconds = int(payload.get("dds_arrival_interval_seconds", 0))
+    desk.max_waiting = int(payload.get("dds_max_waiting", 3))
+    desk.next_index = int(payload.get(
+        "dds_next_scenario_index",
+        max((item["original_index"] for item in live), default=-1) + 1,
+    ))
+    desk.next_arrival_at = _dt(payload.get("dds_next_arrival_at"))
+    for item in live:
+        desk.add(_restore_live_card(item, saved_at))
+    if desk.cards:
+        # Legacy snapshots had no explicit active ID; newer snapshots may
+        # intentionally be between cards while waiting for the next arrival.
+        raw_id = payload.get("dds_active_card_id")
+        active_id = UUID(raw_id) if raw_id else None
+        if active_id is None and "dds_active_card_id" not in payload:
+            active_id = desk.ordered()[0].card_id
+        if active_id is not None:
+            desk.open(active_id)
+    elif (state.exercise is Exercise.CALL and state.dispatched_card is not None
+          and state.scenario is not None):
+        # До пульта живой диспетчер упражнения 112 писал прямо в сессию:
+        # его работа лежит в верхних ключах снимка.
+        desk.add(_restore_live_card({
+            **payload,
+            "original_index": 0,
+            "scenario": payload["scenario"],
+            "dispatched_card": payload["dispatched_card"],
+            "dispatched_at": payload.get("dispatched_at") or saved_at.isoformat(),
+        }, saved_at))
+        desk.open(state.dispatched_card.card_id)
+    if state.exercise is Exercise.CALL:
+        # Таймеры звонка и диспетчера — одна цепочка 112 → ДДС (см. dispatch).
+        for card in desk.cards.values():
+            card.timers = state.timers
+    if (desk.scenarios
+            and desk.next_index < len(desk.scenarios)
+            and desk.next_arrival_at is None):
+        # Old checkpoints had no delivery schedule; resume any remaining
+        # selected scenarios immediately rather than strand the session.
+        desk.next_arrival_at = now_utc()
+
+
 def load_state(payload: dict, saved_at: datetime) -> SessionState:
     """Восстановить состояние; неизвестная версия отклоняется явно."""
     if payload.get("version") != CHECKPOINT_VERSION:
@@ -276,84 +348,18 @@ def load_state(payload: dict, saved_at: datetime) -> SessionState:
         ),
         dispatched_at=_dt(payload.get("dispatched_at")),
         bounced_fields=list(payload.get("bounced_fields") or []),
-        dds_log=[(action, datetime.fromisoformat(at), detail)
-                 for action, at, detail in payload.get("dds_log", [])],
-        status_log=[StatusEntry.model_validate(item) for item in payload.get("status_log", [])],
-        crew_selected=payload.get("crew_selected"),
-        crew_assignments=dict(payload.get("crew_assignments") or {}),
-        phone_reports=[PhoneReportRecord.model_validate(item)
-                       for item in payload.get("phone_reports", [])],
-        phone_lines=[PhoneLineRecord.model_validate(item)
-                     for item in payload.get("phone_lines", [])],
-        phone_pending=(
-            PhoneCallPending.model_validate(payload["phone_pending"])
-            if payload.get("phone_pending") else None
-        ),
-        dds_scenarios=[Scenario.model_validate(item)
-                       for item in payload.get("dds_scenarios", [])],
         pending_dds_scenarios=[Scenario.model_validate(item)
                                for item in payload.get("pending_dds_scenarios", [])],
         operator_kio=(KIO.model_validate(payload["operator_kio"])
                       if payload.get("operator_kio") else None),
         operator_scenario=(Scenario.model_validate(payload["operator_scenario"])
                            if payload.get("operator_scenario") else None),
-        dds_live_cards=[_restore_live_card(item, saved_at)
-                        for item in payload.get("dds_live_cards", [])],
-        dds_active_card_id=(
-            UUID(payload["dds_active_card_id"])
-            if payload.get("dds_active_card_id") else None
-        ),
-        dds_card_index=int(payload.get("dds_card_index", 0)),
-        dds_arrival_interval_seconds=int(payload.get("dds_arrival_interval_seconds", 0)),
-        dds_max_waiting=int(payload.get("dds_max_waiting", 3)),
-        dds_next_scenario_index=int(payload.get(
-            "dds_next_scenario_index",
-            max((item["original_index"] for item in payload.get("dds_live_cards", [])), default=-1) + 1,
-        )),
-        dds_next_arrival_at=_dt(payload.get("dds_next_arrival_at")),
-        dds_completed=[
-            DdsCardRecord(
-                card_id=UUID(item["card_id"]),
-                scenario_id=item["scenario_id"],
-                reply_text=item.get("reply_text", ""),
-                metrics=[Metric.model_validate(metric) for metric in item.get("metrics", [])],
-                findings=[Finding.model_validate(finding)
-                          for finding in item.get("findings", [])],
-                actions=list(item.get("actions") or []),
-                duration_ms=int(item.get("duration_ms", 0)),
-                title=item.get("title"),
-                address=item.get("address"),
-                description=item.get("description"),
-                incident_type=item.get("incident_type"),
-                victims_count=item.get("victims_count"),
-                received_at=_dt(item.get("received_at")),
-                managed_service=item.get("managed_service"),
-                recipient_services=list(item.get("recipient_services") or []),
-            )
-            for item in payload.get("dds_completed", [])
-        ],
-        reply_text=payload.get("reply_text", ""),
-        reply_log=[(datetime.fromisoformat(at), text)
-                   for at, text in payload.get("reply_log", [])],
         text_revealed_facts=dict(payload.get("text_revealed_facts") or {}),
         resolved_outcome=payload.get("resolved_outcome"),
         resolve_comment=payload.get("resolve_comment", ""),
         processed_station_commands=list(payload.get("processed_station_commands") or [])[-512:],
     )
-    if state.dds_live_cards:
-        # Legacy snapshots had no explicit active ID; newer snapshots may
-        # intentionally be between cards while waiting for the next arrival.
-        active_id = state.dds_active_card_id
-        if active_id is None and "dds_active_card_id" not in payload:
-            active_id = state.dds_live_cards[0].card_id
-        if active_id is not None:
-            state.activate_dds_card(active_id, capture=False)
-    if (state.dds_scenarios
-            and state.dds_next_scenario_index < len(state.dds_scenarios)
-            and state.dds_next_arrival_at is None):
-        # Old checkpoints had no delivery schedule; resume any remaining
-        # selected scenarios immediately rather than strand the session.
-        state.dds_next_arrival_at = now_utc()
+    _restore_desk(state, payload, saved_at)
     # Голосовые runtime-объекты не сериализуются. Их безопасно собрать заново;
     # карточка и оценка при этом остаются прежними.
     if state.exercise is Exercise.CALL and state.scenario is not None:
