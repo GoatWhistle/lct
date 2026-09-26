@@ -2,30 +2,39 @@
 
 Живое состояние карточки существует в одном экземпляре — в `DdsLiveCard`.
 Пульт хранит карточки и id активной; переключение меняет id и ничего не
-копирует, поэтому обработчики станции пишут прямо в `desk.active`.
+копирует. Правила команд станции — `DdsDesk.apply`: сокет только разбирает
+команду, сохраняет итог и рассылает события.
 """
 
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from app.domain import ekp
-from app.domain.events import Metric
+from app.domain.events import Exercise, Metric, PhoneLine, PhoneReport, StationState
 from app.domain.kio import KIO, ResponseStatus, apply_patch
 from app.domain.statuses import (
+    PRIMARY,
+    SERVICE_STATUS_LABELS,
     PhoneCallPending,
     PhoneLineRecord,
     PhoneReportRecord,
     ServiceStatus,
     StatusEntry,
+    StatusError,
     check,
+    current,
 )
 from app.domain.taxonomy import Finding
 from app.domain.timers import TimerCode
 from app.scenarios.schema import Scenario
+from app.scoring.address import address_matches
 from app.session.timers import SessionTimers, now_utc
+
+if TYPE_CHECKING:
+    from app.session.state import SessionState
 
 
 @dataclass
@@ -192,6 +201,102 @@ def build_card(
     )
 
 
+#: Команды, которым не нужна активная карточка пульта.
+CARDLESS_COMMANDS = {"card.open", "station.finish", "card.bounce"}
+
+#: Доклады бригады идут строго по порядку; перед каждым звонком служба
+#: должна стоять не раньше нужного статуса.
+REPORT_PHASES = ("dispatched", "arrived", "working", "completed")
+REQUIRED_STATUS = {
+    "dispatched": ServiceStatus.ACCEPTED,
+    "arrived": ServiceStatus.RESPONDING,
+    "working": ServiceStatus.ARRIVED,
+    "completed": ServiceStatus.WORKING,
+}
+STATUS_AT_OR_AFTER = {
+    "dispatched": {ServiceStatus.ACCEPTED, ServiceStatus.RESPONDING,
+                   ServiceStatus.ARRIVED, ServiceStatus.WORKING},
+    "arrived": {ServiceStatus.RESPONDING, ServiceStatus.ARRIVED, ServiceStatus.WORKING},
+    "working": {ServiceStatus.ARRIVED, ServiceStatus.WORKING},
+    "completed": {ServiceStatus.WORKING, ServiceStatus.COMPLETED},
+}
+
+
+@dataclass
+class DeskOutcome:
+    """Итог команды пульта. Отказ ничего не меняет и событий не несёт."""
+
+    #: События станции в порядке отправки.
+    events: list[Any] = field(default_factory=list)
+    error: str | None = None
+    #: Состояние изменилось: транспорт сохраняет его и шлёт свежий снимок.
+    #: Повтор уже учтённой команды проходит молча, без записи.
+    changed: bool = False
+    #: Занятие ДДС дошло до конца; завершает его сессия, а не пульт.
+    finished: bool = False
+
+
+def _refused(message: str) -> DeskOutcome:
+    return DeskOutcome(error=message)
+
+
+def _start_work_timer(card: DdsLiveCard) -> None:
+    """Три минуты на работу идут один раз — с открытия карточки."""
+    timer = card.timers.timers.get(TimerCode.DDS_WORK)
+    if timer is None or timer.started_at is None:
+        card.on_event("dds.open")
+
+
+def _line(card: DdsLiveCard, speaker: str, text: str) -> PhoneLine | None:
+    call = card.phone_pending
+    if call is None:
+        return None
+    line = PhoneLineRecord(service=call.service, crew=call.crew,
+                           speaker=speaker, text=text, at=now_utc())
+    card.phone_lines.append(line)
+    card.dds_log.append((f"phone.line.{speaker}", line.at, f"{call.crew}: {text}"))
+    return PhoneLine(**line.model_dump())
+
+
+def _incident_matches(card: DdsLiveCard, supplied: str) -> bool:
+    text = supplied.casefold()
+    # Описание часто начинается с адреса: его нельзя считать совпадением
+    # характера происшествия. Берём только название сценария и признаки ЕКП.
+    source = " ".join((card.scenario.title, " ".join(card.kio.signs)))
+    anchors = {word[:4] for word in re.findall(r"[а-яё]{5,}", source.casefold())}
+    return len(supplied.strip()) >= 8 and any(anchor in text for anchor in anchors)
+
+
+def _has_purpose(text: str, stems: tuple[str, ...]) -> bool:
+    normalized = text.casefold()
+    return len(text.strip()) >= 8 and any(stem in normalized for stem in stems)
+
+
+def _report_text(phase: str, crew: str, address: str) -> str:
+    match phase:
+        case "dispatched":
+            return f"{crew}: вызов по адресу {address} принят, выезжаем. О прибытии доложу."
+        case "arrived":
+            return f"{crew}: прибыли по адресу {address}. Уточняем обстановку на месте."
+        case "working":
+            return f"{crew}: обстановка уточнена, приступили к работам. Сообщим о завершении."
+        case _:
+            return f"{crew}: работы завершены. Дальнейшая помощь от нашей бригады не требуется."
+
+
+def _finish_phone_call(card: DdsLiveCard) -> list[Any]:
+    call = card.phone_pending
+    assert call is not None
+    text = _report_text(call.phase, call.crew, card.dispatched_card.address or "из карточки")
+    line = _line(card, "crew", text)
+    report = PhoneReportRecord(service=call.service, crew=call.crew,
+                               phase=call.phase, text=text, at=now_utc())
+    card.phone_reports.append(report)
+    card.dds_log.append(("phone.report", now_utc(), f"{call.crew}: {call.phase}"))
+    card.phone_pending = None
+    return [line, PhoneReport(**report.model_dump())]
+
+
 @dataclass
 class DdsDesk:
     """Живые карточки занятия, активная из них и очередь поступления."""
@@ -309,6 +414,207 @@ class DdsDesk:
             self.next_arrival_at = now
 
         return delivered
+
+    def apply(self, command: Any, session: "SessionState") -> DeskOutcome:
+        """Применить команду станции к пульту: правила карточки без транспорта.
+
+        Из сессии берутся упражнение, службы обучающегося и снимки для
+        станции. Отказ возвращается до первой записи — состояние не меняется.
+        """
+        if session.ended:
+            return _refused("Занятие уже завершено")
+        card = self.active
+        if card is None and command.type not in CARDLESS_COMMANDS:
+            return _refused("Нет активной карточки")
+        dds_lesson = session.exercise is Exercise.DDS or session.handoff_to_dds
+        outcome = DeskOutcome(changed=True)
+        match command.type:
+            case "card.ack":
+                # Подтверждение приёма — это статус «Принята» у главной службы.
+                # Кнопка осталась ради живой цепочки 112 → ДДС (lct-20), где
+                # диспетчер один и выбирать службу не из чего.
+                if not command.comment.strip():
+                    return _refused("Для подтверждения приёма добавьте комментарий с основанием")
+                if any(action == "card.ack" for action, _at, _detail in card.dds_log):
+                    return DeskOutcome()
+                card.on_event("card.ack")
+                card.dds_log.append(("card.ack", now_utc(), None))
+                services = session.card_services(card)
+                if services:
+                    _start_work_timer(card)
+                    try:
+                        card.set_service_status(
+                            services[0], ServiceStatus.ACCEPTED, command.comment,
+                            author="диспетчер",
+                        )
+                    except StatusError:
+                        pass  # статус уже стоит: повторное нажатие ничего не меняет
+            case "card.status":
+                if command.service not in session.card_services(card):
+                    return _refused("Можно менять статусы только своей ДДС")
+                try:
+                    check(card.status_log, command.service, command.status, command.comment)
+                except StatusError as exc:
+                    return _refused(str(exc))
+                _start_work_timer(card)
+                card.set_service_status(
+                    command.service, command.status, command.comment, author="диспетчер"
+                )
+                # Первичный статус останавливает норматив 30 секунд.
+                if command.status in PRIMARY:
+                    card.on_event("card.ack")
+                if command.status in {
+                    ServiceStatus.COMPLETED, ServiceStatus.DECLINED, ServiceStatus.REFUSED,
+                }:
+                    card.on_event("dds.complete")
+            case "crew.select":
+                if command.crew not in session.crew_options(card):
+                    return _refused("Выберите бригаду из списка доступных")
+                service = session.crew_service(card, command.crew)
+                assigned = card.crew_assignments.get(service)
+                if assigned and assigned != command.crew and any(
+                    report.service == service for report in card.phone_reports
+                ):
+                    return _refused("После первого доклада бригаду этой службы менять нельзя")
+                if card.phone_pending is not None:
+                    return _refused("Завершите текущий разговор перед сменой бригады")
+                if card.crew_selected == command.crew and assigned == command.crew:
+                    return DeskOutcome()
+                card.crew_selected = command.crew
+                card.crew_assignments[service] = command.crew
+                card.dds_log.append(("crew.select", now_utc(), command.crew))
+            case "phone.dial":
+                if card.phone_pending is not None:
+                    return _refused("Разговор уже идёт: передайте сведения или завершите звонок")
+                crew = card.crew_selected
+                service = session.crew_service(card, crew) if crew else None
+                if service is None:
+                    return _refused("Сначала выберите бригаду")
+                previous = [report for report in card.phone_reports if report.service == service]
+                if len(previous) >= len(REPORT_PHASES):
+                    return _refused("Все доклады этой бригады уже получены")
+                phase = REPORT_PHASES[len(previous)]
+                required = REQUIRED_STATUS[phase]
+                if current(card.status_log, service) not in STATUS_AT_OR_AFTER[phase]:
+                    return _refused(
+                        f"Перед звонком нужен статус «{SERVICE_STATUS_LABELS[required]}» этой службы"
+                    )
+                card.phone_pending = PhoneCallPending(service=service, crew=crew, phase=phase)
+                card.dds_log.append(("phone.dial", now_utc(), crew))
+                greeting = (f"{crew}, старший группы на связи. Назовите адрес, характер происшествия "
+                            "и что требуется от бригады."
+                            if phase == "dispatched" else
+                            f"{crew}, старший группы на связи. Слушаю ваш запрос по карточке.")
+                outcome.events.append(_line(card, "crew", greeting))
+            case "phone.brief":
+                call = card.phone_pending
+                if call is None or call.phase != "dispatched":
+                    return _refused("Сначала соединитесь со старшим группы для передачи вызова")
+                if not address_matches(card.dispatched_card.address, command.address):
+                    return _refused("Проверьте адрес: улица и номер дома должны совпадать с карточкой")
+                if not _incident_matches(card, command.incident):
+                    return _refused("Уточните характер происшествия по данным карточки")
+                if not _has_purpose(command.request, ("выезд", "выех", "направ", "прибыт",
+                                                      "реагир", "помощ", "подтверд", "долож")):
+                    return _refused("Сформулируйте задачу: выезд, помощь или доклад бригады")
+                outcome.events.append(_line(
+                    card, "dispatcher", f"Адрес: {command.address.strip()}. "
+                    f"Происшествие: {command.incident.strip()}. {command.request.strip()}"))
+                outcome.events.extend(_finish_phone_call(card))
+            case "phone.check":
+                call = card.phone_pending
+                if call is None or call.phase == "dispatched":
+                    return _refused("Сначала передайте вызов, затем запросите обстановку")
+                if not _has_purpose(command.text, ("обстанов", "статус", "прибыл", "доех",
+                                                   "выех", "работ", "заверш", "мест",
+                                                   "ход", "сообщ", "долож", "уточн")):
+                    return _refused("Спросите обстановку, прибытие или ход работ по карточке")
+                outcome.events.append(_line(card, "dispatcher", command.text.strip()))
+                outcome.events.extend(_finish_phone_call(card))
+            case "phone.hangup":
+                if card.phone_pending is None:
+                    return _refused("Нет активного разговора")
+                card.dds_log.append(("phone.hangup", now_utc(), card.phone_pending.crew))
+                card.phone_pending = None
+            case "card.reply":
+                if not dds_lesson or command.card_id != card.card_id:
+                    return _refused("Ответ относится не к текущей карточке")
+                # A browser may lose the acknowledgement after the server has
+                # committed this replace-style value. Reconnect retries are safe:
+                # don't create another journal row
+                # when the current card already contains exactly this text.
+                if card.reply_text == command.text:
+                    return DeskOutcome()
+                card.reply_text = command.text
+                card.reply_log.append((now_utc(), command.text))
+            case "card.open":
+                if not dds_lesson or not self.open(command.card_id):
+                    return _refused("Карточка отсутствует в текущей очереди")
+                _start_work_timer(self.active)
+                # CardReceived carries the contents, while StationState carries
+                # the status journal and current queue. Send both on every switch
+                # so the newly opened card cannot briefly inherit the previous
+                # card's status snapshot until the next periodic tick.
+                outcome.events += [session.card_received_event(),
+                                   StationState(snapshot=session.station_snapshot())]
+            case "card.next":
+                if not dds_lesson or command.card_id != card.card_id:
+                    return _refused("Следующая карточка недоступна: ID текущей не совпадает")
+                if self.is_completed(command.card_id):
+                    return _refused("Эта карточка уже завершена")
+                # Оценка живёт в модуле завершения, который сам зависит от пульта.
+                from app.session.finish import score_dds_card
+
+                # Keep the lesson alive if selected cards have not arrived yet.
+                # The next delivery may become the active card immediately or
+                # after its configured interval; no completed card is reused.
+                if self.complete(card.card_id, score_dds_card(session, card)) is not None:
+                    outcome.events.append(session.card_received_event())
+                active_before_delivery = self.active_id
+                self.deliver_due()
+                if self.active_id and self.active_id != active_before_delivery:
+                    outcome.events.append(session.card_received_event())
+                outcome.events.append(StationState(snapshot=session.station_snapshot()))
+                if not self.cards and len(self.completed) >= len(self.scenarios):
+                    self._finish_work()
+                    outcome.finished = True
+            case "station.finish":
+                if not dds_lesson:
+                    return _refused("Операторское занятие завершается после звонка 112")
+                self._finish_work()
+                outcome.finished = True
+            case "card.bounce":
+                return _refused(
+                    "ДДС не проверяет заполнение карточки: замечания передаёт служба контроля 112"
+                )
+            case "zone.decision":
+                previous = next(
+                    (detail for action, _at, detail in reversed(card.dds_log)
+                     if action == "zone.decision"),
+                    None,
+                )
+                decision = "в зоне" if command.in_zone else "не в зоне"
+                if previous is not None:
+                    if previous != decision:
+                        return _refused("Решение по зоне уже записано для этой карточки")
+                    return DeskOutcome()
+                card.on_event("zone.decision")
+                card.dds_log.append(("zone.decision", now_utc(), decision))
+            case "crew.dispatched":
+                card.kio = card.kio.model_copy(update={"dispatch_order_at": command.at})
+                card.dds_log.append(("crew.dispatched", now_utc(), None))
+            case "crew.arrived":
+                card.on_event("crew.arrived")
+                card.kio = card.kio.model_copy(update={"arrival_at": command.at})
+                card.dds_log.append(("crew.arrived", now_utc(), None))
+        return outcome
+
+    def _finish_work(self) -> None:
+        """Конец занятия останавливает трёхминутный таймер у каждой начатой карточки."""
+        for card in self.cards.values():
+            timer = card.timers.timers.get(TimerCode.DDS_WORK)
+            if timer is not None and timer.started_at is not None:
+                card.timers.on_event("dds.finish")
 
 
 def prepare_queue(

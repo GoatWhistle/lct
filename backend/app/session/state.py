@@ -367,6 +367,12 @@ class SessionState:
     def ended(self) -> bool:
         return self.ended_at is not None
 
+    def end(self, reason: CallEndReason) -> datetime:
+        """Закрыть занятие; возвращает момент окончания для журнала."""
+        self.ended_at = now_utc()
+        self.end_reason = reason
+        return self.ended_at
+
     def snapshot(self) -> SessionSnapshot:
         """Полное состояние. Монитор в классе включают посреди занятия —
         он обязан показать текущее, а не ждать следующего события."""
