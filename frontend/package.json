@@ -12,7 +12,9 @@
     "check:a11y": "node scripts/check-accessible-controls.mjs",
     "test:ws-outbox": "node scripts/test-ws-outbox.mjs",
     "test:dds-history": "node scripts/test-dds-history.mjs",
-    "test:dds-ack": "node scripts/test-dds-ack.mjs"
+    "test:dds-ack": "node scripts/test-dds-ack.mjs",
+    "test:session-report": "node scripts/test-session-report.mjs",
+    "test:scenario-start": "node scripts/test-scenario-start.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.103.1",
