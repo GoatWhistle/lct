@@ -38,13 +38,17 @@ subjects = {
     "chore: общие скилы, хуки коммитов, правила": "chore: правила коммитов",
 }
 text = message.decode()
+# Issues и PR в сдачу не идут: `#N` вели бы в пустоту или на чужой номер нового репо.
+text = re.sub(r"^Merge pull request #\d+ from [^/\s]+/(\S+)", r"Merge branch '\1'", text)
+text = re.sub(r"[ \t]*\(#\d+\)", "", text)
+text = re.sub(r"(?im)^[ \t]*(close[sd]?|fix(e[sd])?|resolve[sd]?|refs?|see|related|part of)\b[^\n]*#\d+[^\n]*\n?", "", text)
 subject, _, body = text.partition("\n")
 subject = subjects.get(subject.strip(), subject)
 if stop.search(subject) or files.search(subject) or re.search(os.environ["SCRUB_TRACE"] + "|агент", subject, re.I):
     raise SystemExit("scrub: нет замены для заголовка: " + subject)
 trace = re.compile(os.environ["SCRUB_TRACE"])
 def dirty(l):
-    return bool(stop.search(l) or files.search(l) or trace.search(l)
+    return bool(re.search(r"(^|[^\w&/])#\d+", l) or stop.search(l) or files.search(l) or trace.search(l)
                 or re.match(r"\s*(co-authored-by|generated with)\b", l, re.I))
 # Пункт списка со следом выкидывается вместе с продолжением, обычный абзац — целиком,
 # чтобы не оставлять оборванных предложений.
@@ -71,6 +75,7 @@ cat >"$replace" <<'RULES'
 regex:(?m)^\.(claude|agents)/[^\n]*\n==>
 regex:(?m)^(PROMPT|TASK)-<id>\.md[^\n]*\n==>
 regex:Выполнено[^`\n]*`TASK-[^`]+`[^;\n]*;==>Выполнено;
+regex:(?s)<!-- scrub:start -->.*?<!-- scrub:end -->\n\n?==>
 regex: \(\[(AGENTS|CLAUDE)\.md\]\(\.\./(AGENTS|CLAUDE)\.md\)\)==>
 RULES
 
@@ -83,7 +88,7 @@ uvx git-filter-repo --force --quiet --invert-paths --replace-text "$replace" \
 echo "== проверка"
 bad=0
 if git log --all --format='%an %ae %cn %ce%n%B' | grep -niE "$stop" \
-   || git log --all --format='%B' | grep -nE "$files_re|$trace_re"; then
+   || git log --all --format='%B' | grep -nE "$files_re|$trace_re|(^|[^[:alnum:]&/])#[0-9]+"; then
   echo "!! следы в авторах или сообщениях" >&2; bad=1
 fi
 # shellcheck disable=SC2046 # ревизий десятки, в командную строку помещаются
@@ -92,6 +97,10 @@ if { git grep -liE "$agent_re" $(git rev-list --all) -- . ':(exclude)docs/task09
    } | sort -u | grep .; then
   echo "!! следы в содержимом (ревизия:файл) — поправить в исходной репе коммитом и повторить" >&2
   bad=1
+fi
+# shellcheck disable=SC2046
+if git grep -l 'scrub:start' $(git rev-list --all) -- . | grep .; then
+  echo "!! незакрытый блок scrub:start" >&2; bad=1
 fi
 if git rev-list --all | xargs -n1 git ls-tree -r --name-only | sort -u | grep -E "$files_re"; then
   echo "!! файлы агентов в истории" >&2; bad=1

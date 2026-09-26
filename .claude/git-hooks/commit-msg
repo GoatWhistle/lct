@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Сообщение коммита: формат `{type}: {desc}`, desc до 20 слов, без упоминаний ИИ-агентов.
+# Сообщение коммита: формат `{type}: {desc}`, desc до 20 слов, без упоминаний ИИ-агентов
+# и ссылок `#N`.
 set -euo pipefail
 
 msg_file=$1
@@ -18,6 +19,10 @@ fail() { printf 'commit-msg: %s\n' "$1" >&2; exit 1; }
 
 hit=$(printf '%s\n' "$msg" | grep -oiE "$stop" | head -1 || true)
 [[ -z $hit ]] || fail "упоминание агента в сообщении: «$hit»"
+
+# Issues перед сдачей удаляются, а в новом репо `#N` укажет на чужой PR — задачи по id карточки.
+ref=$(printf '%s\n' "$msg" | grep -oE '(^|[^[:alnum:]&/])#[0-9]+' | head -1 || true)
+[[ -z $ref ]] || fail "ссылка на issue/PR «${ref#?}» — вместо неё id карточки (lct-12)"
 
 [[ $subject =~ ^(feat|fix|docs|chore|refactor|test|perf|lct-[0-9]+):\ (.+)$ ]] \
   || fail "заголовок не по формату \`{type}: {desc}\` (feat|fix|docs|chore|refactor|test|perf|lct-<id>): «$subject»"
