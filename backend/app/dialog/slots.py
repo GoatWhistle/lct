@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass, field
 
 import numpy as np
+from pydantic import BaseModel, Field
 
 from app.dialog.embeddings import Embedder
 from app.scenarios.schema import ChecklistItem, Fact, Scenario
@@ -57,6 +58,17 @@ class TurnResult:
         return bool(self.matched)
 
 
+class SlotProgress(BaseModel):
+    """Что уже произошло в разговоре — единственное, что стоит сохранять.
+
+    Якоря, словари раскрытия и уточнения собираются из сценария заново.
+    """
+
+    asked: list[str] = Field(default_factory=list)
+    revealed: list[str] = Field(default_factory=list)
+    refined: list[str] = Field(default_factory=list)
+
+
 class SlotMachine:
     def __init__(
         self,
@@ -64,6 +76,7 @@ class SlotMachine:
         embedder: Embedder,
         floor: float = MATCH_FLOOR,
         margin: float = MATCH_MARGIN,
+        progress: SlotProgress | None = None,
     ) -> None:
         self.scenario = scenario
         self.floor = floor
@@ -103,9 +116,19 @@ class SlotMachine:
             if fact.refine_on:
                 self._refines.setdefault(fact.refine_on, []).append(fact.id)
 
-        self.asked: list[str] = []
-        self.revealed: list[str] = []
-        self.refined: list[str] = []
+        self.progress = progress if progress is not None else SlotProgress()
+
+    @property
+    def asked(self) -> list[str]:
+        return self.progress.asked
+
+    @property
+    def revealed(self) -> list[str]:
+        return self.progress.revealed
+
+    @property
+    def refined(self) -> list[str]:
+        return self.progress.refined
 
     # ── реплика оператора ──
 

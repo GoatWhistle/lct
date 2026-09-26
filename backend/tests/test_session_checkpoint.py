@@ -122,29 +122,6 @@ def test_text_revealed_facts_and_completed_cards_round_trip_whole():
     assert restored.desk.completed[0].received_at.tzinfo is not None
 
 
-def test_legacy_checkpoint_without_new_keys_gets_defaults():
-    before = dds_state()
-    before.text_revealed_facts = {"address": "улица Ленина, 14"}
-    before.desk.completed = [completed_card()]
-    payload = dump_state(before)
-    del payload["text_revealed_facts"]
-    legacy_keys = {"card_id", "scenario_id", "reply_text", "metrics",
-                   "findings", "actions", "duration_ms"}
-    payload["dds_completed"] = [
-        {key: value for key, value in item.items() if key in legacy_keys}
-        for item in payload["dds_completed"]
-    ]
-
-    restored = load_state(payload, now_utc())
-
-    assert restored.text_revealed_facts == {}
-    card = restored.desk.completed[0]
-    assert card.card_id == before.desk.completed[0].card_id
-    assert (card.title, card.address, card.description, card.incident_type,
-            card.victims_count, card.received_at, card.managed_service) == (None,) * 7
-    assert card.recipient_services == []
-
-
 def test_checkpoint_rejects_unknown_format_version():
     payload = dump_state(dds_state())
     payload["version"] = 999

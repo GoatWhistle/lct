@@ -9,8 +9,17 @@
 """
 
 import time
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
+
+from pydantic import (
+    BaseModel,
+    Field,
+    SerializerFunctionWrapHandler,
+    ValidationInfo,
+    model_serializer,
+    model_validator,
+)
 
 from app.domain.timers import NORMATIVES, TimerCode, TimerSnapshot, state_for
 
@@ -57,13 +66,45 @@ STOPS: dict[str, tuple[TimerCode, ...]] = {
 }
 
 
-@dataclass
-class Timer:
+def downtime_ms(saved_at: datetime) -> int:
+    """Сколько занятие пролежало в снимке: запущенный таймер считает и это время."""
+    if saved_at.tzinfo is None:
+        saved_at = saved_at.replace(tzinfo=UTC)
+    return max(0, int((now_utc() - saved_at).total_seconds() * 1000))
+
+
+class Timer(BaseModel):
+    """`started_at` — monotonic-отметка процесса, в другом процессе она ничего
+    не значит. Снимок хранит прошедшее время, а загрузка пересчитывает отметку
+    от своих часов (простой берётся из контекста `downtime_ms`)."""
+
     code: TimerCode
     started_at: float | None = None
     elapsed_ms: int = 0
     attempt: int = 1
     stopped: bool = False
+
+    @model_serializer(mode="wrap")
+    def _dump(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = handler(self)
+        data.pop("started_at")
+        data["elapsed_ms"] = self.current_ms(time.monotonic())
+        data["started"] = self.started_at is not None
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _restore(cls, data: Any, info: ValidationInfo) -> Any:
+        if not isinstance(data, dict) or "started" not in data:
+            return data
+        data = dict(data)
+        elapsed = max(0, int(data.get("elapsed_ms", 0)))
+        stopped = bool(data.get("stopped"))
+        downtime = 0 if stopped else (info.context or {}).get("downtime_ms", 0)
+        started = data.pop("started")
+        data["started_at"] = time.monotonic() - (elapsed + downtime) / 1000 if started else None
+        data["elapsed_ms"] = elapsed if stopped else 0
+        return data
 
     def start(self, now: float) -> None:
         if self.stopped:
@@ -85,22 +126,21 @@ class Timer:
         return int((now - self.started_at) * 1000)
 
 
-@dataclass
-class SessionTimers:
+class SessionTimers(BaseModel):
     """Набор таймеров одной сессии. `limits` приходит из конфига —
     норматив меняется значением, а не правкой кода."""
 
-    limits: dict[TimerCode, int] = field(
+    limits: dict[TimerCode, int] = Field(
         default_factory=lambda: {code: norm.limit_ms for code, norm in NORMATIVES.items()}
     )
-    timers: dict[TimerCode, Timer] = field(default_factory=dict)
+    timers: dict[TimerCode, Timer] = Field(default_factory=dict)
 
     def on_event(self, event_type: str, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
         for code in STARTS.get(event_type, ()):
-            self.timers.setdefault(code, Timer(code)).start(now)
+            self.timers.setdefault(code, Timer(code=code)).start(now)
         for code in STOPS.get(event_type, ()):
-            self.timers.setdefault(code, Timer(code)).stop(now)
+            self.timers.setdefault(code, Timer(code=code)).stop(now)
 
     def snapshot(self, now: float | None = None) -> list[TimerSnapshot]:
         """Только запущенные таймеры: показывать нули по нормативам,

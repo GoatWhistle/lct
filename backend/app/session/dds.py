@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel, Field
+
 from app.domain import ekp
 from app.domain.events import Exercise, Metric, PhoneLine, PhoneReport, StationState
 from app.domain.kio import KIO, ResponseStatus, apply_patch
@@ -37,8 +39,7 @@ if TYPE_CHECKING:
     from app.session.state import SessionState
 
 
-@dataclass
-class DdsCardRecord:
+class DdsCardRecord(BaseModel):
     card_id: UUID
     scenario_id: str
     reply_text: str
@@ -53,7 +54,7 @@ class DdsCardRecord:
     victims_count: int | None = None
     received_at: datetime | None = None
     managed_service: str | None = None
-    recipient_services: list[str] = field(default_factory=list)
+    recipient_services: list[str] = Field(default_factory=list)
 
     @property
     def score_auto(self) -> float:
@@ -63,8 +64,7 @@ class DdsCardRecord:
         return round(100 * passed / total, 1) if total else 0.0
 
 
-@dataclass
-class DdsLiveCard:
+class DdsLiveCard(BaseModel):
     """Изолированное живое состояние одной одновременно выданной карточки."""
 
     original_index: int
@@ -73,16 +73,16 @@ class DdsLiveCard:
     dispatched_card: KIO
     dispatched_at: datetime
     timers: SessionTimers
-    bounced_fields: list[str] = field(default_factory=list)
-    dds_log: list[tuple[str, datetime, str | None]] = field(default_factory=list)
-    status_log: list[StatusEntry] = field(default_factory=list)
+    bounced_fields: list[str] = Field(default_factory=list)
+    dds_log: list[tuple[str, datetime, str | None]] = Field(default_factory=list)
+    status_log: list[StatusEntry] = Field(default_factory=list)
     crew_selected: str | None = None
-    crew_assignments: dict[str, str] = field(default_factory=dict)
-    phone_reports: list[PhoneReportRecord] = field(default_factory=list)
-    phone_lines: list[PhoneLineRecord] = field(default_factory=list)
+    crew_assignments: dict[str, str] = Field(default_factory=dict)
+    phone_reports: list[PhoneReportRecord] = Field(default_factory=list)
+    phone_lines: list[PhoneLineRecord] = Field(default_factory=list)
     phone_pending: PhoneCallPending | None = None
     reply_text: str = ""
-    reply_log: list[tuple[datetime, str]] = field(default_factory=list)
+    reply_log: list[tuple[datetime, str]] = Field(default_factory=list)
 
     @property
     def card_id(self) -> UUID:
@@ -297,18 +297,17 @@ def _finish_phone_call(card: DdsLiveCard) -> list[Any]:
     return [line, PhoneReport(**report.model_dump())]
 
 
-@dataclass
-class DdsDesk:
+class DdsDesk(BaseModel):
     """Живые карточки занятия, активная из них и очередь поступления."""
 
-    scenarios: list[Scenario] = field(default_factory=list)
-    cards: dict[UUID, DdsLiveCard] = field(default_factory=dict)
+    scenarios: list[Scenario] = Field(default_factory=list)
+    cards: dict[UUID, DdsLiveCard] = Field(default_factory=dict)
     active_id: UUID | None = None
     #: Номер карточки на экране. После завершения последней из поступивших
     #: остаётся прежним, пока не придёт следующая.
     card_index: int = 0
-    completed: list[DdsCardRecord] = field(default_factory=list)
-    limits: dict[TimerCode, int] = field(default_factory=lambda: dict(SessionTimers().limits))
+    completed: list[DdsCardRecord] = Field(default_factory=list)
+    limits: dict[TimerCode, int] = Field(default_factory=lambda: dict(SessionTimers().limits))
     arrival_interval_seconds: int = 0
     max_waiting: int = 3
     next_index: int = 0

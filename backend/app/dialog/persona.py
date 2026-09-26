@@ -7,6 +7,8 @@
 
 from dataclasses import dataclass, field
 
+from pydantic import BaseModel, Field
+
 from app.domain.events import Mood
 from app.scenarios.schema import Persona
 
@@ -37,13 +39,47 @@ DIRECTIVE_MOOD: dict[str, Mood] = {
 }
 
 
-@dataclass
-class PersonaState:
-    persona: Persona
+class PersonaProgress(BaseModel):
+    """Где звонящий по дуге и что накопил; профиль берётся из сценария."""
+
     stage: str = "registration"
     repeats: int = 0
     directive: str | None = None
-    history: list[Mood] = field(default_factory=list)
+    history: list[Mood] = Field(default_factory=list)
+
+
+@dataclass
+class PersonaState:
+    persona: Persona
+    progress: PersonaProgress = field(default_factory=PersonaProgress)
+
+    @property
+    def stage(self) -> str:
+        return self.progress.stage
+
+    @stage.setter
+    def stage(self, value: str) -> None:
+        self.progress.stage = value
+
+    @property
+    def repeats(self) -> int:
+        return self.progress.repeats
+
+    @repeats.setter
+    def repeats(self, value: int) -> None:
+        self.progress.repeats = value
+
+    @property
+    def directive(self) -> str | None:
+        return self.progress.directive
+
+    @directive.setter
+    def directive(self, value: str | None) -> None:
+        self.progress.directive = value
+
+    @property
+    def history(self) -> list[Mood]:
+        return self.progress.history
 
     @property
     def base(self) -> str:
