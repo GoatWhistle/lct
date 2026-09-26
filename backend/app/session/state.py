@@ -6,10 +6,11 @@
 """
 
 import time
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from app.dialog.caller import TemplateCaller
 from app.dialog.persona import PersonaState
@@ -40,11 +41,21 @@ from app.scenarios.schema import Scenario
 from app.session.dds import DdsCardRecord, DdsDesk, DdsLiveCard
 from app.session.timers import SessionTimers, now_utc
 
-__all__ = ["DdsCardRecord", "DdsLiveCard", "SessionState", "now_utc"]
+__all__ = ["DdsCardRecord", "DdsLiveCard", "PersistedSession", "SessionState", "now_utc"]
+
+#: Сколько последних команд станции помнит защита от повтора.
+MAX_STATION_COMMANDS = 512
 
 
-@dataclass
-class SessionState:
+class PersistedSession(BaseModel):
+    """Сохраняемая часть занятия — ровно то, что пишется в снимок.
+
+    Снимок — `model_dump` этой модели, загрузка — `model_validate`, поэтому
+    поле сессии нельзя завести, не решив, сохраняемое оно или живое: подкласс
+    обязан пометить каждое своё поле `Field(exclude=True)`, иначе класс не
+    создастся (см. `__pydantic_init_subclass__`).
+    """
+
     session_id: UUID
     scenario_id: str
     scenario_title: str
@@ -54,12 +65,10 @@ class SessionState:
     owner_login: str | None = None
     #: Monotonic DB ownership generation; stale processes may not persist writes.
     backend_fencing_epoch: int = 0
-    #: Runtime-only: set when this process loses or cannot confirm DB ownership.
-    lease_fenced: bool = False
     exercise: Exercise = Exercise.CALL
     #: После заполнения КИО занятие продолжится на АРМ ДДС, а не завершится.
     handoff_to_dds: bool = False
-    required_fields: list[str] = field(default_factory=list)
+    required_fields: list[str] = Field(default_factory=list)
     trainee_name: str | None = None
     #: Чьё это занятие. Проставляется при запуске, когда курсант известен
     #: по учётной записи: по нему разбор закрывается от чужих (lct-23).
@@ -68,30 +77,20 @@ class SessionState:
     #: остальные адресаты карточки показываются информационно.
     dds_service: str | None = None
     attempt: int = 1
-    criteria: LessonCriteria = field(default_factory=LessonCriteria)
+    criteria: LessonCriteria = Field(default_factory=LessonCriteria)
 
-    kio: KIO = field(default_factory=KIO)
-    transcript: list[TranscriptEntry] = field(default_factory=list)
-    timers: SessionTimers = field(default_factory=SessionTimers)
-    hints_shown: list[str] = field(default_factory=list)
+    kio: KIO = Field(default_factory=KIO)
+    transcript: list[TranscriptEntry] = Field(default_factory=list)
+    timers: SessionTimers = Field(default_factory=SessionTimers)
+    hints_shown: list[str] = Field(default_factory=list)
     #: Когда именно подсказывали — в разборе видно, какой пункт и на какой минуте.
-    hints_log: list[tuple[str, datetime]] = field(default_factory=list)
-    notes: list[dict] = field(default_factory=list)
-    directives: list[str] = field(default_factory=list)
+    hints_log: list[tuple[str, datetime]] = Field(default_factory=list)
+    notes: list[dict] = Field(default_factory=list)
+    directives: list[str] = Field(default_factory=list)
 
-    # Звонящий. Автомата нет, если не скачана модель эмбеддингов:
-    # занятие идёт, подсказки откатываются на порядок чек-листа.
     # Своя копия сценария на занятие: директивы преподавателя правят факты
     # и эталон, и правка в одной группе не должна протекать в остальные.
     scenario: Scenario | None = None
-    slots: SlotMachine | None = None
-    persona: PersonaState | None = None
-    caller: TemplateCaller | None = None
-    # Голосовой контур звонка. Нет — если голос выключен или моделей нет:
-    # тогда кадры микрофона только считаются.
-    voice: object | None = None
-    recorder: object | None = None
-    recording_path: str | None = None
 
     # Аудио курсанта. До голосового контура (lct-06) кадры только считаются —
     # этого достаточно, чтобы доказать, что звук доходит от микрофона до сервера.
@@ -110,21 +109,73 @@ class SessionState:
     dispatched_card: KIO | None = None
     dispatched_at: datetime | None = None
     #: Поля, из-за которых диспетчер вернул карточку, — основание E6.
-    bounced_fields: list[str] = field(default_factory=list)
+    bounced_fields: list[str] = Field(default_factory=list)
     #: Готовые карточки связки 112→ДДС ждут, пока курсант не сдаст свою.
-    pending_dds_scenarios: list[Scenario] = field(default_factory=list)
+    pending_dds_scenarios: list[Scenario] = Field(default_factory=list)
     #: Исходная часть упражнения 112→ДДС сохраняется отдельно от карточек пульта.
     operator_kio: KIO | None = None
     operator_scenario: Scenario | None = None
     #: Работа диспетчера живёт только здесь — в карточках пульта.
-    desk: DdsDesk = field(default_factory=DdsDesk)
+    desk: DdsDesk = Field(default_factory=DdsDesk)
     #: Чем курсант закрыл вызов, если не карточкой (lct-36).
     resolved_outcome: str | None = None
     resolve_comment: str = ""
     #: Recently committed DDS command IDs; included in the durable checkpoint so
     #: a lost WebSocket acknowledgement cannot apply an operation twice.
-    processed_station_commands: list[str] = field(default_factory=list)
-    text_revealed_facts: dict[str, str] = field(default_factory=dict)
+    processed_station_commands: list[str] = Field(default_factory=list)
+    text_revealed_facts: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("processed_station_commands")
+    @classmethod
+    def _recent_commands(cls, value: list[str]) -> list[str]:
+        return value[-MAX_STATION_COMMANDS:]
+
+    @field_serializer("processed_station_commands")
+    def _dump_recent_commands(self, value: list[str]) -> list[str]:
+        return value[-MAX_STATION_COMMANDS:]
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        super().__pydantic_init_subclass__(**kwargs)
+        undecided = [name for name, info in cls.model_fields.items()
+                     if name not in PersistedSession.model_fields and not info.exclude]
+        if undecided:
+            raise TypeError(
+                f"{cls.__name__}: поля {undecided} — сохраняемое поле объявляется в "
+                "PersistedSession, живое — с Field(exclude=True)"
+            )
+
+
+class SessionState(PersistedSession):
+    """Живое занятие: сохраняемая часть плюс runtime-объекты процесса.
+
+    Живые поля в снимок не попадают и пересобираются при загрузке
+    (`checkpoint.rebuild_live`). Прогресс звонящего (`slots`, `persona`) пока
+    тоже живой: после failover звонящий начинает с чистого листа — голос P2,
+    а потеря редкая. Чтобы сохранять его, достаточно добавить в
+    `PersistedSession` поле `CallerProgress` и передать его в `rebuild_live`.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    #: Runtime-only: set when this process loses or cannot confirm DB ownership.
+    lease_fenced: bool = Field(default=False, exclude=True)
+    # Звонящий. Автомата нет, если не скачана модель эмбеддингов:
+    # занятие идёт, подсказки откатываются на порядок чек-листа.
+    slots: SlotMachine | None = Field(default=None, exclude=True)
+    persona: PersonaState | None = Field(default=None, exclude=True)
+    caller: TemplateCaller | None = Field(default=None, exclude=True)
+    # Голосовой контур звонка. Нет — если голос выключен или моделей нет:
+    # тогда кадры микрофона только считаются.
+    voice: object | None = Field(default=None, exclude=True)
+    recorder: object | None = Field(default=None, exclude=True)
+    recording_path: str | None = Field(default=None, exclude=True)
+
+    def persisted(self) -> PersistedSession:
+        """Сохраняемая часть без копирования — то, что уходит в снимок."""
+        return PersistedSession.model_construct(
+            **{name: getattr(self, name) for name in PersistedSession.model_fields}
+        )
 
     def on_event(self, event_type: str) -> None:
         """Единственная точка, где событие двигает таймеры."""
