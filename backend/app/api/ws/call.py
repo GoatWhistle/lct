@@ -337,7 +337,9 @@ async def _handle(session_id: UUID, state, event) -> None:
             # первого своего действия: отмечаться ему по нему же (lct-33).
             hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
             hub.to_observers(session_id, KioState(kio=state.kio))
-            hub.to_observers(session_id, TimerTick(timers=state.timers.snapshot()))
+            tick = TimerTick(timers=state.timers.snapshot())
+            hub.to_observers(session_id, tick)
+            hub.to_station(session_id, tick)
 
         case "call.resolve":
             # Курсант закрывает вызов не карточкой. Отдельное действие, а не

@@ -328,7 +328,11 @@ class SessionHub:
                     # Keep the pending count and countdown live even while
                     # the active dispatcher card is being handled.
                     self.to_station(session_id, StationState(snapshot=state.station_snapshot()))
-                self.broadcast(session_id, TimerTick(timers=state.timers.snapshot()))
+                tick = TimerTick(timers=state.timers.snapshot())
+                self.broadcast(session_id, tick)
+                # Срок первичного решения пульт берёт отсюда: после передачи
+                # из 112 без очереди ДДС лимит преподавателя больше нигде не виден.
+                self.to_station(session_id, tick)
         except asyncio.CancelledError:
             raise
 
