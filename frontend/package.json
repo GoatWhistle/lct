@@ -11,7 +11,8 @@
     "check:kio": "node scripts/check-kio-fields.mjs",
     "check:a11y": "node scripts/check-accessible-controls.mjs",
     "test:ws-outbox": "node scripts/test-ws-outbox.mjs",
-    "test:dds-history": "node scripts/test-dds-history.mjs"
+    "test:dds-history": "node scripts/test-dds-history.mjs",
+    "test:dds-ack": "node scripts/test-dds-ack.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.103.1",
