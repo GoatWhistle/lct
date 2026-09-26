@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Добавленные строки не должны упоминать ИИ-агентов. Файлы, которые вырезаются
+# из истории перед сдачей (scrub-history.sh), их строки в .gitignore и чужие материалы задачи
+# не проверяем.
+set -euo pipefail
+
+here=$(dirname "$0")
+stop=$(<"$here/stopwords")
+
+hits=$(git diff --cached -U0 --no-color --diff-filter=ACMR -- . \
+    ':(exclude).claude/**' ':(exclude)CLAUDE.md' ':(exclude)AGENTS.md' \
+    ':(exclude,glob)**/PROMPT-*' ':(exclude,glob)**/TASK-*' ':(exclude).agents/**' \
+    ':(exclude)docs/task09-materials/**' ':(exclude).gitignore' \
+  | awk '/^\+\+\+ /{f=substr($0,7); next} /^\+/{print f": "substr($0,2)}' \
+  | grep -iE "$stop" || true)
+
+if [[ -n $hits ]]; then
+  printf 'pre-commit: упоминание агента в добавленных строках:\n%s\n' "$hits" >&2
+  exit 1
+fi
