@@ -88,7 +88,11 @@ def _font_paths() -> tuple[Path, Path | None]:
         if not path.is_file():
             raise RuntimeError(f"LCT_PDF_FONT не найден: {path}")
         return path, None
+    # DejaVu лежит в пакете: демо без Docker идёт на хосте, где системного шрифта
+    # может не быть, а экспорт PDF должен работать офлайн без доустановки.
+    bundled = Path(__file__).resolve().parent.parent / "assets" / "fonts"
     candidates = (
+        (str(bundled / "DejaVuSans.ttf"), str(bundled / "DejaVuSans-Bold.ttf")),
         ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
         ("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf", "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"),
         ("/System/Library/Fonts/Supplemental/Arial.ttf", "/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
