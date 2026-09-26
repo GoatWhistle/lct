@@ -5,8 +5,10 @@
 логинятся через `dev-token` — так же, как `make lesson` (tasks/lct-23-auth-roles.md).
 """
 
+import copy
 import os
 import socket
+from pathlib import Path
 from urllib.parse import urlparse
 
 os.environ.setdefault("DEV_AUTH_BYPASS", "true")
@@ -41,6 +43,29 @@ def _dev_auth():
     settings = get_settings()
     assert settings.dev_auth_bypass, "тесты должны ходить через dev-token"
     yield
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _parsed_yaml_once():
+    """Каждый `TestClient` на старте перечитывает всю библиотеку сценариев:
+    ~200 YAML — это 0.2 с на тест и минута на прогон. Разбор кешируется на
+    сессию; проверка схемы и сборка эталона идут по-прежнему на каждый старт.
+    Копия — чтобы правка словаря в одном тесте не протекла в другой.
+    """
+    from app.scenarios import loader
+
+    original = loader._read_yaml
+    cache: dict[tuple[Path, int], dict] = {}
+
+    def cached(path: Path) -> dict:
+        key = (path.resolve(), path.stat().st_mtime_ns)
+        if key not in cache:
+            cache[key] = original(path)
+        return copy.deepcopy(cache[key])
+
+    loader._read_yaml = cached
+    yield
+    loader._read_yaml = original
 
 
 @pytest.fixture(autouse=True)
