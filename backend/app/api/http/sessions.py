@@ -25,10 +25,10 @@ from app.domain.events import Exercise, SessionMode, SessionReport
 from app.domain.roles import Role
 from app.domain.statuses import SERVICE_STATUS_LABELS, StationSnapshot, current
 from app.domain.timers import TimerCode
-from app.scenarios import store
 from app.scoring.export import to_csv, to_pdf
 from app.scoring.report import build as build_report
 from app.session.checkpoint import load_state
+from app.session.finish import scoring_scenario
 from app.session.hub import hub
 from app.voice.recording import recording_path
 
@@ -361,7 +361,7 @@ async def checklist(session_id: UUID, request: Request) -> list[ChecklistItemOut
         raise HTTPException(status_code=404, detail="session_not_found")
     if not state.ended:
         raise HTTPException(status_code=409, detail="call_not_ended")
-    scenario = state.scenario or store.get(state.scenario_id)
+    scenario = scoring_scenario(state)
     if scenario is None:
         raise HTTPException(status_code=404, detail="scenario_not_found")
     return [
@@ -390,7 +390,7 @@ def _live(session_id: UUID):
     state = hub.get(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="session_not_found")
-    scenario = state.scenario or store.get(state.scenario_id)
+    scenario = scoring_scenario(state)
     if scenario is None:
         raise HTTPException(status_code=404, detail="scenario_not_found")
     return state, scenario
@@ -559,7 +559,7 @@ async def override(
         raise HTTPException(status_code=404, detail="session_not_found")
     state = hub.get(session_id)
     live_ready = state is not None and state.score is not None
-    scenario = (state.scenario or store.get(state.scenario_id)) if live_ready else None
+    scenario = scoring_scenario(state) if live_ready else None
     if live_ready and scenario is None:
         raise HTTPException(status_code=409, detail="scenario_not_found")
     score = await db.scalar(select(Score).where(Score.session_id == session_id))

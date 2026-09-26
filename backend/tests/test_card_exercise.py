@@ -397,3 +397,94 @@ def test_model_coaching_reaches_report_without_changing_score(client, monkeypatc
         assert score["score_auto"] < 100
     finally:
         control.__exit__(None, None, None)
+
+
+def test_handoff_report_and_checklist_follow_operator_scenario(client, monkeypatch):
+    """Балл, разбор, чек-лист и коррекция — по сценарию 112, а не по активной карточке ДДС."""
+    import asyncio
+
+    from app.api.auth import Principal
+    from app.domain.roles import Role
+    from app.session.finish import refresh_archived_report
+
+    session_id, control = start(
+        client, handoff_to_dds=True,
+        scenario_ids=["fire-apartment-l2", "t01-1-fire-container"],
+    )
+    try:
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            read_until(trainee, "card.briefing")
+            trainee.send_json({"type": "kio.patch", "fields": {
+                "address": "улица Ленина, 14", "incident_type": "fire",
+                "victims_count": 2, "description": "горит балкон",
+                "signs": ["жилой дом", "балкон", "открытое пламя"],
+            }})
+            wait_for(lambda: hub.get(session_id).kio.incident_code)
+            trainee.send_json({"type": "card.submit"})
+            read_until(trainee, "call.ended")
+
+        with client.websocket_connect(f"/ws/station/{session_id}") as station:
+            read_until(station, "card.received")
+            snapshot = read_until(station, "station.state")["snapshot"]
+            prepared = next(item for item in snapshot["queue_cards"]
+                            if item["scenario_id"] == "t01-1-fire-container")
+            station.send_json({"type": "card.open", "card_id": prepared["card_id"]})
+            read_until(station, "card.received")
+            station.send_json({"type": "station.finish"})
+            read_until(station, "score.ready")
+
+        wait_for(lambda: hub.get(session_id).score)
+        state = hub.get(session_id)
+        # Предусловие ошибки: к завершению активна не карточка курсанта.
+        assert state.scenario_id == "t01-1-fire-container"
+        operator = store.get("fire-apartment-l2")
+
+        checklist = client.get(f"/api/sessions/{session_id}/checklist").json()
+        assert [item["id"] for item in checklist] == [
+            item.id for item in operator.checklist if item.question
+        ]
+
+        report = client.get(f"/api/sessions/{session_id}/report").json()
+        assert report["scenario_id"] == "fire-apartment-l2"
+        assert report["metrics"] == state.score["metrics"]
+
+        state.self_assessed = True
+        state.self_assessment = {"missed": [checklist[0]["id"]], "comment": ""}
+        asyncio.run(refresh_archived_report(session_id, state))
+        assert state.score["full_report"]["scenario_id"] == "fire-apartment-l2"
+        assert state.score["full_report"]["metrics"] == state.score["metrics"]
+
+        session_row = SimpleNamespace(id=session_id, owner_login="teacher")
+        score_row = SimpleNamespace(
+            score_auto=state.score["score_auto"], score_final=state.score["score_auto"],
+            overridden_by=None, override_comment=None,
+            report={"full_report": state.score["full_report"]},
+        )
+
+        class FakeDb:
+            async def scalar(self, statement):
+                return score_row
+
+            def add(self, row):
+                pass
+
+            async def commit(self):
+                pass
+
+        async def fake_session(db, key):
+            return session_row
+
+        monkeypatch.setattr(sessions_http.repo, "get_session", fake_session)
+        monkeypatch.setattr(
+            sessions_http, "require",
+            lambda request, *roles: Principal(login="teacher", full_name="Преподаватель",
+                                              role=Role.INSTRUCTOR),
+        )
+        corrected = asyncio.run(sessions_http.override(
+            session_id,
+            sessions_http.ScoreOverride(score_final=50, comment="проверено"),
+            object(), FakeDb(),
+        ))
+        assert corrected.scenario_id == "fire-apartment-l2"
+    finally:
+        control.__exit__(None, None, None)
