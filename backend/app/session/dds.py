@@ -112,7 +112,6 @@ def prepare_card(state: SessionState, scenario: Scenario) -> None:
     state.phone_lines = []
     state.phone_pending = None
     state.reply_text = ""
-    state.reply_grammar = None
     state.reply_log = []
     # Настроенный преподавателем лимит копируется в независимый таймер карточки.
     state.timers = SessionTimers(limits=dict(state.timers.limits))
@@ -140,7 +139,6 @@ def _append_live_card(
         phone_lines=state.phone_lines,
         phone_pending=state.phone_pending,
         reply_text=state.reply_text,
-        reply_grammar=state.reply_grammar,
         reply_log=state.reply_log,
     )
     state.dds_live_cards.append(card)

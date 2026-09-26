@@ -33,17 +33,10 @@ from app.domain.statuses import (
 from app.domain.taxonomy import Finding
 from app.domain.timers import TimerCode
 from app.scenarios.schema import Scenario
-from app.scoring.grammar import GrammarAssessment
 from app.session.state import DdsCardRecord, DdsLiveCard, SessionState, now_utc
 from app.session.timers import SessionTimers, Timer
 
 CHECKPOINT_VERSION = 1
-
-
-def _grammar(value: GrammarAssessment | None) -> dict | None:
-    if value is None:
-        return None
-    return {"passed": value.passed, "errors": list(value.errors), "source": value.source}
 
 
 def _dump_timers(timers: SessionTimers, now: float) -> dict:
@@ -77,7 +70,6 @@ def _dump_live_card(item: DdsLiveCard, now: float) -> dict:
         "phone_lines": [entry.model_dump(mode="json") for entry in item.phone_lines],
         "phone_pending": item.phone_pending.model_dump(mode="json") if item.phone_pending else None,
         "reply_text": item.reply_text,
-        "reply_grammar": _grammar(item.reply_grammar),
         "reply_log": [[at.isoformat(), text] for at, text in item.reply_log],
     }
 
@@ -163,7 +155,6 @@ def dump_state(state: SessionState) -> dict:
             for item in state.dds_completed
         ],
         "reply_text": state.reply_text,
-        "reply_grammar": _grammar(state.reply_grammar),
         "reply_log": [[at.isoformat(), text] for at, text in state.reply_log],
         "resolved_outcome": state.resolved_outcome,
         "resolve_comment": state.resolve_comment,
@@ -205,16 +196,6 @@ def _restore_timers(payload: dict, saved_at: datetime) -> SessionTimers:
     return restored
 
 
-def _restore_grammar(value: dict | None) -> GrammarAssessment | None:
-    if not value:
-        return None
-    return GrammarAssessment(
-        passed=bool(value["passed"]),
-        errors=tuple(value.get("errors") or []),
-        source=value["source"],
-    )
-
-
 def _restore_live_card(item: dict, saved_at: datetime) -> DdsLiveCard:
     return DdsLiveCard(
         original_index=int(item["original_index"]),
@@ -237,7 +218,6 @@ def _restore_live_card(item: dict, saved_at: datetime) -> DdsLiveCard:
         phone_pending=(PhoneCallPending.model_validate(item["phone_pending"])
                        if item.get("phone_pending") else None),
         reply_text=item.get("reply_text", ""),
-        reply_grammar=_restore_grammar(item.get("reply_grammar")),
         reply_log=[(datetime.fromisoformat(at), text)
                    for at, text in item.get("reply_log", [])],
     )
@@ -336,7 +316,6 @@ def load_state(payload: dict, saved_at: datetime) -> SessionState:
             for item in payload.get("dds_completed", [])
         ],
         reply_text=payload.get("reply_text", ""),
-        reply_grammar=_restore_grammar(payload.get("reply_grammar")),
         reply_log=[(datetime.fromisoformat(at), text)
                    for at, text in payload.get("reply_log", [])],
         resolved_outcome=payload.get("resolved_outcome"),

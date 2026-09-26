@@ -18,6 +18,8 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
   const notes = report.notes ?? [];
   const passedMetrics = Math.max(0, report.metrics.length - report.failed_metrics);
   const improvementPoints = report.metrics.filter((metric) => !metric.passed).slice(0, 3);
+  const metricTitles = new Map(report.metrics.map((metric) => [metric.key, metric.title]));
+  const coaching = report.ai_coaching?.status === "ready" ? report.ai_coaching.recommendations ?? [] : [];
 
   return (
     <section className={big ? "debrief debrief-big" : "debrief"}>
@@ -57,6 +59,12 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
         ) : (
           <p>Зачёт не получен. Сверьте отметки и факты ниже с ходом занятия.</p>
         )}
+        {coaching.length > 0 && <>
+          <p>Рекомендации локальной модели (на балл не влияют):</p>
+          <ul>{coaching.map((item) => <li key={item.metric_key}>
+            {metricTitles.get(item.metric_key) ?? item.metric_key}: {item.text}
+          </li>)}</ul>
+        </>}
       </section>
       <p className="ref">
         Скачать отчёт: <a href={`/api/sessions/${report.session_id}/report.csv`}>таблица (CSV)</a>

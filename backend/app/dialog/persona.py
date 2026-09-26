@@ -13,6 +13,7 @@ from app.scenarios.schema import Persona
 #: Настроение базового профиля, если дуга не задана.
 BASE_MOOD: dict[str, Mood] = {
     "calm": Mood.CALM,
+    "worried": Mood.WORRIED,
     "panic": Mood.PANIC,
     "aggressive": Mood.AGGRESSIVE,
     "elderly": Mood.CONFUSED,

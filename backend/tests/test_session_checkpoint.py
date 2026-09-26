@@ -11,7 +11,6 @@ from app.domain.kio import KIO
 from app.domain.statuses import PhoneCallPending, ServiceStatus
 from app.domain.timers import TimerCode
 from app.scenarios.loader import load_file
-from app.scoring.grammar import basic_check
 from app.session.checkpoint import dump_state, load_state
 from app.session.dds import deliver_due_cards, prepare_handoff_queue, prepare_queue
 from app.session.hub import LEASE_FENCED_MESSAGE, SessionHub
@@ -50,7 +49,6 @@ def dds_state() -> SessionState:
         service=service, crew=state.crew_selected, phase="dispatched"
     )
     state.reply_text = "Сообщение принято, бригада направлена."
-    state.reply_grammar = basic_check(state.reply_text)
     state.reply_log.append((now_utc(), state.reply_text))
     state.dds_log.append(("crew.select", now_utc(), state.crew_selected))
     return state
@@ -74,7 +72,6 @@ def test_active_dds_session_round_trips_without_losing_work():
     assert restored.crew_assignments == before.crew_assignments
     assert restored.phone_pending == before.phone_pending
     assert restored.reply_text == before.reply_text
-    assert restored.reply_grammar == before.reply_grammar
     assert restored.processed_station_commands == before.processed_station_commands
     assert restored.dds_scenarios[0].id == before.scenario_id
     # Время простоя backend входит в норматив, а не обнуляет таймер.

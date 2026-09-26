@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from app.dialog.persona import BASE_MOOD
 from app.scenarios.loader import ScenarioError, load_file, load_library
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
@@ -36,6 +37,13 @@ def test_library_loads():
     scenarios = load_library(LIBRARY)
     assert scenarios, "библиотека пуста"
     assert all(s.ground_truth.dds for s in scenarios), "ДДС не выведен"
+
+
+def test_library_personas_have_base_mood():
+    # base — свободная строка: неизвестное значение молча становится «спокойным»
+    # звонящим, и сценарий теряет задуманную подачу.
+    unknown = {s.id: s.persona.base for s in load_library(LIBRARY) if s.persona.base not in BASE_MOOD}
+    assert not unknown, f"персона без настроения в BASE_MOOD: {unknown}"
 
 
 def test_extends_inherits_whole_checklist():

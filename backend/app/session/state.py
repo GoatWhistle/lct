@@ -44,7 +44,6 @@ from app.domain.statuses import (
 from app.domain.taxonomy import Finding
 from app.domain.timers import TimerCode
 from app.scenarios.schema import Scenario
-from app.scoring.grammar import GrammarAssessment
 from app.session.timers import SessionTimers
 
 
@@ -98,7 +97,6 @@ class DdsLiveCard:
     phone_lines: list[PhoneLineRecord] = field(default_factory=list)
     phone_pending: PhoneCallPending | None = None
     reply_text: str = ""
-    reply_grammar: GrammarAssessment | None = None
     reply_log: list[tuple[datetime, str]] = field(default_factory=list)
 
     @property
@@ -196,7 +194,6 @@ class SessionState:
     dds_next_scenario_index: int = 0
     dds_next_arrival_at: datetime | None = None
     reply_text: str = ""
-    reply_grammar: GrammarAssessment | None = None
     reply_log: list[tuple[datetime, str]] = field(default_factory=list)
     #: Чем курсант закрыл вызов, если не карточкой (lct-36).
     resolved_outcome: str | None = None
@@ -299,7 +296,6 @@ class SessionState:
         card.phone_lines = self.phone_lines
         card.phone_pending = self.phone_pending
         card.reply_text = self.reply_text
-        card.reply_grammar = self.reply_grammar
         card.reply_log = self.reply_log
         self.dds_active_card_id = card.card_id
 
@@ -329,7 +325,6 @@ class SessionState:
         self.phone_lines = card.phone_lines
         self.phone_pending = card.phone_pending
         self.reply_text = card.reply_text
-        self.reply_grammar = card.reply_grammar
         self.reply_log = card.reply_log
         self.dds_card_index = card.original_index
         self.dds_active_card_id = card.card_id

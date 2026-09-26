@@ -359,3 +359,41 @@ def test_handoff_queue_mixes_trainee_card_then_selected_prepared_card(client):
         assert state["score_auto"] < 100
     finally:
         control.__exit__(None, None, None)
+
+
+def test_model_coaching_reaches_report_without_changing_score(client, monkeypatch):
+    from app.domain.events import AICoaching, AIRecommendation
+
+    seen: list[list[str]] = []
+
+    async def fake_coach(metrics):
+        failed = [item.key for item in metrics if not item.passed and item.weight > 0]
+        seen.append(failed)
+        return AICoaching(status="ready", model="test", recommendations=[
+            AIRecommendation(metric_key=failed[0], text="Перечитайте описание перед сдачей карточки."),
+        ])
+
+    monkeypatch.setattr("app.session.finish.assess", rules_only_grammar)
+    monkeypatch.setattr("app.session.finish.coach", fake_coach)
+    session_id, control = start(client)
+    try:
+        with client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            read_until(trainee, "card.briefing")
+            trainee.send_json({"type": "kio.patch", "fields": {
+                "address": "улица Ленина, 14", "floor": "5", "incident_type": "fire",
+                "victims_count": 2, "description": "горит балкон",
+                "signs": ["жилой дом", "балкон", "открытое пламя"],
+            }})
+            wait_for(lambda: hub.get(session_id).kio.incident_code)
+            trainee.send_json({"type": "card.submit"})
+            read_until(trainee, "call.ended")
+            read_until(trainee, "score.ready")
+
+        score = wait_for(lambda: hub.get(session_id).score)
+        assert seen and "description_grammar" in seen[0]
+        coaching = score["full_report"]["ai_coaching"]
+        assert coaching["status"] == "ready"
+        assert coaching["recommendations"][0]["metric_key"] == seen[0][0]
+        assert score["score_auto"] < 100
+    finally:
+        control.__exit__(None, None, None)

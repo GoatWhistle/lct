@@ -8,6 +8,7 @@
 from uuid import UUID
 
 from app.domain.events import (
+    AICoaching,
     CompetencyScore,
     DdsCardReport,
     HintShown,
@@ -108,4 +109,6 @@ def build(session_id: UUID, state, scenario: Scenario) -> SessionReport:
         score_final=score.get("score_final", score.get("score_auto", 0.0)),
         overridden_by=score.get("overridden_by"),
         override_comment=score.get("override_comment"),
+        ai_coaching=(AICoaching.model_validate(score["ai_coaching"])
+                     if score.get("ai_coaching") else None),
     )

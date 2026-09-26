@@ -43,7 +43,6 @@ from app.domain.statuses import (
 )
 from app.domain.timers import TimerCode
 from app.scoring.address import address_matches
-from app.scoring.grammar import assess
 from app.session.dds import deliver_due_cards
 from app.session.finish import finish, score_current_dds
 from app.session.hub import LEASE_FENCED_MESSAGE, hub
@@ -286,12 +285,11 @@ async def _handle(session_id: UUID, state, event) -> None:
                 return
             # A browser may lose the acknowledgement after the server has
             # committed this replace-style value. Reconnect retries are safe:
-            # don't create another journal row (or rerun grammar assessment)
+            # don't create another journal row
             # when the current card already contains exactly this text.
             if state.reply_text == event.text:
                 return
             state.reply_text = event.text
-            state.reply_grammar = await assess(event.text)
             state.reply_log.append((now_utc(), event.text))
         case "card.open":
             if (state.exercise is not Exercise.DDS and not state.handoff_to_dds) or not state.activate_dds_card(event.card_id):

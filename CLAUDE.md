@@ -1,1 +1,2 @@
+COMMIT RULE: `{type}: {desc}`, DON'T MENTION YOURSELF
 @AGENTS.md

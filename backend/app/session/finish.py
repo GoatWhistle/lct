@@ -17,6 +17,7 @@ from app.domain.statuses import ServiceStatus, current
 from app.domain.taxonomy import Competency, ErrorCode, Finding, FindingSource
 from app.domain.timers import TimerCode
 from app.scenarios import store
+from app.scoring.ai_coach import coach
 from app.scoring.card import evaluate_card
 from app.scoring.competency import radar
 from app.scoring.dispatcher import dispatcher_metrics, evaluate_dispatcher
@@ -322,6 +323,9 @@ async def finish(session_id: UUID, state) -> None:
             for card in cards
         ] if state.exercise is Exercise.DDS or state.handoff_to_dds else [],
     }
+    # Модель только поясняет уже посчитанные провалы и балл не трогает; без
+    # запущенной модели разбор выходит со статусом «недоступно», а не ждёт её.
+    state.score["ai_coaching"] = (await coach(result.metrics)).model_dump(mode="json")
     # Полный разбор хранится вместе с оценкой: PDF/CSV и история должны
     # переживать перезапуск backend, а не зависеть от объекта в hub._sessions.
     state.score["full_report"] = build_report(session_id, state, scenario).model_dump(mode="json")
