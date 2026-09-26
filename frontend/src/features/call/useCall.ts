@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useSessionReport } from "@/shared/api/http";
 import { type ChannelStatus, callChannel } from "@/shared/api/ws";
 import { Ambience } from "@/shared/audio/ambience";
 import { type Capture, startCapture } from "@/shared/audio/capture";
@@ -18,7 +19,6 @@ import type {
   CardBriefing,
   DDSCode,
   ServerToTrainee,
-  SessionReport,
   TimerSnapshot,
 } from "@/shared/types/generated";
 
@@ -48,8 +48,7 @@ export function useCall(sessionId: string | null) {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [selfAssessed, setSelfAssessed] = useState(false);
   const [scoreReady, setScoreReady] = useState(false);
-  const [report, setReport] = useState<SessionReport | null>(null);
-  const [reportError, setReportError] = useState<string | null>(null);
+  const { report, error: reportError } = useSessionReport(sessionId, scoreReady);
   const [error, setError] = useState<string | null>(null);
 
   const channel = useRef<ReturnType<typeof callChannel> | null>(null);
@@ -153,16 +152,6 @@ export function useCall(sessionId: string | null) {
             break;
           case "score.ready":
             setScoreReady(true);
-            setReportError(null);
-            void fetch(`/api/sessions/${sessionId}/report`)
-              .then((response) => {
-                if (response.status === 403) throw new Error("Отчёт недоступен: занятие привязано к другому обучающемуся.");
-                if (response.status === 409) throw new Error("Оценка ещё не готова. Обновите страницу позже.");
-                if (!response.ok) throw new Error(`Не удалось загрузить отчёт (HTTP ${response.status}).`);
-                return response.json();
-              })
-              .then(setReport)
-              .catch((cause: unknown) => setReportError(cause instanceof Error ? cause.message : "Не удалось загрузить отчёт."));
             break;
           case "error":
             setError(event.message);
