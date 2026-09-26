@@ -150,6 +150,29 @@ def scoring_scenario(state):
     return state.scenario or store.get(state.scenario_id)
 
 
+def score_live_dds_cards(state) -> list[DdsCardRecord]:
+    """Оценить все неоценённые карточки очереди и вернуть пульт курсанту.
+
+    Оценка переключает рабочие поля сессии на каждую карточку по очереди.
+    Без возврата отчёт взял бы card_status у карточки, оценённой последней,
+    а пульт после завершения показывал бы чужую карточку.
+    """
+    cards = list(state.dds_completed)
+    state.capture_active_dds()
+    active_id = state.dds_active_card_id
+    active_card = state.dispatched_card
+    for live in sorted(state.dds_live_cards, key=lambda item: item.original_index):
+        if any(item.card_id == live.card_id for item in cards):
+            continue
+        state.activate_dds_card(live.card_id, capture=False)
+        cards.append(score_current_dds(state))
+    state.dds_completed = cards
+    if active_id is None or not state.activate_dds_card(active_id, capture=False):
+        state.dds_active_card_id = active_id
+        state.dispatched_card = active_card
+    return cards
+
+
 async def finish(session_id: UUID, state) -> None:
     if state.recorder is not None:
         path = await asyncio.to_thread(state.recorder.finalize)
@@ -204,14 +227,7 @@ async def finish(session_id: UUID, state) -> None:
         # Все карточки выданы одновременно: при досрочном завершении оцениваем
         # каждую, включая не открытую, потому что её норматив уже шёл.
         result = GostResult()
-        cards = list(state.dds_completed)
-        state.capture_active_dds()
-        for live in sorted(state.dds_live_cards, key=lambda item: item.original_index):
-            if any(item.card_id == live.card_id for item in cards):
-                continue
-            state.activate_dds_card(live.card_id, capture=False)
-            cards.append(score_current_dds(state))
-        state.dds_completed = cards
+        cards = score_live_dds_cards(state)
         for card in cards:
             result.metrics.extend(card.metrics)
             result.findings.extend(card.findings)
@@ -283,14 +299,7 @@ async def finish(session_id: UUID, state) -> None:
     if state.handoff_to_dds and state.dds_scenarios:
         # В связке КИО оценивается относительно эталона и весов упражнения
         # 112, а каждая карточка очереди уже взвешена собственным сценарием.
-        cards = list(state.dds_completed)
-        state.capture_active_dds()
-        for live in sorted(state.dds_live_cards, key=lambda item: item.original_index):
-            if any(item.card_id == live.card_id for item in cards):
-                continue
-            state.activate_dds_card(live.card_id, capture=False)
-            cards.append(score_current_dds(state))
-        state.dds_completed = cards
+        cards = score_live_dds_cards(state)
         for card in cards:
             result.metrics.extend(card.metrics)
             result.findings.extend(card.findings)
