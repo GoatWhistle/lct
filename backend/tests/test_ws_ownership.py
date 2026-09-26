@@ -195,3 +195,63 @@ def test_control_command_checkpoint_failure_returns_fencing_error(monkeypatch):
     finally:
         hub.journal = old_journal
         hub.drop(session_id)
+
+
+def test_control_does_not_lose_command_read_during_fencing_poll(monkeypatch):
+    """Опрос fencing по таймеру не отменяет чтение, уже забравшее кадр из сокета.
+
+    Сокет отдаёт команду, но возвращается из receive позже тика опроса — так
+    выглядит задержка планировщика под нагрузкой. Отмена чтения на тике
+    выбрасывает уже прочитанную команду.
+    """
+    control_module = importlib.import_module("app.api.ws.control")
+    monkeypatch.setattr(control_module, "_FENCE_POLL_SECONDS", 0.02)
+    session_id = uuid4()
+    state = SessionState(
+        session_id=session_id, scenario_id="test", scenario_title="Тест", level="L1",
+        mode="training", owner_login="lease-owner",
+    )
+    hub.register(state)
+    who = Principal(login="lease-owner", full_name="Преподаватель", role=Role.INSTRUCTOR)
+    monkeypatch.setattr(control_module, "websocket_origin_allowed", lambda _ws: True)
+    monkeypatch.setattr(control_module, "principal_of", lambda _ws: who)
+
+    class SlowReturnSocket:
+        def __init__(self):
+            self.wire = [{"type": "no.such.command"}]
+            self.lost = []
+            self.closed = None
+            self.sent = []
+
+        async def accept(self):
+            pass
+
+        async def receive_json(self):
+            if not self.wire:
+                await hub.fence(state)
+                await asyncio.sleep(5)
+            message = self.wire.pop(0)
+            try:
+                await asyncio.sleep(0.1)
+            except asyncio.CancelledError:
+                self.lost.append(message)
+                raise
+            return message
+
+        async def send_text(self, message):
+            self.sent.append(json.loads(message))
+
+        async def close(self, code=None):
+            self.closed = code
+
+    socket = SlowReturnSocket()
+    try:
+        with hub.observer(session_id) as observer_queue:
+            asyncio.run(control_module.control(socket, session_id))
+            assert socket.lost == []
+            event = observer_queue.get_nowait()
+            assert event.code == "unsupported_event"
+            assert socket.closed == 1012
+            assert socket.sent[-1]["message"].endswith("переподключитесь.")
+    finally:
+        hub.drop(session_id)
