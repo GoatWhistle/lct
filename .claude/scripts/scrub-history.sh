@@ -35,6 +35,7 @@ stop = re.compile(os.environ["SCRUB_STOP"], re.I)
 files = re.compile(os.environ["SCRUB_FILES"])
 subjects = {
     "docs: правила агентов в AGENTS.md": "docs: правила разработки",
+    "chore: общие скилы, хуки коммитов, правила": "chore: правила коммитов",
 }
 text = message.decode()
 subject, _, body = text.partition("\n")
