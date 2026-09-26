@@ -58,6 +58,9 @@ router = APIRouter()
 
 _adapter = TypeAdapter(InstructorToServer)
 
+# Пульт может молчать; без входящих кадров потеря lease замечается этим опросом.
+_FENCE_POLL_SECONDS = 1.0
+
 
 def _dds_ineligible_scenarios(scenarios):
     """Консультация и передача региона не являются готовыми карточками ДДС."""
@@ -378,11 +381,16 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
         await _reject(ws, "Недостаточно прав для этого экрана")
         return
     event_stream = hub.begin_event_stream(session_id)
+    # Чтение живёт дольше тика опроса: wait_for отменял бы его, а отмена после
+    # того, как receive уже забрал кадр, теряет команду или websocket.disconnect.
+    # Команда обрабатывается здесь, в задаче, открывшей event stream.
+    read: asyncio.Future | None = None
     try:
         while True:
-            try:
-                payload = await asyncio.wait_for(ws.receive_json(), timeout=1)
-            except TimeoutError:
+            if read is None:
+                read = asyncio.ensure_future(ws.receive_json())
+            done, _ = await asyncio.wait({read}, timeout=_FENCE_POLL_SECONDS)
+            if not done:
                 if hub.is_lease_fenced(session_id):
                     await ws.send_text(ErrorEvent(
                         code=ErrorKind.INTERNAL, message=LEASE_FENCED_MESSAGE
@@ -390,6 +398,7 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                     await ws.close(code=1012)
                     return
                 continue
+            payload, read = read.result(), None
             try:
                 event = _adapter.validate_python(payload)
             except ValidationError:
@@ -541,4 +550,6 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
     except WebSocketDisconnect:
         return
     finally:
+        if read is not None:
+            read.cancel()
         await hub.end_event_stream(event_stream)
