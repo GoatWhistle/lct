@@ -14,6 +14,10 @@ from app.domain import ekp
 from app.domain.classifiers import DDS_BY_INCIDENT
 from app.scenarios.schema import ChecklistItem, Scenario
 
+# Библиотека читается на каждом старте приложения, а в тестах — на каждый
+# TestClient: чистый Python-парсер тратит на неё ~1.7 с, libyaml — ~0.2 с.
+_Loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
 
 class ScenarioError(Exception):
     """Ошибка библиотеки. Текст пишется для методиста, не для программиста."""
@@ -21,7 +25,7 @@ class ScenarioError(Exception):
 
 def _read_yaml(path: Path) -> dict:
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data = yaml.load(path.read_text(encoding="utf-8"), Loader=_Loader)
     except yaml.YAMLError as exc:
         raise ScenarioError(f"{path.name}: битый YAML — {exc}") from exc
     if not isinstance(data, dict):
