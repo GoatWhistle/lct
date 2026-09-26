@@ -72,7 +72,13 @@ async def _close_auth_state_unavailable(ws: WebSocket) -> None:
 
 
 def _close_unverified_sockets() -> None:
-    for sockets in list(_active_sockets.values()):
+    # Синтетический `dev` middleware пропускает без сверки поколения — и его
+    # сокеты не зависят от синхронизации с БД, иначе стенд без базы рвёт
+    # занятие через две секунды после старта.
+    synthetic = {"dev"} if get_settings().dev_auth_bypass else set()
+    for login, sockets in list(_active_sockets.items()):
+        if login in synthetic:
+            continue
         for ws, loop in list(sockets.items()):
             try:
                 if not loop.is_closed():

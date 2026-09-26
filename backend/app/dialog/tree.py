@@ -22,6 +22,7 @@ from app.domain.events import Mood
 log = logging.getLogger(__name__)
 
 LIBRARY = Path(__file__).resolve().parents[3] / "scenarios" / "pregenerated"
+_Loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
 def table_path(scenario_id: str) -> Path:
@@ -40,7 +41,9 @@ class TreeCaller:
     """
 
     def __init__(self, scenario_id: str) -> None:
-        self._table = yaml.safe_load(table_path(scenario_id).read_text(encoding="utf-8")) or {}
+        self._table = yaml.load(
+            table_path(scenario_id).read_text(encoding="utf-8"), Loader=_Loader
+        ) or {}
         self._fallback = TemplateCaller()
         self._turn = 0
         self.misses = 0

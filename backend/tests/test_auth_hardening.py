@@ -674,3 +674,28 @@ def test_backup_error_redacts_database_credentials(monkeypatch):
     detail = admin._safe_backup_error(admin.backup_service.BackupError(f"bad DSN: {dsn}"))
     assert "supersecret" not in detail
     assert dsn not in detail
+
+
+def test_stale_generation_sync_keeps_synthetic_dev_socket():
+    """`dev` не хранится в users, и middleware не сверяет его поколение.
+    Закрывать его сокеты при недоступной БД — значит рвать занятие на
+    стенде без базы, хотя HTTP того же входа продолжает работать."""
+    class FakeWebSocket:
+        closed_with = None
+
+        async def close(self, code, reason):
+            self.closed_with = (code, reason)
+
+    async def run():
+        websocket = FakeWebSocket()
+        sockets = auth._active_sockets.setdefault("dev", weakref.WeakKeyDictionary())
+        sockets[websocket] = asyncio.get_running_loop()
+        try:
+            auth._close_unverified_sockets()
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            assert websocket.closed_with is None
+        finally:
+            sockets.pop(websocket, None)
+
+    asyncio.run(run())
