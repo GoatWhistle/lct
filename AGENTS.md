@@ -59,9 +59,9 @@ TASK-<id>.md      исполнительный гайд: файл → что с�
 
 ## Скилы, хуки, сдача
 
-- **Скилы** — `.claude/skills/` (mattpocock, см. `.claude/skills/README-pocock.md`). Трекер для
-  `to-spec` / `to-tickets` / `triage` / `wayfinder` — пока карточки `tasks/<id>.md` и
-  `tasks/README.md`; MCP-трекер подключим позже. Лейблы триажа — канонические роли скилов.
+- **Скилы** — `.claude/skills/` (mattpocock, см. `.claude/skills/README-pocock.md`). Трекер
+  для `to-spec` / `to-tickets` / `triage` / `wayfinder` и любой работы с issues и PR —
+  GitHub Issues через MCP `github`: операции, лейблы, блокеры — [`.claude/tracker.md`](.claude/tracker.md).
   Доменные доки — этот файл, `docs/product/`, `docs/arch/`, `docs/spec/GAP.md`.
 - **Хуки** включаются на клоне один раз: `git config core.hooksPath .claude/git-hooks`.
   `commit-msg` проверяет формат, 20 слов, `#N` и стоп-лист (`.claude/git-hooks/stopwords`),
