@@ -174,31 +174,62 @@ def ws_connect(ws_base: str, path: str, cookie: str):
     )
 
 
-async def wait_for_fence(socket, timeout: float = 10) -> dict:
+# Текст `_close_auth_state_unavailable` в backend/app/api/auth.py: 1013 с ним —
+# закрытие от устаревшего кэша поколений, а не произвольный 1013.
+AUTH_UNAVAILABLE_REASON = "Состояние доступа временно недоступно"
+
+
+async def wait_auth_fresh(base: str, cookie: str, timeout: float = 10) -> bool:
+    """Узел принял cookie: кэш поколений свежий и логин ему известен."""
+    request = urllib.request.Request(f"{base}/api/auth/me", headers={"Cookie": cookie})
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            with urllib.request.urlopen(request, timeout=2) as response:
+                if response.status == 200:
+                    return True
+        except OSError:
+            pass
+        if time.monotonic() > deadline:
+            return False
+        await asyncio.sleep(0.2)
+
+
+async def wait_for_fence(socket, timeout: float = 10, ack_id: str | None = None) -> dict:
+    acked = False
+
+    def outcome(**closure) -> dict:
+        if ack_id is not None:
+            closure["command_acked"] = acked
+        return closure
+
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
             message = await asyncio.wait_for(socket.recv(), timeout=deadline - time.monotonic())
         except TimeoutError:
-            return {"closed": False, "fence_notice": False, "reason": "timeout"}
+            return outcome(closed=False, fence_notice=False, reason="timeout")
         except Exception as exc:
             close = getattr(exc, "rcvd", None) or getattr(exc, "sent", None)
             close_code = getattr(close, "code", None) or getattr(exc, "code", None)
-            return {
-                "closed": True,
-                "fence_notice": close_code == 1012,
-                "close_code": close_code,
-                "reason": getattr(close, "reason", "") if close else str(exc),
-            }
+            return outcome(
+                closed=True,
+                fence_notice=close_code == 1012,
+                close_code=close_code,
+                reason=getattr(close, "reason", "") if close else str(exc),
+            )
         if isinstance(message, str):
             try:
                 event = json.loads(message)
             except json.JSONDecodeError:
                 continue
+            if ack_id is not None and event.get("type") == "command.ack" \
+                    and event.get("command_id") == ack_id:
+                acked = True
             if event.get("message") == "Занятие передано другому backend-узлу; переподключитесь.":
-                return {"closed": True, "fence_notice": True, "close_code": 1012,
-                        "reason": event.get("message")}
-    return {"closed": False, "fence_notice": False, "reason": "timeout"}
+                return outcome(closed=True, fence_notice=True, close_code=1012,
+                               reason=event.get("message"))
+    return outcome(closed=False, fence_notice=False, reason="timeout")
 
 
 async def main(args: argparse.Namespace) -> int:
@@ -250,6 +281,13 @@ async def main(args: argparse.Namespace) -> int:
 
         instructor_cookie = login(backend, instructor_login, instructor_password)
         trainee_cookie = login(backend, trainee_login, trainee_password)
+        # Учётки созданы прямо в БД, вход — на узле A, а сокет занятия Nginx
+        # может отдать узлу B. B узнаёт новый логин при очередной сверке
+        # поколений (раз в секунду); до неё middleware считает cookie отозванной.
+        for port in (args.backend_port, args.backend_b_port):
+            for cookie in (instructor_cookie, trainee_cookie):
+                if not await wait_auth_fresh(f"http://127.0.0.1:{port}", cookie):
+                    raise RuntimeError(f"backend :{port} не узнал новый логин за 10 с")
         await send_control(ws_base, session_id, instructor_cookie, {
             "type": "scenario.start", "scenario_id": args.scenario,
             "trainee": trainee.name, "trainee_id": str(trainee.id),
@@ -400,14 +438,37 @@ async def main(args: argparse.Namespace) -> int:
                     )
                 compose(args, "stop", proxy_name)
                 fault_stopped = True
-                result["boundary_command_sent_to_old_owner"] = "arrived"
+                # Реальная мутация старому владельцу уже без БД: commit не пройдёт,
+                # ACK не придёт, а id не должен попасть в checkpoint нового
+                # владельца — прямое доказательство запрета записи после потери БД.
+                # Отправка сразу, до `compose ps`: через 2 с auth закроет сокет.
+                boundary_command_id = str(uuid4())
+                boundary = {"command_id": boundary_command_id, "status": "working"}
+                try:
+                    await active_sockets["station"].send(json.dumps({
+                        "type": "card.status", "service": service, "status": "working",
+                        "comment": (
+                            "Основание: доклад по карточке.\n"
+                            f"Сведения: начало работ после обрыва БД; {service} notified."
+                        ),
+                        "_command_id": boundary_command_id,
+                    }, ensure_ascii=False))
+                    boundary["sent"] = True
+                except websockets.exceptions.WebSocketException as exc:
+                    boundary["sent"] = False
+                    boundary["error"] = f"{type(exc).__name__}: {exc}"
+                result["boundary_command_sent_to_old_owner"] = boundary
+                result["checks"]["boundary_command_sent_after_partition"] = boundary["sent"]
                 running_services = compose(args, "ps", "--status", "running", "--services").splitlines()
                 result["checks"]["owner_process_running"] = owner_service in running_services
                 if owner_service not in running_services:
                     raise RuntimeError("owner process did not remain running during DB partition")
                 closures = await asyncio.gather(*(
-                    wait_for_fence(socket, timeout=args.takeover_timeout)
-                    for socket in active_sockets.values()
+                    wait_for_fence(
+                        socket, timeout=args.takeover_timeout,
+                        ack_id=boundary_command_id if channel == "station" else None,
+                    )
+                    for channel, socket in active_sockets.items()
                 ))
                 result["existing_channel_closures"] = dict(zip(active_sockets, closures))
                 result["existing_channel_fence_notices"] = {
@@ -418,10 +479,27 @@ async def main(args: argparse.Namespace) -> int:
                     f"existing_{channel}_closed": closure["closed"]
                     for channel, closure in result["existing_channel_closures"].items()
                 })
+                # Без БД старый владелец закрывает каналы fail-closed одним из двух
+                # путей: auth не может сверить поколения учёток дольше 2 с — 1013,
+                # supervisor lease замечает потерю владения (цикл 5 с) — 1012.
+                # Auth обычно успевает первым; оба кода корректны, фронт их не
+                # различает. Фактический код остаётся в existing_channel_closures.
+                result["existing_channel_close_codes"] = {
+                    channel: closure.get("close_code")
+                    for channel, closure in result["existing_channel_closures"].items()
+                }
                 result["checks"].update({
-                    f"existing_{channel}_fenced_with_1012": closure["fence_notice"]
+                    f"existing_{channel}_closed_fail_closed": (
+                        closure["fence_notice"] or (
+                            closure.get("close_code") == 1013
+                            and closure.get("reason") == AUTH_UNAVAILABLE_REASON
+                        )
+                    )
                     for channel, closure in result["existing_channel_closures"].items()
                 })
+                result["checks"]["boundary_command_not_acked"] = (
+                    result["existing_channel_closures"]["station"].get("command_acked") is False
+                )
 
         deadline = time.monotonic() + args.takeover_timeout
         takeover = None
@@ -457,12 +535,24 @@ async def main(args: argparse.Namespace) -> int:
             except Exception as exc:
                 result["checks"]["old_owner_process_healthy"] = False
                 result["old_owner_health_error"] = f"{type(exc).__name__}: {exc}"
+            # Auth на старом узле снова свежий: 1013 до accept исключён, и 403
+            # на рукопожатии ниже остаётся только за fencing занятия (1012).
+            result["checks"]["old_owner_auth_fresh"] = await wait_auth_fresh(
+                old_backend, instructor_cookie,
+            )
             stale = await probe_ws(
                 old_backend.replace("http://", "ws://"),
                 f"/ws/control/{session_id}", instructor_cookie,
             )
             result["stale_owner_control"] = stale
-            result["checks"]["stale_owner_control_rejected"] = not stale["connected"]
+            result["checks"]["stale_owner_control_rejected"] = (
+                not stale["connected"] and "HTTP 403" in stale.get("error", "")
+            )
+            # БД вернулась к старому владельцу, но его команда после обрыва так
+            # и не должна появиться в checkpoint: fencing epoch отверг запись.
+            result["checks"]["boundary_command_absent_from_checkpoint"] = (
+                not await wait_for_command_checkpoint(boundary_command_id, timeout=1)
+            )
 
         request = urllib.request.Request(
             f"{args.frontend_url}/api/sessions/{session_id}",
@@ -524,6 +614,9 @@ async def main(args: argparse.Namespace) -> int:
         result["checks"]["boundary_command_reconciled"] = recovered_status in {
             "responding", "arrived",
         }
+        if args.failure_mode == "partition":
+            # `working` после обрыва не применён: статус остался на lost-ack `arrived`.
+            result["checks"]["boundary_command_not_applied"] = recovered_status == "arrived"
         result["dds_progress_after_takeover"] = []
         if recovered_status == "responding":
             recovered_snapshot = await station_command(ws_base, session_id, trainee_cookie, {
