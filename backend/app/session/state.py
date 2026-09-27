@@ -127,6 +127,11 @@ class PersistedSession(BaseModel):
     #: Подряд идущих первичных отказов без принятой карточки между ними —
     #: сигнал реестра преподавателя, не влияет на балл.
     consecutive_refusals: int = 0
+    #: Когда реестр преподавателя последний раз видел подключённый сокет
+    #: курсанта (станция ДДС или звонок 112) — для сигнала "не на связи".
+    #: Персистится: без этого рестарт/failover обнуляет отсчёт окна
+    #: присутствия и сигнал никогда не срабатывает для восстановленных сессий.
+    socket_last_seen_at: datetime | None = None
 
     @field_validator("processed_station_commands")
     @classmethod
@@ -173,9 +178,6 @@ class SessionState(PersistedSession):
     voice: object | None = Field(default=None, exclude=True)
     recorder: object | None = Field(default=None, exclude=True)
     recording_path: str | None = Field(default=None, exclude=True)
-    #: Когда реестр преподавателя последний раз видел подключённый сокет
-    #: курсанта (станция ДДС или звонок 112) — для сигнала "не на связи".
-    socket_last_seen_at: datetime | None = Field(default=None, exclude=True)
 
     def persisted(self) -> PersistedSession:
         """Сохраняемая часть без копирования — то, что уходит в снимок."""

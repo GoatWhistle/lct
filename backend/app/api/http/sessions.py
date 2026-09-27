@@ -196,13 +196,21 @@ async def dds_history(
     return result
 
 
-def _signals(state: SessionState, queue: list[DdsQueueCard], now: datetime) -> list[Signal]:
+def _signals(
+    state: SessionState, queue: list[DdsQueueCard], now: datetime, *, live: bool
+) -> list[Signal]:
     """Сигналы реестра: очередь, повторные отказы, курсант не на связи.
 
     Не завязаны на паузу занятия (`session.pause`, если появится) — очередь,
     отказы и присутствие сокета не читают таймеры. Присутствие — по наличию
-    подписчика в хабе; окно нужно, чтобы короткий разрыв соединения не сразу
-    считался потерей связи курсанта.
+    подписчика в хабе этого узла; окно нужно, чтобы короткий разрыв
+    соединения не сразу считался потерей связи курсанта.
+
+    `live=False` — снимок собран из checkpoint (сессию не держит хаб этого
+    процесса: рестарт до переподключения сокета или чужой узел в кластере).
+    Такой объект живёт один запрос и выбрасывается: писать в него
+    `socket_last_seen_at` бессмысленно — на следующем опросе присутствие
+    неизвестно снова. Честнее не утверждать «на связи», чем соврать.
     """
     settings = get_settings()
     signals: list[Signal] = []
@@ -216,22 +224,23 @@ def _signals(state: SessionState, queue: list[DdsQueueCard], now: datetime) -> l
             kind="refusals", severity="warn",
             text=f"Подряд отказов: {state.consecutive_refusals}",
         ))
-    connected = (
-        hub.station_connected(state.session_id) if state.exercise is Exercise.DDS
-        else hub.trainee_connected(state.session_id)
-    )
-    if connected:
-        state.socket_last_seen_at = now
-    offline_seconds = (
-        (now - state.socket_last_seen_at).total_seconds()
-        if state.socket_last_seen_at is not None else 0
-    )
-    if offline_seconds >= settings.signal_offline_window_seconds:
-        signals.append(Signal(
-            kind="offline", severity="violated",
-            text=f"Курсант не на связи {int(offline_seconds)} с",
-        ))
-    return signals
+    if live:
+        connected = (
+            hub.station_connected(state.session_id) if state.exercise is Exercise.DDS
+            else hub.trainee_connected(state.session_id)
+        )
+        if connected:
+            state.socket_last_seen_at = now
+        offline_seconds = (
+            (now - state.socket_last_seen_at).total_seconds()
+            if state.socket_last_seen_at is not None else 0
+        )
+        if offline_seconds >= settings.signal_offline_window_seconds:
+            signals.append(Signal(
+                kind="offline", severity="violated",
+                text=f"Курсант не на связи {int(offline_seconds)} с",
+            ))
+    return sorted(signals, key=lambda signal: signal.severity != "violated")
 
 
 @router.get("/active", response_model=list[ActiveSessionOut])
@@ -247,6 +256,10 @@ async def active(
         state.session_id: state
         for state in hub.active_sessions(who.login)
     }
+    #: Снимки без живой записи в хабе этого узла — рестарт до переподключения
+    #: сокета либо чужой узел в кластере. Присутствие сокета для них здесь
+    #: не проверяется: объект живёт один запрос, а не хаб (см. `_signals`).
+    checkpoint_only: set[UUID] = set()
     if db is not None:
         rows = (
             await db.scalars(
@@ -275,6 +288,7 @@ async def active(
             state.owner_login = row.owner_login
             if not state.ended:
                 states[state.session_id] = state
+                checkpoint_only.add(state.session_id)
 
     for state in states.values():
         elapsed = (max(0, int((now - state.started_at).total_seconds()))
@@ -312,7 +326,7 @@ async def active(
             ),
             dds_statuses=latest_statuses,
             dds_snapshot=station,
-            signals=_signals(state, queue, now),
+            signals=_signals(state, queue, now, live=state.session_id not in checkpoint_only),
         ))
     return result
 

@@ -22,6 +22,7 @@ import {
   useActiveSessions, useIncidentGroups, useReviewScenarioSubmission, useScenarioSubmissions,
   useScenarios, useSessions, useTrainees,
 } from "@/shared/api/http";
+import type { Signal } from "@/shared/api/http";
 import { sessionIdFromUrl } from "@/shared/api/session";
 import type { Level, SessionMode, SessionReport } from "@/shared/types/generated";
 
@@ -42,6 +43,12 @@ function levelLabel(level: Level): string {
 
 function modeLabel(mode: SessionMode): string {
   return MODES.find((item) => item.value === mode)?.label ?? mode;
+}
+
+function worstSignalSeverity(signals: Signal[]): "warn" | "violated" | null {
+  return signals.some((signal) => signal.severity === "violated")
+    ? "violated"
+    : signals.length ? "warn" : null;
 }
 
 function sessionDateLabel(value: string | null): string | null {
@@ -383,7 +390,7 @@ export function Instructor() {
                     ? `Просрочено: первичная реакция ${item.dds_overdue_cards}; отработка карточки ${item.dds_work_overdue_cards}`
                     : "Нормативы не нарушены"}
                 </td>
-                <td className={item.signals.length ? `state-${item.signals[0].severity}` : "state-ok"}>
+                <td className={`state-${worstSignalSeverity(item.signals) ?? "ok"}`}>
                   {item.signals.length
                     ? item.signals.map((signal) => <span key={signal.kind}>{signal.text}<br /></span>)
                     : "Сигналов нет"}
