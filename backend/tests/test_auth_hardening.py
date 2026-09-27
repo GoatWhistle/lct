@@ -527,6 +527,45 @@ def test_middleware_rejects_login_missing_from_users_via_one_shot_query(monkeypa
         auth._lookup_locks.pop(login, None)
 
 
+def test_unknown_login_lookup_does_not_clobber_a_newer_local_revocation(monkeypatch):
+    """A stale SELECT reply landing after a concurrent local revoke must not
+    resurrect the revoked cookie's epoch (regression: lock only deduplicates
+    concurrent lookups, it does not order a lookup against a write)."""
+    login = "peer-node-race-login"
+    started = asyncio.Event()
+    resume = asyncio.Event()
+
+    class FakeDb:
+        async def scalar(self, _query):
+            started.set()
+            await resume.wait()
+            return 0  # the epoch as it stood before the concurrent revoke below
+
+    class FakeSession:
+        async def __aenter__(self):
+            return FakeDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    async def run():
+        auth.prime_generations({})
+        task = asyncio.ensure_future(auth._resolve_unknown_login(login))
+        await started.wait()  # the SELECT is in flight, holding the login's lock
+        auth.invalidate_login(login, 1)  # a local logout/edit races the reply
+        resume.set()
+        result = await task
+        assert result == 1, "the newer local revocation must win over the stale SELECT reply"
+        assert auth._generations[login] == 1
+
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: FakeSession())
+    try:
+        asyncio.run(run())
+    finally:
+        auth._generations.pop(login, None)
+        auth._lookup_locks.pop(login, None)
+
+
 def test_unknown_login_lookup_deduplicates_concurrent_requests_into_one_select(monkeypatch):
     login = "peer-node-concurrent-login"
     calls = []

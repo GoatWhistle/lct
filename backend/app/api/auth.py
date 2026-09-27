@@ -166,6 +166,12 @@ async def _resolve_unknown_login(login: str) -> int | None:
         except Exception as exc:  # noqa: BLE001 — fail closed, not FORBIDDEN
             log.error("разовая проверка полномочий не удалась (%s)", type(exc).__name__)
             raise _AuthStateUnavailable from exc
+        # A concurrent local revoke or sync tick may have written a newer
+        # generation while the SELECT above was in flight; the stale read
+        # must never clobber it back to an older, already-revoked epoch.
+        cached = _generations.get(login)
+        if cached is not None:
+            return cached
         if version is None:
             return None
         _generations[login] = version
