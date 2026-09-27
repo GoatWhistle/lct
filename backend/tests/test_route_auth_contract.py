@@ -12,13 +12,14 @@ from pathlib import Path
 API_ROOT = Path(__file__).parents[1] / "app" / "api"
 
 # Public by design: credential entry/session bootstrap and the non-sensitive
-# incident classification dictionary. dev-token has its own fail-closed flag
+# incident classification dictionary and service catalog. dev-token has its own fail-closed flag
 # and remains hidden in production.
 PUBLIC_HTTP_ROUTES = {
     ("auth.py", "post", "/login"),
     ("auth.py", "post", "/dev-token"),
     ("http/ekp.py", "get", "/groups"),
     ("http/ekp.py", "get", "/signs"),
+    ("http/ekp.py", "get", "/services"),
 }
 
 # Routes that centralize ownership + authentication checks in a shared helper.
@@ -83,6 +84,8 @@ HTTP_ROLE_GATE_POLICY = {
     ("http/sessions.py", "get", "/{session_id}/checklist"): ((),),
     ("http/sessions.py", "get", "/{session_id}/recording.wav"): (("INSTRUCTOR", "TRAINEE"),),
     ("http/sessions.py", "patch", "/{session_id}/report"): (("INSTRUCTOR",),),
+    ("http/sessions.py", "post", "/{session_id}/findings/{index}/review"): (("INSTRUCTOR",),),
+    ("http/sessions.py", "post", "/{session_id}/findings"): (("INSTRUCTOR",),),
     ("http/sessions.py", "get", ""): ((),),
     ("http/trainees.py", "get", "/{trainee_id}/certificate.pdf"): ((),),
     ("http/trainees.py", "get", ""): (("ADMIN", "INSTRUCTOR"),),

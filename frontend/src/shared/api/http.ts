@@ -3,7 +3,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { Level, SessionMode, SessionReport, StationSnapshot } from "@/shared/types/generated";
+import type {
+  Level, SessionMode, SessionReport, StationSnapshot, TimerState,
+} from "@/shared/types/generated";
 
 import { reportErrorMessage, reportRetryDelay, shouldRetryReport } from "./report.mjs";
 
@@ -94,6 +96,12 @@ export interface SessionInfo {
   end_reason: string | null;
 }
 
+export interface Signal {
+  kind: "backlog" | "refusals" | "offline";
+  severity: TimerState;
+  text: string;
+}
+
 export interface ActiveSessionInfo {
   session_id: string;
   trainee_name: string | null;
@@ -109,6 +117,8 @@ export interface ActiveSessionInfo {
   dds_work_overdue_cards: number;
   dds_statuses: Record<string, string>;
   dds_snapshot: StationSnapshot | null;
+  signals: Signal[];
+  presence_known: boolean;
 }
 
 export const useActiveSessions = () =>
@@ -228,6 +238,17 @@ export interface IncidentGroupsPage {
 export const useIncidentGroups = () => useQuery({
   queryKey: ["ekp-groups"], staleTime: Infinity,
   queryFn: () => request<IncidentGroupsPage>("/api/ekp/groups"),
+});
+
+export interface ServiceCatalogPage {
+  source: string;
+  services: { id: string; name: string; organization: string | null; service_level: string | null; source_reference: string }[];
+}
+
+/** Каталог окна «Добавьте службы»: 209 служб, включая районные ДДС. */
+export const useServiceCatalog = () => useQuery({
+  queryKey: ["ekp-services"], staleTime: Infinity,
+  queryFn: () => request<ServiceCatalogPage>("/api/ekp/services"),
 });
 
 export function useSigns(prefix: string[], group: number | null = null) {

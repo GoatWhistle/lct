@@ -170,3 +170,10 @@ LICENSE и NOTICE каждого пакета, контейнера, испол�
 | Whisper small GGML | отдельная загрузка из whisper.cpp | сохранить LICENSE и model card конкретной версии |
 | Silero VAD и TTS | отдельная загрузка | сохранить LICENSE и условия конкретного артефакта |
 | DejaVu Sans, Sans Bold | 2.35, `backend/app/assets/fonts/` | Bitstream Vera Fonts License, изменения DejaVu — public domain; текст в `backend/app/assets/fonts/LICENSE-DejaVu.txt` |
+
+## Данные других команд
+
+| Данные | Источник | Лицензирование |
+|---|---|---|
+| Каталог служб «СЛУЖБЫ 112»: 209 записей, `backend/app/domain/services_catalog.json` | Транскрипция скриншотов раздаточного «СЛУЖБЫ 112.docx» из репозитория `alex-indi/training-simulator-112`, коммит `ded466988f505082922aacac9fff32b777d1279a`, файл `backend/seed/services/services.json`; поле `source_reference` каждой записи указывает на изображение и строку в исходном документе | MIT; использование разрешено авторами, разрешение получено командой 27.09.2026. Источник, коммит и лицензия повторены в шапке файла данных |
+

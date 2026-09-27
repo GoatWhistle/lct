@@ -23,7 +23,7 @@ from app.domain.roles import Role
 from app.domain.statuses import ServiceStatus, StationSnapshot
 from app.domain.taxonomy import Finding
 from app.domain.timers import TimerSnapshot
-from app.scoring.taxonomy import METRIC_MAP
+from app.scoring.taxonomy import INSTRUCTOR_METRIC, METRIC_MAP
 
 
 class SessionMode(StrEnum):
@@ -53,6 +53,8 @@ class LessonCriteria(BaseModel):
     decision_time_limit_seconds: int = Field(default=30, ge=5, le=300)
     card_fill_time_limit_seconds: int = Field(default=180, ge=30, le=1800)
     dds_card_work_time_limit_seconds: int = Field(default=180, ge=30, le=1800)
+    #: Сколько секунд после доклада бригады даётся на соответствующий статус.
+    dds_report_reaction_limit_seconds: int = Field(default=45, ge=5, le=600)
     allowed_errors: int = Field(default=0, ge=0, le=50)
     require_correct_grammar: bool = True
     score_weights: dict[str, float] = Field(default_factory=dict)
@@ -60,7 +62,7 @@ class LessonCriteria(BaseModel):
     @field_validator("score_weights")
     @classmethod
     def validate_score_weights(cls, weights: dict[str, float]) -> dict[str, float]:
-        unknown = weights.keys() - METRIC_MAP.keys()
+        unknown = weights.keys() - METRIC_MAP.keys() - {INSTRUCTOR_METRIC}
         if unknown:
             raise ValueError(f"неизвестные метрики весов: {', '.join(sorted(unknown))}")
         if any(not 0 <= weight <= 10 for weight in weights.values()):
@@ -715,6 +717,12 @@ class Metric(BaseModel):
     passed: bool
     weight: float = 1.0
     credit: float | None = Field(default=None, ge=0, le=1)
+    #: Номер карточки очереди ДДС (с 1) и служба — область метрики для разбора.
+    card: int | None = None
+    service: str | None = None
+    #: Автоматический вердикт, если его изменило решение преподавателя по отметке.
+    passed_auto: bool | None = None
+    credit_auto: float | None = Field(default=None, ge=0, le=1)
 
 
 class CompetencyScore(BaseModel):
@@ -764,6 +772,8 @@ class DdsCardReport(BaseModel):
     card_id: UUID
     scenario_id: str
     score_auto: float
+    #: Балл карточки после решений преподавателя по отметкам; None — решений не было.
+    score_reviewed: float | None = None
     reply_text: str
     metrics: list[Metric]
     findings: list[Finding]
@@ -803,6 +813,8 @@ class SessionReport(BaseModel):
     self_assessment_diff: SelfAssessmentDiff | None = None
     notes: list[InstructorNoteShown] = []
     score_auto: float
+    #: Балл после решений преподавателя по отметкам; None — решений не было.
+    score_reviewed: float | None = None
     score_final: float
     overridden_by: str | None = None
     override_comment: str | None = None

@@ -118,6 +118,13 @@ class KIO(BaseModel):
     # ДДС. `notify` считается из признаков и правится только системой:
     # в боевом АРМ оператор может добавить службу вручную, но не удалить.
     notify: list[str] = Field(default_factory=list, description="Список оповещения")
+    #: Службы, добавленные оператором вручную из каталога. Автоматический список
+    #: не заменяют и в оценку по эталону не входят. Каталог проверяется на входе
+    #: (apply_patch), а не здесь: иначе правка названия в каталоге сломала бы
+    #: загрузку сохранённых снимков занятий и сданных карточек.
+    notify_extra: list[str] = Field(
+        default_factory=list, max_length=20, description="Дополнительно оповестить"
+    )
     dds: DDSCode | None = Field(
         default=None, description="Устаревшее: одна служба. Заменено списком оповещения"
     )
@@ -147,7 +154,7 @@ EDITABLE_KIO_FIELDS: frozenset[str] = frozenset({
     "okato", "address", "street", "building", "entrance", "floor",
     "intercom_code", "description", "incident_group", "signs",
     "incident_type", "victims_count", "is_emergency", "life_threat",
-    "evacuation_needed", "dds",
+    "evacuation_needed", "dds", "notify_extra",
     "fire.fire_nature", "fire.object_kind", "fire.floors", "fire.gasified",
     "fire.people_inside", "fire.smoke_spread",
     "police.offence_kind", "police.suspects", "police.suspect_fled",
@@ -223,11 +230,40 @@ def derive_incident(card: KIO) -> KIO:
     return KIO.model_validate(data)
 
 
+class PatchRejected(ValueError):
+    """Дельта `kio.patch` не принята целиком: карточка не изменилась."""
+
+
+def _check_catalog(names: Any) -> None:
+    """Только службы каталога: свободный текст в адресатах карточки
+    на АРМ ДДС выглядел бы как настоящая служба."""
+    from app.domain import ekp
+
+    if not isinstance(names, list):
+        return  # тип и лимит проверит модель
+    known = ekp.catalog_names()
+    unknown = [name for name in names if name not in known]
+    if unknown:
+        raise PatchRejected(f"нет в каталоге служб: {', '.join(map(str, unknown[:3]))}")
+
+
+def _without_auto_services(card: KIO) -> KIO:
+    """Добавки без повторов и без служб, которые уже есть в списке оповещения:
+    иначе на АРМ ДДС одна служба окажется в двух строках."""
+    extra = [name for name in dict.fromkeys(card.notify_extra) if name not in card.notify]
+    if extra == card.notify_extra:
+        return card
+    return card.model_copy(update={"notify_extra": extra})
+
+
 def apply_patch(card: KIO, fields: dict[str, Any]) -> KIO:
     """Применить дельту `kio.patch`. Служебные поля игнорируются.
 
     Вложенные поля приходят плоским путём: {"fire.floors": 5}.
+    Недопустимое значение — `PatchRejected` или `ValidationError`.
     """
+    if "notify_extra" in fields:
+        _check_catalog(fields["notify_extra"])
     data = card.model_dump()
     for path, value in fields.items():
         if path in READ_ONLY_FIELDS:
@@ -243,4 +279,4 @@ def apply_patch(card: KIO, fields: dict[str, Any]) -> KIO:
     # Пересчитываем не только на смену признаков: пострадавшие поднимают скорую,
     # газификация — МОСГАЗ, и список оповещения обязан это отразить сразу.
     touched = MODIFIER_FIELDS & set(fields)
-    return derive_incident(updated) if touched else updated
+    return _without_auto_services(derive_incident(updated) if touched else updated)

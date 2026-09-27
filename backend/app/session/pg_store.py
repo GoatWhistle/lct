@@ -29,6 +29,8 @@ from app.domain.events import Mood, Speaker, TranscriptEntry
 from app.session.checkpoint import dump_state, load_state
 from app.session.state import SessionState, now_utc
 from app.session.store import (
+    FindingAdded,
+    FindingReviewed,
     HintRecorded,
     LessonEnded,
     LessonIdentity,
@@ -44,8 +46,10 @@ from app.session.store import (
     SelfAssessed,
     SessionLeaseLost,
     UtteranceAppended,
+    apply_finding_change,
     apply_score_override,
 )
+from app.scoring.review import has_finding
 
 log = logging.getLogger(__name__)
 LEASE_SECONDS = 15
@@ -250,6 +254,40 @@ class PostgresSessionStore:
                     # а не вторая бессрочная копия свободного текста.
                     detail=(f"{score.score_auto} → {record.score_final}; "
                             f"comment_chars={len(record.comment)}"),
+                ))
+            case FindingReviewed() | FindingAdded():
+                await db.flush()
+                score = await db.scalar(
+                    select(Score).where(Score.session_id == session_id).with_for_update()
+                )
+                if score is None:
+                    raise LookupError(f"нет оценки занятия {session_id}")
+                # Повтор ручной отметки под блокировкой: ни изменения, ни второй строки аудита.
+                if (isinstance(record, FindingAdded)
+                        and has_finding(score.report or {}, record.finding.client_id)):
+                    return
+                before = score.score_final
+                findings = (score.report or {}).get("findings", [])
+                score.report = apply_finding_change(dict(score.report or {}), record)
+                score.score_final = score.report.get("score_final", score.score_final)
+                if isinstance(record, FindingReviewed):
+                    code = (findings[record.index].get("code", "?")
+                            if 0 <= record.index < len(findings) else "?")
+                    actor, action = record.review.author, "finding.review"
+                    what = (f"#{record.index} {code} {record.review.decision.value}; "
+                            f"причина: {record.review.reason}")
+                else:
+                    finding = record.finding
+                    actor, action = finding.author or "instructor", "finding.add"
+                    where = f", карточка {finding.card}" if finding.card is not None else ""
+                    what = (f"{finding.code.value}{where}; факт: {finding.fact}; "
+                            f"норма: {finding.norm or ''}")
+                # Решение по отметке меняет чужой балл: аудит сам по себе должен
+                # ответить «кто, когда, что и почему», даже если разбор потом правили.
+                db.add(AuditLog(
+                    actor=actor, role=record.role, action=action,
+                    object_id=str(session_id),
+                    detail=f"{what}; {before} → {score.score_final}",
                 ))
         await db.flush()
 

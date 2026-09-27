@@ -446,6 +446,7 @@ class DdsDesk(BaseModel):
                             services[0], ServiceStatus.ACCEPTED, command.comment,
                             author="диспетчер",
                         )
+                        session.consecutive_refusals = 0
                     except StatusError:
                         pass  # статус уже стоит: повторное нажатие ничего не меняет
             case "card.status":
@@ -462,6 +463,13 @@ class DdsDesk(BaseModel):
                 # Первичный статус останавливает норматив 30 секунд.
                 if command.status in PRIMARY:
                     card.on_event("card.ack")
+                    # Сигнал реестра "повторные отказы" считает подряд идущие
+                    # отказы, а не сумму за занятие.
+                    session.consecutive_refusals = (
+                        session.consecutive_refusals + 1
+                        if command.status is ServiceStatus.DECLINED
+                        else 0
+                    )
                 if command.status in {
                     ServiceStatus.COMPLETED, ServiceStatus.DECLINED, ServiceStatus.REFUSED,
                 }:

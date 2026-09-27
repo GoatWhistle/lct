@@ -130,6 +130,15 @@ class PersistedSession(BaseModel):
     #: a lost WebSocket acknowledgement cannot apply an operation twice.
     processed_station_commands: list[str] = Field(default_factory=list)
     text_revealed_facts: dict[str, str] = Field(default_factory=dict)
+    #: Подряд идущих первичных отказов без принятой карточки между ними —
+    #: сигнал реестра преподавателя, не влияет на балл.
+    consecutive_refusals: int = 0
+    #: Последнее подключение/отключение сокета курсанта или начало фазы ДДС.
+    #: Сохраняется вместе с занятием, чтобы чтение реестра не меняло состояние.
+    socket_last_seen_at: datetime | None = None
+    #: На момент последнего checkpoint курсант был подключён на текущем АРМ.
+    #: После аварии узла момент потери связи неизвестен: окно начинается при takeover.
+    socket_connected_at_checkpoint: bool = False
 
     @field_validator("processed_station_commands")
     @classmethod
@@ -241,6 +250,9 @@ class SessionState(PersistedSession):
         self.dispatched_at = now_utc()
         if self.exercise is Exercise.CALL:
             self._receive_call_card()
+        if self.handoff_to_dds:
+            self.socket_last_seen_at = self.dispatched_at
+            self.socket_connected_at_checkpoint = False
         return self.dispatched_card
 
     def _receive_call_card(self) -> None:

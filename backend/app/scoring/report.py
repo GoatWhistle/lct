@@ -106,6 +106,7 @@ def build(session_id: UUID, state, scenario: Scenario) -> SessionReport:
         self_assessment_diff=difference,
         notes=[InstructorNoteShown.model_validate(note) for note in state.notes],
         score_auto=score.get("score_auto", 0.0),
+        score_reviewed=score.get("score_reviewed"),
         score_final=score.get("score_final", score.get("score_auto", 0.0)),
         overridden_by=score.get("overridden_by"),
         override_comment=score.get("override_comment"),

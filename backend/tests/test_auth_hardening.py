@@ -272,6 +272,40 @@ def test_peer_node_generation_sync_closes_revoked_websocket(monkeypatch):
     asyncio.run(run())
 
 
+def test_generation_sync_keeps_revocation_of_login_missing_from_db(monkeypatch):
+    # Демо-логины синтетические, в users их нет. Сброс поколения к 0 после
+    # выхода вернул бы силу cookie, выданной до выхода.
+    login = "demo-instructor"
+
+    class FakeResult:
+        def all(self):
+            return []
+
+    class FakeDb:
+        async def execute(self, _query):
+            return FakeResult()
+
+    class FakeSession:
+        async def __aenter__(self):
+            return FakeDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: FakeSession())
+    auth.prime_generations({})
+    who = auth._demo_principal(Role.INSTRUCTOR)
+    request = SimpleNamespace(session={})
+    auth._issue_session(request, who)
+    stale = dict(request.session)
+
+    auth.invalidate_login(login)
+    asyncio.run(auth.sync_generations())
+
+    assert auth._session_principal(stale) is None
+    auth._generations.pop(login, None)
+
+
 def test_revocation_does_not_log_error_if_socket_already_disconnected():
     class DisconnectedSocket:
         async def close(self, **_kwargs):

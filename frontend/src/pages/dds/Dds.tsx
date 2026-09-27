@@ -47,6 +47,11 @@ function field(card: CardState, path: string): string {
   const value = readPath(card.server, path);
   return value === null || value === undefined || value === "" ? "—" : String(value);
 }
+/** Список из карточки: `field()` не годится — `String([])` пустая строка, а не «—». */
+function names(card: CardState, path: string): string[] {
+  const value = readPath(card.server, path);
+  return Array.isArray(value) ? value.map(String) : [];
+}
 function time(value: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleTimeString("ru-RU");
@@ -386,7 +391,8 @@ export function Dds() {
         {Boolean(report.card_results?.length) && <>
           <h3>Результаты по карточкам</h3>
           {report.card_results?.map((item, index) => <details className="dds-details" key={item.card_id}>
-            <summary>Карточка {index + 1} · {item.scenario_id} · {item.score_auto.toFixed(0)} / 100</summary>
+            <summary>Карточка {index + 1} · {item.scenario_id} · {(item.score_reviewed ?? item.score_auto).toFixed(0)} / 100
+              {item.score_reviewed != null && ` после разбора (автооценка ${item.score_auto.toFixed(0)})`}</summary>
             <p><b>Ответ диспетчера:</b> {item.reply_text || "не внесён"}</p>
             {item.metrics.filter((metric) => !metric.passed || (metric.credit != null && metric.credit < 1)).map((metric) =>
               <p key={metric.key} className={metric.passed ? "ref" : "state-violated"}>
@@ -556,6 +562,7 @@ export function Dds() {
           <div><b>{field(card, "description")}</b></div>
           <div>Класс: <b>{field(card, "incident_type")}</b></div>
           <div>Получатели карточки: <b>{station?.recipient_services?.join(", ") || field(card, "notify")}</b></div>
+          {names(card, "notify_extra").length > 0 && <div>Добавлены оператором: <b>{names(card, "notify_extra").join(", ")}</b></div>}
           <div>Ваша ДДС: <b>{station?.managed_service || "служба не назначена"}</b></div></div>
       </div>
       <div className="dds-case-stage">

@@ -26,11 +26,14 @@ from app.session.hub import hub
 from app.session.score import ScoringSnapshot, score_session, scoring_scenario
 from app.session.state import DdsCardRecord, DdsLiveCard, now_utc
 from app.session.store import (
+    FindingAdded,
+    FindingReviewed,
     LessonEnded,
     LessonResumed,
     ScoreArchived,
     ScoreCalculated,
     ScoreOverridden,
+    apply_finding_change,
     apply_score_override,
 )
 
@@ -46,6 +49,7 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
     services = state.card_services(card)
     decision_limit_ms = card.timers.limits[TimerCode.DDS_ACK]
     dds_decision = card.scenario.dds_decision
+    reaction_ms = state.criteria.dds_report_reaction_limit_seconds * 1000
     findings = evaluate_dispatcher(
         entries=card.status_log,
         services=services,
@@ -55,10 +59,12 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
         reply_text=card.reply_text,
         expected_decision=dds_decision.expected,
         expected_decision_reason=dds_decision.reason,
+        phone_reports=card.phone_reports,
+        report_reaction_ms=reaction_ms,
     )
     metrics = dispatcher_metrics(
         card, decision_limit_ms, dds_decision.expected, dds_decision.reason,
-        services=services,
+        services=services, report_reaction_ms=reaction_ms,
     )
     weighted = GostResult(metrics=metrics, findings=findings)
     work_limit_ms = card.timers.limits[TimerCode.DDS_WORK]
@@ -101,9 +107,11 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
         card_id=card.card_id,
         scenario_id=card.scenario.id,
         reply_text=card.reply_text,
-        metrics=[metric.model_copy(update={"title": f"Карточка {number}: {metric.title}"})
+        metrics=[metric.model_copy(update={"title": f"Карточка {number}: {metric.title}",
+                                           "card": number})
                  for metric in weighted.metrics],
-        findings=[finding.model_copy(update={"summary": f"Карточка {number}: {finding.summary}"})
+        findings=[finding.model_copy(update={"summary": f"Карточка {number}: {finding.summary}",
+                                             "card": number})
                   for finding in weighted.findings],
         actions=actions,
         duration_ms=max(0, int((now_utc() - card.dispatched_at).total_seconds() * 1000)),
@@ -246,4 +254,15 @@ def override_score(state, override: ScoreOverridden) -> None:
     """
     hub.record(state.session_id, override)
     state.score = apply_score_override(state.score, override)
+    hub.to_observers(state.session_id, ScoreReady(session_id=state.session_id))
+
+
+def change_findings(state, change: FindingReviewed | FindingAdded) -> None:
+    """Решение преподавателя по отметке — тем же путём, что правка итога.
+
+    Вызывается внутри `hub.operation`: отметки, пересчитанный балл, архивный
+    разбор и строка аудита уходят одним commit.
+    """
+    state.score = apply_finding_change(state.score, change)
+    hub.record(state.session_id, change)
     hub.to_observers(state.session_id, ScoreReady(session_id=state.session_id))

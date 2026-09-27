@@ -197,6 +197,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 .debrief-stat > strong { font-size: 24px; line-height: 1.15; overflow-wrap: anywhere; }
 .debrief-stat > strong small { font-size: 14px; font-weight: 500; }
 .debrief-stat > small { color: #5a6068; font-size: 12px; }
+.finding-review-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.finding-review-actions input { flex: 1 1 200px; min-width: 0; }
+.finding-review-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; align-items: end; }
 .debrief-stat.is-passed { border-left-color: var(--ok); }
 .debrief-stat.is-failed { border-left-color: var(--violated); }
 .debrief-next-step { margin: 12px 0 18px; padding: 12px 15px; border: 1px solid var(--line); border-left: 4px solid #6b7780; border-radius: 5px; background: #fff; }
@@ -785,6 +788,11 @@ button:disabled { opacity: 0.5; cursor: default; }
 .kio-arm-incident .signs select { flex: 1 1 180px; width: auto; max-width: 100%; padding: 7px 8px; border: 1px solid #acb5bc; background: white; }
 .kio-arm-ref .signs-selected { display: flex; flex: 1 1 100%; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 .kio-arm-ref .signs-selected span { padding: 7px 10px; background: #1876b4; color: white; font-size: 12px; font-weight: 700; }
+.kio-services { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.kio-services .signs-selected { display: flex; flex-wrap: wrap; gap: 5px; }
+.kio-services .signs-selected button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 0 0 4px; }
+.kio-services-found { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); max-height: 220px; overflow-y: auto; }
+.kio-services-found button { width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: var(--panel); padding: 6px 8px; cursor: pointer; }
 .kio-arm-choice { display: flex; flex-wrap: wrap; gap: 6px; padding: 5px 0; }
 .kio-arm-choice button { min-width: 49px; padding: 6px 11px; border: 1px solid #aeb6bd; background: white; font-size: 13px; font-weight: 700; }
 .kio-arm-choice .kio-arm-selected { border-color: #1979bb; background: #1979bb; color: white; }

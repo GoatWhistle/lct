@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Debrief } from "@/features/debrief/Debrief";
+import { FindingReview } from "@/features/debrief/FindingReview";
 import { Director } from "@/features/instructor/Director";
 import { ScoreWeightsEditor } from "@/features/instructor/ScoreWeightsEditor";
 import { ScenarioEditor } from "@/features/instructor/ScenarioEditor";
@@ -22,6 +23,7 @@ import {
   useActiveSessions, useIncidentGroups, useReviewScenarioSubmission, useScenarioSubmissions,
   useScenarios, useSessions, useTrainees,
 } from "@/shared/api/http";
+import type { Signal } from "@/shared/api/http";
 import { sessionIdFromUrl } from "@/shared/api/session";
 import type { Level, SessionMode, SessionReport } from "@/shared/types/generated";
 
@@ -42,6 +44,12 @@ function levelLabel(level: Level): string {
 
 function modeLabel(mode: SessionMode): string {
   return MODES.find((item) => item.value === mode)?.label ?? mode;
+}
+
+function worstSignalSeverity(signals: Signal[]): "warn" | "violated" | null {
+  return signals.some((signal) => signal.severity === "violated")
+    ? "violated"
+    : signals.length ? "warn" : null;
 }
 
 function sessionDateLabel(value: string | null): string | null {
@@ -85,6 +93,7 @@ export function Instructor() {
   const [decisionTimeLimit, setDecisionTimeLimit] = useState(30);
   const [cardFillTimeLimit, setCardFillTimeLimit] = useState(180);
   const [ddsCardWorkTimeLimit, setDdsCardWorkTimeLimit] = useState(180);
+  const [ddsReportReactionLimit, setDdsReportReactionLimit] = useState(45);
   const [allowedErrors, setAllowedErrors] = useState(0);
   const [requireCorrectGrammar, setRequireCorrectGrammar] = useState(true);
   const [lessonScoreWeights, setLessonScoreWeights] = useState<Record<string, number>>({});
@@ -299,6 +308,7 @@ export function Instructor() {
         decision_time_limit_seconds: decisionTimeLimit,
         card_fill_time_limit_seconds: cardFillTimeLimit,
         dds_card_work_time_limit_seconds: ddsCardWorkTimeLimit,
+        dds_report_reaction_limit_seconds: ddsReportReactionLimit,
         allowed_errors: allowedErrors,
         require_correct_grammar: requireCorrectGrammar,
         score_weights: lessonScoreWeights,
@@ -306,7 +316,7 @@ export function Instructor() {
     });
     if (sent) toStart.current = null;
   }, [sessionId, control, scenarioId, extraScenarioIds, mode, trainee, traineeId, trainees.data,
-    exercise, decisionTimeLimit, cardFillTimeLimit, ddsCardWorkTimeLimit, allowedErrors, requireCorrectGrammar, wholeTicket, selectedTicketScenarios,
+    exercise, decisionTimeLimit, cardFillTimeLimit, ddsCardWorkTimeLimit, ddsReportReactionLimit, allowedErrors, requireCorrectGrammar, wholeTicket, selectedTicketScenarios,
     ddsArrivalIntervalSeconds, ddsMaxWaiting, lessonScoreWeights, scenarios.data,
     randomScenario, visibleScenarios]);
 
@@ -338,7 +348,7 @@ export function Instructor() {
           Список ваших активных сессий обновляется автоматически каждые 2 секунды.
         </p>
         <div className="dds-table-wrap"><table className="grid">
-          <thead><tr><th>Курсант</th><th>Упражнение · карточка</th><th>Ход</th><th>ДДС</th><th>Задержки</th><th></th></tr></thead>
+          <thead><tr><th>Курсант</th><th>Упражнение · карточка</th><th>Ход</th><th>ДДС</th><th>Задержки</th><th>Сигналы</th><th></th></tr></thead>
           <tbody>
             {(activeSessions.data ?? []).map((item) => (
               <tr key={item.session_id}>
@@ -383,12 +393,18 @@ export function Instructor() {
                     ? `Просрочено: первичная реакция ${item.dds_overdue_cards}; отработка карточки ${item.dds_work_overdue_cards}`
                     : "Нормативы не нарушены"}
                 </td>
+                <td className={worstSignalSeverity(item.signals) ? `state-${worstSignalSeverity(item.signals)}` : item.presence_known ? "state-ok" : undefined}>
+                  {item.signals.length
+                    ? item.signals.map((signal) => <span key={signal.kind}>{signal.text}<br /></span>)
+                    : item.presence_known ? "Сигналов нет" : null}
+                  {!item.presence_known && <span>Связь курсанта не проверена</span>}
+                </td>
                 <td><button type="button" onClick={() => openActiveSession(item)}>
                   {sessionId === item.session_id ? "Открыто" : "Наблюдать"}
                 </button></td>
               </tr>
             ))}
-            {!activeSessions.data?.length && <tr><td colSpan={6}>
+            {!activeSessions.data?.length && <tr><td colSpan={7}>
               {activeSessions.isLoading ? "Загружаем активные занятия…" : "Активных занятий пока нет."}
             </td></tr>}
           </tbody>
@@ -648,6 +664,13 @@ export function Instructor() {
                       onCommit={setDdsCardWorkTimeLimit} />
                     <small className="ref">По умолчанию 180 секунд; не заменяет 30-секундное первичное решение.</small>
                   </label>}
+                  {(exercise === "dds" || exercise === "card_dds") && <label className="lesson-criterion">
+                    Реакция на доклад бригады, секунд
+                    <LessonNumberInput label="Лимит реакции на доклад бригады, секунд"
+                      value={ddsReportReactionLimit} min={5} max={600} fallback={45}
+                      onCommit={setDdsReportReactionLimit} />
+                    <small className="ref">По умолчанию 45 секунд: статус по докладу бригады — не позже лимита.</small>
+                  </label>}
                   <label className="lesson-criterion">
                     Допустимо нарушенных метрик
                     <LessonNumberInput label="Допустимое число ошибок" value={allowedErrors}
@@ -809,6 +832,8 @@ export function Instructor() {
       {session.report && <>
         <Debrief report={overrideReport?.session_id === session.report.session_id
           ? overrideReport : session.report} />
+        <FindingReview report={overrideReport?.session_id === session.report.session_id
+          ? overrideReport : session.report} onChange={setOverrideReport} />
         <section className="debrief debrief-score-override">
           <h2>Ручная корректировка оценки</h2>
           <p className="ref">Автоматическая оценка: {session.report.score_auto.toFixed(1)} из 100. Меняйте её только при необходимости: причина сохранится в журнале вместе с вашим логином.</p>

@@ -22,7 +22,7 @@ from app.session.store import MemorySessionStore
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, template_caller):
     async def audit_in_memory(*_args, **_kwargs):
         return None
 
