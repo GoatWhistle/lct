@@ -160,7 +160,16 @@ def lesson(monkeypatch):
     async def no_coach(_metrics):
         return NoCoaching()
 
+    async def audit_in_memory(*_args, **_kwargs):
+        return None
+
+    async def no_database():
+        yield None
+
+    # Живое занятие в памяти: чтение отчёта не должно ходить в PostgreSQL.
     monkeypatch.setattr(finish_module, "coach", no_coach)
+    monkeypatch.setattr(sessions, "audit_required", audit_in_memory)
+    monkeypatch.setitem(app.dependency_overrides, sessions.optional_session, no_database)
     store = MemorySessionStore()
     monkeypatch.setattr(hub, "store", store)
     state = dds_exercise_early_finish()
