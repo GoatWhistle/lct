@@ -199,10 +199,20 @@ def test_every_websocket_route_checks_a_principal_before_serving():
             route = _route_declaration(node)
             if route is None or route[0] != "websocket":
                 continue
-            if "principal_of" not in _called_names(node):
+            if not _called_names(node) & {"principal_of", "session_socket"}:
                 missing.append(f"{source.name}:{node.name} ({route[1]})")
 
     assert not missing, "WebSocket routes without principal check: " + "; ".join(missing)
+
+
+def test_session_socket_entry_checks_a_principal():
+    """Сокеты занятия делегируют проверку принципала общему входу."""
+    tree = ast.parse((API_ROOT / "ws" / "session.py").read_text(encoding="utf-8"))
+    entry = next(
+        node for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "session_socket"
+    )
+    assert "principal_of" in _called_names(entry)
 
 
 def test_http_routes_match_the_reviewed_role_gate_matrix():

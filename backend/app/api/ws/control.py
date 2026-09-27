@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from app.api.auth import principal_of, websocket_origin_allowed
+from app.api.ws.session import close_fenced, run_command, session_socket
 from app.config import get_settings
 from app.db.base import get_sessionmaker
 from app.db.repo import SessionNodeConflict
@@ -47,7 +47,8 @@ from app.domain.roles import Role
 from app.domain.timers import TimerCode
 from app.scenarios import store
 from app.session.dds import prepare_queue
-from app.session.hub import LEASE_FENCED_MESSAGE, hub
+from app.session.access import can_access
+from app.session.hub import hub
 from app.session.finish import end_session, override_score
 from app.session.state import SessionState, now_utc
 from app.session.store import LessonIdentity, LessonRequest, NoteAdded, ScoreOverridden
@@ -424,29 +425,14 @@ async def _command(session_id: UUID, event, who) -> None:
             )
 
 
-async def _reject(ws: WebSocket, message: str) -> None:
-    """Отказ до входа в цикл: сокет закрывается с объяснением, а не молча."""
-    await ws.send_text(
-        ErrorEvent(code=ErrorKind.FORBIDDEN, message=message).model_dump_json()
-    )
-    await ws.close()
-
-
 @router.websocket("/ws/control/{session_id}")
 async def control(ws: WebSocket, session_id: UUID) -> None:
-    if not websocket_origin_allowed(ws):
-        await ws.close(code=1008)
+    # Пульт преподавателя: управление занятием доступно только ему. Занятия
+    # до `scenario.start` ещё нет — доступ проверяется на каждой команде.
+    entered = await session_socket(ws, session_id, (Role.INSTRUCTOR,), require_state=False)
+    if entered is None:
         return
-    if hub.is_lease_fenced(session_id):
-        await ws.close(code=1012)
-        return
-    await ws.accept()
-
-    # Пульт преподавателя: управление занятием доступно только ему.
-    who = principal_of(ws)
-    if who is None or who.role not in (Role.INSTRUCTOR,):
-        await _reject(ws, "Недостаточно прав для этого экрана")
-        return
+    who, _state = entered
     # Чтение живёт дольше тика опроса: wait_for отменял бы его, а отмена после
     # того, как receive уже забрал кадр, теряет команду или websocket.disconnect.
     # Команда обрабатывается здесь, одной операцией хранилища.
@@ -458,10 +444,7 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
             done, _ = await asyncio.wait({read}, timeout=_FENCE_POLL_SECONDS)
             if not done:
                 if hub.is_lease_fenced(session_id):
-                    await ws.send_text(ErrorEvent(
-                        code=ErrorKind.INTERNAL, message=LEASE_FENCED_MESSAGE
-                    ).model_dump_json())
-                    await ws.close(code=1012)
+                    await close_fenced(ws)
                     return
                 continue
             payload, read = read.result(), None
@@ -482,30 +465,16 @@ async def control(ws: WebSocket, session_id: UUID) -> None:
                         message="Для нового занятия создайте новый номер сессии",
                     ))
                     continue
-            elif existing_state is None or existing_state.owner_login != who.login:
+                # Запуск пишется своей транзакцией в `store.open`: до неё занятия нет.
+                await _command(session_id, event, who)
+                continue
+            if existing_state is None or not can_access(who, existing_state):
                 hub.to_observers(session_id, ErrorEvent(
                     code=ErrorKind.FORBIDDEN,
                     message="Это занятие принадлежит другому преподавателю",
                 ))
                 continue
-
-            if event.type == "scenario.start":
-                # Запуск пишется своей транзакцией в `store.open`: до неё занятия нет.
-                await _command(session_id, event, who)
-                continue
-            try:
-                async with hub.operation(session_id):
-                    await _command(session_id, event, who)
-            except Exception:
-                if hub.is_lease_fenced(session_id):
-                    await ws.send_text(ErrorEvent(
-                        code=ErrorKind.INTERNAL, message=LEASE_FENCED_MESSAGE
-                    ).model_dump_json())
-                    await ws.close(code=1012)
-                    return
-                raise
-            if hub.is_lease_fenced(session_id):
-                await ws.close(code=1012)
+            if not await run_command(ws, session_id, lambda: _command(session_id, event, who)):
                 return
     except WebSocketDisconnect:
         return
