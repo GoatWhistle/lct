@@ -30,6 +30,7 @@ async def test_text_dialogue_provider_error_does_not_log_prompt_or_provider_body
     monkeypatch.setattr(call.hub, "to_observers", lambda *_args: None)
     state = SimpleNamespace(
         ended=False,
+        paused=False,
         exercise=Exercise.CARD,
         dispatched_card=None,
         caller=Caller(),

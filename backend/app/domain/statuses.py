@@ -276,3 +276,5 @@ class StationSnapshot(BaseModel):
     pending_cards_count: int = 0
     next_arrival_in_seconds: int | None = None
     max_waiting_cards: int = 3
+    #: Пульт на паузе: время не идёт, новая карточка не поступит (lct-39).
+    paused: bool = False

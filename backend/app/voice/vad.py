@@ -71,6 +71,17 @@ class StreamingVad:
     def in_speech(self) -> bool:
         return self._in_speech
 
+    def reset(self) -> None:
+        """Не склеивать фрагменты речи до и после паузы занятия."""
+        self._state.fill(0)
+        self._context.fill(0)
+        self._pending = np.zeros(0, dtype=np.float32)
+        self._preroll.clear()
+        self._speech.clear()
+        self._voiced_ms = 0
+        self._silence_ms = 0
+        self._in_speech = False
+
     def _probability(self, window: np.ndarray) -> float:
         frame = np.concatenate([self._context, window])[None, :]
         output, self._state = self._session.run(

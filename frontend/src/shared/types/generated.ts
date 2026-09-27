@@ -177,6 +177,7 @@ export interface DdsCardReport {
   card_id: string;
   scenario_id: string;
   score_auto: number;
+  score_reviewed?: number | null;
   reply_text: string;
   metrics: Array<Metric>;
   findings: Array<Finding>;
@@ -267,6 +268,23 @@ export interface Finding {
   competency?: Competency | null;
   transcript_ref?: string | null;
   at?: string | null;
+  metric_key?: string | null;
+  card?: number | null;
+  service?: string | null;
+  author?: string | null;
+  client_id?: string | null;
+  reviews?: Array<FindingReview>;
+}
+
+/** Решение преподавателя по отметке на разборе. */
+export type FindingDecision = "confirmed" | "dismissed";
+
+/** Кто, когда и почему подтвердил или снял отметку. Сама отметка остаётся. */
+export interface FindingReview {
+  decision: FindingDecision;
+  reason: string;
+  author: string;
+  at: string;
 }
 
 /** Источник объяснимой отметки; `judge` оставлен для старых отчётов. */
@@ -342,10 +360,13 @@ export interface KIO {
   description?: string | null;
   victims_count?: number | null;
   is_emergency?: boolean;
+  offence_signs?: boolean | null;
   life_threat?: boolean;
   evacuation_needed?: boolean;
   /** Список оповещения */
   notify?: Array<string>;
+  /** Дополнительно оповестить */
+  notify_extra?: Array<string>;
   /** Устаревшее: одна служба. Заменено списком оповещения */
   dds?: DDSCode | null;
   dispatch_order_at?: string | null;
@@ -380,6 +401,8 @@ export interface LessonCriteria {
   decision_time_limit_seconds?: number;
   card_fill_time_limit_seconds?: number;
   dds_card_work_time_limit_seconds?: number;
+  dds_report_reaction_enabled?: boolean;
+  dds_report_reaction_limit_seconds?: number;
   allowed_errors?: number;
   require_correct_grammar?: boolean;
   score_weights?: Record<string, number>;
@@ -407,6 +430,10 @@ export interface Metric {
   passed: boolean;
   weight?: number;
   credit?: number | null;
+  card?: number | null;
+  service?: string | null;
+  passed_auto?: boolean | null;
+  credit_auto?: number | null;
 }
 
 export interface ModeSet {
@@ -585,6 +612,17 @@ export interface SessionEnded {
 /** Режим сессии. Меняет доступность подсказок и протоколирование, но не поведение звонящего (docs/product/MODES.md). */
 export type SessionMode = "training" | "exam" | "self";
 
+/** Остановить время занятия; карточку курсанта команда не меняет (lct-39). */
+export interface SessionPause {
+  type: "session.pause";
+}
+
+/** Пульт остановил или возобновил время занятия (lct-39). */
+export interface SessionPaused {
+  type: "session.paused";
+  paused: boolean;
+}
+
 /** Единица истории: из отчётов складываются профиль, дельта попыток, аналитика. */
 export interface SessionReport {
   session_id: string;
@@ -608,9 +646,15 @@ export interface SessionReport {
   self_assessment_diff?: SelfAssessmentDiff | null;
   notes?: Array<InstructorNoteShown>;
   score_auto: number;
+  score_reviewed?: number | null;
   score_final: number;
   overridden_by?: string | null;
   override_comment?: string | null;
+  total_paused_ms?: number;
+}
+
+export interface SessionResume {
+  type: "session.resume";
 }
 
 /** Обязательно при подключении: монитор в классе включают посреди занятия. */
@@ -631,6 +675,7 @@ export interface SessionSnapshot {
   timers: Array<TimerSnapshot>;
   hints_used?: number;
   ended?: boolean;
+  paused?: boolean;
 }
 
 export interface SessionStop {
@@ -667,6 +712,7 @@ export interface StationSnapshot {
   pending_cards_count?: number;
   next_arrival_in_seconds?: number | null;
   max_waiting_cards?: number;
+  paused?: boolean;
 }
 
 /** Состояние АРМ ДДС после каждой отметки: что стоит и что доступно дальше. */
@@ -775,15 +821,15 @@ export interface ZoneDecision {
 
 // Союзы по каналам — смотри docs/arch/CONTRACT.md#каналы
 
-export type ServerToTrainee = CallIncoming | CardBriefing | TextTurnAccepted | CallStarted | SttPartial | SttFinal | CallerUtterance | TtsBegin | TtsEnd | TtsCancel | BgStart | BgStop | EraData | KioPatchOut | HintShown | TimerTick | CallEnded | ScoreReady | ErrorEvent;
+export type ServerToTrainee = CallIncoming | CardBriefing | TextTurnAccepted | CallStarted | SttPartial | SttFinal | CallerUtterance | TtsBegin | TtsEnd | TtsCancel | BgStart | BgStop | EraData | KioPatchOut | HintShown | TimerTick | CallEnded | ScoreReady | SessionPaused | ErrorEvent;
 
 export type TraineeToServer = CallAnswer | CardSubmit | TextTurn | KioPatchIn | HintRequest | SelfAssessmentSubmit | DdsDispatch | CallResolve | CallHangup | CallbackDial;
 
-export type ServerToObserver = SessionSnapshot | TranscriptAppend | KioState | TimerTick | ModeSet | HintShown | BgStart | BgStop | CallerUtterance | SessionEnded | ScoreReady | InstructorNoteShown | ReferenceStarted | ErrorEvent;
+export type ServerToObserver = SessionSnapshot | TranscriptAppend | KioState | TimerTick | ModeSet | HintShown | BgStart | BgStop | CallerUtterance | SessionEnded | ScoreReady | InstructorNoteShown | ReferenceStarted | SessionPaused | ErrorEvent;
 
-export type InstructorToServer = ScenarioStart | DirectorInject | ReferencePlay | InstructorNoteAdd | ScoreOverride | SessionStop;
+export type InstructorToServer = ScenarioStart | DirectorInject | ReferencePlay | InstructorNoteAdd | ScoreOverride | SessionStop | SessionPause | SessionResume;
 
-export type ServerToStation = CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded | ScoreReady | CommandAck | ErrorEvent;
+export type ServerToStation = CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded | ScoreReady | CommandAck | SessionPaused | ErrorEvent;
 
 export type StationToServer = CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | PhoneBrief | PhoneCheck | PhoneHangup | StationFinish | CardReply | CardNext | CardOpen | ZoneDecision | CrewDispatched | CrewArrived;
 
@@ -835,6 +881,9 @@ export type EventName =
   | "score.ready"
   | "self_assessment.submit"
   | "session.ended"
+  | "session.pause"
+  | "session.paused"
+  | "session.resume"
   | "session.snapshot"
   | "session.stop"
   | "station.finish"

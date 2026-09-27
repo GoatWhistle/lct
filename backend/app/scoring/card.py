@@ -30,6 +30,7 @@ def evaluate_card(scenario: Scenario, kio: KIO) -> GostResult:
                 source=FindingSource.KIO if code.value == "E5" else FindingSource.GROUND_TRUTH,
                 summary=f"{title}: {fact}; требуется {norm}",
                 fact=fact, norm=norm, ref=ref, competency=competency,
+                metric_key=key,
             ))
 
     if truth.incident_code:

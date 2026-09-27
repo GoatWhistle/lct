@@ -41,6 +41,7 @@ from app.domain.events import (
     ModeSet,
     ReferenceStarted,
     SessionEnded,
+    SessionPaused,
     StationState,
 )
 from app.domain.roles import Role
@@ -51,7 +52,14 @@ from app.session.access import can_access
 from app.session.hub import hub
 from app.session.finish import end_session, override_score
 from app.session.state import SessionState, now_utc
-from app.session.store import LessonIdentity, LessonRequest, NoteAdded, ScoreOverridden
+from app.session.store import (
+    LessonIdentity,
+    LessonPaused,
+    LessonRequest,
+    LessonResumed,
+    NoteAdded,
+    ScoreOverridden,
+)
 from app.voice.models import get_voice_models
 from app.voice.pipeline import FILLERS, prefetch
 
@@ -104,6 +112,7 @@ def _build_state(session_id: UUID, event, who, scenario, scenarios,
         dds_service=identity.service or event.dds_service,
         attempt=identity.attempt,
         criteria=event.criteria,
+        socket_last_seen_at=now_utc(),
     )
     state.timers.limits[TimerCode.DDS_ACK] = event.criteria.decision_time_limit_seconds * 1000
     state.timers.limits[TimerCode.CARD_FILL] = event.criteria.card_fill_time_limit_seconds * 1000
@@ -344,6 +353,26 @@ async def _command(session_id: UUID, event, who) -> None:
             await _start(session_id, event, who)
         case "session.stop":
             await _stop(session_id)
+        case "session.pause":
+            if state is None or state.ended or state.paused:
+                return
+            state.pause()
+            hub.record(session_id, LessonPaused(
+                at=state.paused_at, author=who.login, role=who.role.value,
+            ))
+            hub.broadcast(session_id, SessionPaused(paused=True))
+            hub.to_station(session_id, SessionPaused(paused=True))
+        case "session.resume":
+            if state is None or state.ended or not state.paused:
+                return
+            paused_ms_before = state.total_paused_ms
+            state.resume()
+            hub.record(session_id, LessonResumed(
+                at=now_utc(), author=who.login, role=who.role.value,
+                paused_ms=state.total_paused_ms - paused_ms_before,
+            ))
+            hub.broadcast(session_id, SessionPaused(paused=False))
+            hub.to_station(session_id, SessionPaused(paused=False))
         case "instructor_note.add":
             if state is not None:
                 state.notes.append({
@@ -389,6 +418,14 @@ async def _command(session_id: UUID, event, who) -> None:
             ))
         case "director.inject":
             if state is None:
+                return
+            if state.paused:
+                # Обрыв на паузе запустил бы норматив обратного дозвона, и простой
+                # ушёл бы в него; курсант же за баннером паузы не может ответить.
+                hub.to_observers(session_id, ErrorEvent(
+                    code=ErrorKind.UNSUPPORTED_EVENT,
+                    message="Занятие на паузе",
+                ))
                 return
             if state.exercise is not Exercise.CALL:
                 hub.to_observers(session_id, ErrorEvent(

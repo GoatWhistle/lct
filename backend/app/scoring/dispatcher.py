@@ -11,31 +11,138 @@
 привязывает статус к звонку или SIP: сведения можно получить по любому рабочему каналу.
 """
 
+import math
+from collections.abc import Sequence
+from datetime import datetime
+
 from app.domain.statuses import (
     COMMENT_REQUIRED,
     PRIMARY,
     REFUSAL_COMMENT_REQUIRED,
     SERVICE_STATUS_LABELS,
+    PhoneReportRecord,
     ServiceStatus,
     StatusEntry,
     current,
 )
 from app.domain.taxonomy import Competency, ErrorCode, Finding, FindingSource
 from app.domain.events import Metric
-from app.domain.timers import GOST_REF
+from app.domain.timers import GOST_REF, TimerCode
+from app.scoring.timing import TimeNorm, time_metric
+
+MEMO_REF = "памятка «Работа на АРМ-112», раздел «Статусы реагирования»"
 
 #: Статусы, означающие, что реагирование действительно шло.
 PROGRESS = (ServiceStatus.RESPONDING, ServiceStatus.ARRIVED, ServiceStatus.WORKING)
 
+#: Статус, который диспетчер отмечает по докладу бригады этой фазы.
+REPORT_STATUS = {
+    "dispatched": ServiceStatus.RESPONDING,
+    "arrived": ServiceStatus.ARRIVED,
+    "working": ServiceStatus.WORKING,
+    "completed": ServiceStatus.COMPLETED,
+}
+REPORT_LABELS = {
+    "dispatched": "о выезде",
+    "arrived": "о прибытии",
+    "working": "о начале работ",
+    "completed": "о завершении работ",
+}
+#: Лимит реакции на доклад по умолчанию; занятие задаёт свой в критериях.
+REPORT_REACTION_MS = 45_000
+#: Реакция на доклад — норматив времени, как отработка карточки, но отметка
+#: D6 из памятки: опоздавший статус — тот же неполный ход работ.
+DDS_REPORT_REACTION = TimeNorm(
+    key="dds_report_reaction",
+    title="реакция на доклад бригады",
+    summary="статус по докладу бригады отмечен с нарушением норматива",
+    action="отметить статус по докладу",
+    unmeasured="не отмечен",
+    incomplete="не отмечен",
+    code=ErrorCode.D6,
+    source=FindingSource.DISPATCHER,
+    ref=MEMO_REF,
+)
+#: Терминальный отказ: работ не было, поэтому неотмеченный по докладу статус
+#: не штрафуется ни отметкой, ни метрикой.
+TERMINAL_REFUSAL = {ServiceStatus.DECLINED, ServiceStatus.REFUSED}
 
-def _finding(code: ErrorCode, summary: str, fact: str, norm: str | None = None) -> Finding:
+
+def report_reactions(
+    marks: list[StatusEntry], reports: list[PhoneReportRecord],
+    pause_intervals: Sequence[tuple[datetime, datetime]] | None = None,
+) -> list[tuple[PhoneReportRecord, int | None]]:
+    """Задержка статуса после каждого доклада бригады, мс; None — статус не отмечен.
+
+    Отсчёт — от серверного времени доклада. Статус, отмеченный раньше доклада,
+    задержки не имеет: диспетчер узнал о ходе работ по другому каналу.
+    """
+    result: list[tuple[PhoneReportRecord, int | None]] = []
+    for report in reports:
+        status = REPORT_STATUS.get(report.phase)
+        if status is None:
+            continue
+        times = [mark.at for mark in marks if mark.status is status]
+        if any(at <= report.at for at in times):
+            result.append((report, 0))
+            continue
+        after = min(times, default=None)
+        if after is None:
+            result.append((report, None))
+            continue
+        elapsed_ms = int((after - report.at).total_seconds() * 1000)
+        for start, end in pause_intervals or ():
+            overlap_start = max(report.at, start)
+            overlap_end = min(after, end)
+            if overlap_end > overlap_start:
+                elapsed_ms -= int((overlap_end - overlap_start).total_seconds() * 1000)
+        result.append((report, max(0, elapsed_ms)))
+    return result
+
+
+def report_reaction(
+    service: str, marks: list[StatusEntry], reports: list[PhoneReportRecord], limit_ms: int,
+    pause_intervals: Sequence[tuple[datetime, datetime]] | None = None,
+) -> tuple[Metric, Finding | None] | None:
+    """Метрика и отметка D6 по самой поздней реакции службы на доклады бригады.
+
+    Одна функция для отметок и для балла: иначе метрика провалится там,
+    где отметки нет. None — реагировать было не на что.
+    """
+    refused = current(marks, service) in TERMINAL_REFUSAL
+    reactions = [(report, delay) for report, delay in report_reactions(marks, reports, pause_intervals)
+                 if delay is not None or not refused]
+    if not reactions:
+        return None
+    report, delay = max(reactions, key=lambda item: math.inf if item[1] is None else item[1])
+    metric, finding = time_metric(DDS_REPORT_REACTION, delay, limit_ms, completed=True)
+    label = SERVICE_STATUS_LABELS[REPORT_STATUS[report.phase]]
+    detail = "отмечен не позже доклада" if delay == 0 else metric.fact
+    fact = (f"статус «{label}» по докладу бригады «{report.crew}» "
+            f"{REPORT_LABELS[report.phase]}: {detail}")
+    if len(reactions) > 1:
+        late = sum(item is None or item > limit_ms for _, item in reactions)
+        fact += f"; с нарушением {late} из {len(reactions)} докладов"
+    metric = metric.model_copy(update={
+        "title": f"{service}: {metric.title}", "fact": fact, "service": service,
+    })
+    if finding is not None:
+        finding = finding.model_copy(update={
+            "summary": f"{service}: {finding.summary}", "fact": fact, "service": service,
+        })
+    return metric, finding
+
+
+def _finding(service: str, code: ErrorCode, summary: str, fact: str,
+             norm: str | None = None) -> Finding:
     return Finding(
+        service=service,
         code=code,
         source=FindingSource.DISPATCHER,
         summary=summary,
         fact=fact,
         norm=norm,
-        ref="памятка «Работа на АРМ-112», раздел «Статусы реагирования»",
+        ref=MEMO_REF,
         competency=(
             Competency.COMMUNICATION if code is ErrorCode.D5 else Competency.CARD
         ),
@@ -91,6 +198,10 @@ def evaluate_dispatcher(
     reply_text: str = "",
     expected_decision: str = "accept",
     expected_decision_reason: str | None = None,
+    phone_reports: list[PhoneReportRecord] | None = None,
+    report_reaction_ms: int = REPORT_REACTION_MS,
+    report_reaction_enabled: bool = False,
+    pause_intervals: Sequence[tuple[datetime, datetime]] | None = None,
 ) -> list[Finding]:
     """Отметки по работе диспетчера. Пустой список — работа без нарушений.
 
@@ -117,7 +228,7 @@ def evaluate_dispatcher(
         ]
         if missing_comment_statuses:
             findings.append(_finding(
-                ErrorCode.D5,
+                service, ErrorCode.D5,
                 f"{service}: к статусу не добавлены основание и сведения",
                 fact="не заполнены комментарии: " + ", ".join(missing_comment_statuses),
                 norm="к каждой ручной отметке добавить основание и содержание полученных сведений",
@@ -132,7 +243,7 @@ def evaluate_dispatcher(
         ]
         if incomplete_comment_statuses:
             findings.append(_finding(
-                ErrorCode.D5,
+                service, ErrorCode.D5,
                 f"{service}: комментарии к статусам не разделяют основание и сведения",
                 fact="неполные комментарии: " + ", ".join(incomplete_comment_statuses),
                 norm="в каждом комментарии заполнить отдельные поля «Основание» и «Сведения»",
@@ -152,7 +263,7 @@ def evaluate_dispatcher(
         ]
         if missing_recipients:
             findings.append(_finding(
-                ErrorCode.D5,
+                service, ErrorCode.D5,
                 f"{service}: отдельный комментарий не указывает получателя сведений",
                 fact="; ".join(missing_recipients)[:500],
                 norm=(
@@ -166,7 +277,7 @@ def evaluate_dispatcher(
         if primary is None:
             findings.append(
                 _finding(
-                    ErrorCode.D1,
+                    service, ErrorCode.D1,
                     f"{service}: статус реагирования не проставлен",
                     fact=(
                         f"прошло {elapsed_ms // 1000} с"
@@ -181,7 +292,7 @@ def evaluate_dispatcher(
         if elapsed_ms is None or elapsed_ms > deadline_ms:
             findings.append(
                 _finding(
-                    ErrorCode.D1,
+                    service, ErrorCode.D1,
                     f"{service}: первичный статус проставлен с нарушением срока",
                     fact=(
                         f"прошло {elapsed_ms // 1000} с"
@@ -197,7 +308,7 @@ def evaluate_dispatcher(
             if mark.status in REFUSAL_COMMENT_REQUIRED and not mark.comment.strip():
                 findings.append(
                     _finding(
-                        ErrorCode.D4,
+                        service, ErrorCode.D4,
                         f"{service}: «{SERVICE_STATUS_LABELS[mark.status]}» без комментария",
                         fact="причина отказа не указана",
                         norm="комментарий к отказу обязателен",
@@ -209,7 +320,7 @@ def evaluate_dispatcher(
         if latest is ServiceStatus.DECLINED and expected_decision == "accept":
             findings.append(
                 _finding(
-                    ErrorCode.D3,
+                    service, ErrorCode.D3,
                     f"{service}: отказ от происшествия, которое в её компетенции",
                     fact="служба есть в списке оповещения по ЕКП",
                     norm="принять согласно эталону сценария",
@@ -218,7 +329,7 @@ def evaluate_dispatcher(
         elif latest is ServiceStatus.ACCEPTED and expected_decision == "decline":
             findings.append(
                 _finding(
-                    ErrorCode.D2,
+                    service, ErrorCode.D2,
                     f"{service}: принято вопреки эталону сценария",
                     fact="карточка принята службой",
                     norm=expected_decision_reason or "отказать с указанной причиной",
@@ -232,7 +343,7 @@ def evaluate_dispatcher(
             if service not in crew_assignments:
                 findings.append(
                     _finding(
-                        ErrorCode.D2,
+                        service, ErrorCode.D2,
                         f"{service}: «Принята» без назначения бригады и хода реагирования",
                         fact="бригада не выбрана, после приёма статусов не было",
                         norm="необходимую бригаду выбирает ДДС; ход отмечается по факту",
@@ -241,7 +352,7 @@ def evaluate_dispatcher(
             else:
                 findings.append(
                     _finding(
-                        ErrorCode.D2,
+                        service, ErrorCode.D2,
                         f"{service}: «Принята», но о реагировании ничего не отмечено",
                         fact="после приёма статусов не было",
                         norm="статус должен соответствовать фактическому состоянию заявки",
@@ -252,7 +363,7 @@ def evaluate_dispatcher(
         ) and service not in crew_assignments:
             findings.append(
                 _finding(
-                    ErrorCode.D2,
+                    service, ErrorCode.D2,
                     f"{service}: ход реагирования без назначения бригады",
                     fact="статусы хода работ проставлены, бригада не выбрана",
                     norm="необходимую бригаду выбирает ДДС; ход отмечается по факту",
@@ -262,15 +373,18 @@ def evaluate_dispatcher(
         # D6 — ход работ неполон к моменту закрытия карточки/занятия. В памятке
         # это приводит к повторным звонкам и скрывает от других служб факт реакции.
         # REFUSED — отдельный допустимый терминальный статус с обязательной причиной.
+        reports = [report for report in phone_reports or () if report.service == service]
         missing_progress = [status for status in PROGRESS if status not in {m.status for m in marks}]
         if (latest not in {ServiceStatus.DECLINED, ServiceStatus.REFUSED}
                 and (missing_progress or latest is not ServiceStatus.COMPLETED)):
             missing = ", ".join(SERVICE_STATUS_LABELS[status] for status in missing_progress)
+            reported_done = any(report.phase == "completed" for report in reports)
             findings.append(
                 _finding(
-                    ErrorCode.D6,
+                    service, ErrorCode.D6,
                     f"{service}: ход реагирования не доведён до конца",
-                    fact=(f"не отмечены: {missing}" if missing else "карточка не закрыта"),
+                    fact=(f"не отмечены: {missing}" if missing else "карточка не закрыта")
+                    + ("; бригада доложила о завершении работ" if reported_done else ""),
                     norm=(
                         "отметить по факту начало реагирования, прибытие, проведение работ "
                         "и завершение; если работы не проводились — оформить отказ с причиной"
@@ -278,16 +392,25 @@ def evaluate_dispatcher(
                 )
             )
 
+        # D6 — статус по докладу бригады отмечен позже лимита или не отмечен.
+        if report_reaction_enabled:
+            reaction = report_reaction(service, marks, reports, report_reaction_ms, pause_intervals)
+            if reaction is not None and reaction[1] is not None:
+                findings.append(reaction[1])
+
     return findings
 
 
 def dispatcher_metrics(
-    state,
+    card,
     deadline_ms: int,
     expected_decision: str = "accept",
     expected_decision_reason: str | None = None,
     *,
     services: list[str] | None = None,
+    report_reaction_ms: int = REPORT_REACTION_MS,
+    report_reaction_enabled: bool = False,
+    pause_intervals: Sequence[tuple[datetime, datetime]] | None = None,
 ) -> list[Metric]:
     """Числовая часть оценки ДДС; каждый проверяемый шаг имеет факт и норму.
 
@@ -295,20 +418,21 @@ def dispatcher_metrics(
     источник информации, но не обязательный шлюз статуса.
     """
     metrics: list[Metric] = []
-    for service in (services if services is not None else state.managed_services()):
-        marks = [mark for mark in state.status_log if mark.service == service]
+    # Через таймер, а не `primary.at - dispatched_at`: календарная разница
+    # включила бы паузу преподавателя в норматив (lct-39).
+    elapsed = card.timers.measured_ms(TimerCode.DDS_ACK)
+    for service in (services if services is not None else card.managed_services()):
+        marks = [mark for mark in card.status_log if mark.service == service]
         statuses = {mark.status for mark in marks}
 
         def add(key: str, title: str, passed: bool, fact: str, norm: str, weight: float = 1.0):
             metrics.append(Metric(
-                key=key, title=f"{service}: {title}", fact=fact, norm=norm,
+                key=key, title=f"{service}: {title}", fact=fact, norm=norm, service=service,
                 ref=GOST_REF if key == "dds_ack" else "памятка «Работа на АРМ-112», статусы реагирования",
                 passed=passed, weight=weight,
             ))
 
         primary = next((mark for mark in marks if mark.status in PRIMARY), None)
-        elapsed = (int((primary.at - state.dispatched_at).total_seconds() * 1000)
-                   if primary and state.dispatched_at else None)
         add("dds_primary", "решение по карточке", primary is not None,
             primary.status.value if primary else "решение отсутствует", "Принята или Не принята", 2.0)
         add("dds_ack", f"первичная отметка за {deadline_ms // 1000} с",
@@ -317,6 +441,13 @@ def dispatcher_metrics(
             f"≤ {deadline_ms // 1000} с")
         if primary is None:
             continue
+        # Метрика есть только там, где бригада докладывала: без докладов
+        # реагировать не на что, и отсутствие звонков не штраф.
+        reports = [report for report in card.phone_reports if report.service == service]
+        if report_reaction_enabled:
+            reaction = report_reaction(service, marks, reports, report_reaction_ms, pause_intervals)
+            if reaction is not None:
+                metrics.append(reaction[0])
         expected_status = (ServiceStatus.ACCEPTED if expected_decision == "accept"
                            else ServiceStatus.DECLINED)
         expected_label = "Принята" if expected_decision == "accept" else "Не принята"
@@ -326,7 +457,7 @@ def dispatcher_metrics(
             expected_decision_reason or f"по эталону ожидается «{expected_label}»", 2.0)
         if primary.status is ServiceStatus.DECLINED or expected_decision == "decline":
             continue
-        crew = state.crew_assignments.get(service)
+        crew = card.crew_assignments.get(service)
         add("dds_crew", "назначение бригады", bool(crew),
             crew or "бригада не выбрана",
             "необходимую бригаду выбирает ДДС вручную", 2.0)

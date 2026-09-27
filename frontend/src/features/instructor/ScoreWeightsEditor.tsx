@@ -32,6 +32,7 @@ const DDS_METRICS: MetricOption[] = [
   { key: "dds_completion", label: "Завершение работ", hint: "Фиксация завершения или отказа от работ." },
   { key: "dds_reply", label: "Основание и сведения", hint: "Комментарии к статусам и содержание полученных сведений." },
   { key: "dds_work_time", label: "Время отработки карточки", hint: "Соблюдение лимита полного цикла карточки." },
+  { key: "dds_report_reaction", label: "Реакция на доклад бригады", hint: "Статус по докладу бригады не позже лимита занятия." },
 ];
 
 const CARD_METRICS = OPERATOR_METRICS.filter(({ key }) => [
@@ -39,13 +40,19 @@ const CARD_METRICS = OPERATOR_METRICS.filter(({ key }) => [
   "required_fields", "description_grammar", "card_fill_time",
 ].includes(key));
 const CALL_METRICS = OPERATOR_METRICS.filter(({ key }) => key !== "card_fill_time");
+// Метрика появляется, только когда ручной отметке преподавателя нечего провалить.
+const REVIEW_METRICS: MetricOption[] = [
+  { key: "instructor_finding", label: "Отметка преподавателя", hint: "Ручная отметка на разборе без связанной метрики (например, D4)." },
+];
 
 export function ScoreWeightsEditor({
   exercise,
+  reportReactionEnabled,
   values,
   onChange,
 }: {
   exercise: LessonExercise;
+  reportReactionEnabled: boolean;
   values: Record<string, number>;
   onChange: (weights: Record<string, number>) => void;
 }) {
@@ -57,6 +64,12 @@ export function ScoreWeightsEditor({
       : exercise === "card_dds"
         ? [["Карточка КИО", CARD_METRICS], ["Реагирование ДДС", DDS_METRICS]]
         : [["Опрос 112", CALL_METRICS], ["Реагирование ДДС", DDS_METRICS]];
+  groups.push(["Разбор", REVIEW_METRICS]);
+  if (!reportReactionEnabled) {
+    for (const group of groups) {
+      group[1] = group[1].filter(({ key }) => key !== "dds_report_reaction");
+    }
+  }
 
   function setWeight(key: string, raw: string) {
     const next = { ...values };

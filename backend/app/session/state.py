@@ -105,6 +105,14 @@ class PersistedSession(BaseModel):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     end_reason: CallEndReason | None = None
+    #: Пульт остановил время занятия; таймеры и очередь ДДС заморожены (lct-39).
+    paused: bool = False
+    #: Момент постановки на паузу — им же считается длительность простоя при снятии.
+    paused_at: datetime | None = None
+    #: Суммарная длительность пауз — для разбора, чтобы время было объяснимо.
+    total_paused_ms: int = 0
+    #: Закрытые интервалы пауз нужны для расчёта активного времени между докладом и статусом.
+    pause_intervals: list[tuple[datetime, datetime]] = Field(default_factory=list)
     #: Карточка оператора 112, замороженная при передаче в ДДС.
     dispatched_card: KIO | None = None
     dispatched_at: datetime | None = None
@@ -124,6 +132,15 @@ class PersistedSession(BaseModel):
     #: a lost WebSocket acknowledgement cannot apply an operation twice.
     processed_station_commands: list[str] = Field(default_factory=list)
     text_revealed_facts: dict[str, str] = Field(default_factory=dict)
+    #: Подряд идущих первичных отказов без принятой карточки между ними —
+    #: сигнал реестра преподавателя, не влияет на балл.
+    consecutive_refusals: int = 0
+    #: Последнее подключение/отключение сокета курсанта или начало фазы ДДС.
+    #: Сохраняется вместе с занятием, чтобы чтение реестра не меняло состояние.
+    socket_last_seen_at: datetime | None = None
+    #: На момент последнего checkpoint курсант был подключён на текущем АРМ.
+    #: После аварии узла момент потери связи неизвестен: окно начинается при takeover.
+    socket_connected_at_checkpoint: bool = False
 
     @field_validator("processed_station_commands")
     @classmethod
@@ -181,6 +198,38 @@ class SessionState(PersistedSession):
         """Единственная точка, где событие двигает таймеры."""
         self.timers.on_event(event_type)
 
+    def pause(self) -> None:
+        """Заморозить таймеры занятия и карточек пульта; очередь не выдаёт следующую."""
+        if self.paused:
+            return
+        now = time.monotonic()
+        self.timers.pause(now)
+        for card in self.desk.cards.values():
+            card.timers.pause(now)
+        self.paused = True
+        self.paused_at = now_utc()
+        if self.voice is not None:
+            self.voice.pause()
+
+    def resume(self) -> None:
+        """Снять паузу: таймеры продолжают с прежней отметки, очередь сдвигается на простой."""
+        if not self.paused:
+            return
+        now = time.monotonic()
+        self.timers.resume(now)
+        for card in self.desk.cards.values():
+            card.timers.resume(now)
+        if self.paused_at is not None:
+            resumed_at = now_utc()
+            idle = resumed_at - self.paused_at
+            self.total_paused_ms += max(0, int(idle.total_seconds() * 1000))
+            if resumed_at > self.paused_at:
+                self.pause_intervals.append((self.paused_at, resumed_at))
+            if self.desk.next_arrival_at is not None:
+                self.desk.next_arrival_at += idle
+        self.paused = False
+        self.paused_at = None
+
     def append(self, speaker: Speaker, text: str, mood: Mood | None = None) -> TranscriptEntry:
         entry = TranscriptEntry(
             ref=f"u{len(self.transcript) + 1}",
@@ -206,6 +255,9 @@ class SessionState(PersistedSession):
         self.dispatched_at = now_utc()
         if self.exercise is Exercise.CALL:
             self._receive_call_card()
+        if self.handoff_to_dds:
+            self.socket_last_seen_at = self.dispatched_at
+            self.socket_connected_at_checkpoint = False
         return self.dispatched_card
 
     def _receive_call_card(self) -> None:
@@ -319,14 +371,15 @@ class SessionState(PersistedSession):
         services = self._managed_services_for(recipients)
         log = list(card.status_log) if card is not None else []
         statuses = {service: current(log, service) for service in services}
+        now_mono = time.monotonic()
         overdue = False
         if card is not None:
-            elapsed = card.timers.measured_ms(TimerCode.DDS_ACK)
+            # Через таймер, а не через `dispatched_at`: часы разошлись бы с
+            # паузой, которая держит `current_ms` на месте (lct-39).
+            ack_timer = card.timers.timers.get(TimerCode.DDS_ACK)
             limit = card.timers.limits[TimerCode.DDS_ACK]
-            overdue = elapsed is None and (
-                (now_utc() - card.dispatched_at).total_seconds() * 1000 > limit
-            )
-        now_mono = time.monotonic()
+            elapsed_ms = ack_timer.current_ms(now_mono) if ack_timer else 0
+            overdue = not (ack_timer.stopped if ack_timer else False) and elapsed_ms > limit
         queue_cards: list[DdsQueueCard] = []
         for item in (desk.ordered() if self.dds_phase else []):
             recipients_for_card = list(item.dispatched_card.notify)
@@ -397,6 +450,7 @@ class SessionState(PersistedSession):
                 if desk.next_arrival_at is not None else None
             ),
             max_waiting_cards=desk.max_waiting,
+            paused=self.paused,
         )
 
     def card_received_event(self):
@@ -419,7 +473,14 @@ class SessionState(PersistedSession):
         return self.ended_at is not None
 
     def end(self, reason: CallEndReason) -> datetime:
-        """Закрыть занятие; возвращает момент окончания для журнала."""
+        """Закрыть занятие; возвращает момент окончания для журнала.
+
+        Занятие могут завершить прямо на паузе (преподаватель нажал «Завершить»,
+        не возобновив): снять флаг и досчитать простой сейчас, иначе курсант
+        навсегда останется за баннером «Пауза, ждите преподавателя», а разбор
+        потеряет последний, ещё не закрытый интервал паузы (lct-39).
+        """
+        self.resume()
         self.ended_at = now_utc()
         self.end_reason = reason
         return self.ended_at
@@ -445,4 +506,5 @@ class SessionState(PersistedSession):
             timers=self.shown_timers().snapshot(),
             hints_used=len(self.hints_shown),
             ended=self.ended,
+            paused=self.paused,
         )

@@ -12,7 +12,7 @@ import logging
 import time
 from uuid import UUID
 
-from app.domain.events import CallEnded, CallEndReason, Exercise, ScoreReady, SessionEnded
+from app.domain.events import CallEnded, CallEndReason, Exercise, ScoreReady, SessionEnded, SessionPaused
 from app.domain.statuses import ServiceStatus, current
 from app.domain.timers import TimerCode
 from app.scoring.ai_coach import coach
@@ -26,10 +26,14 @@ from app.session.hub import hub
 from app.session.score import ScoringSnapshot, score_session, scoring_scenario
 from app.session.state import DdsCardRecord, DdsLiveCard, now_utc
 from app.session.store import (
+    FindingAdded,
+    FindingReviewed,
     LessonEnded,
+    LessonResumed,
     ScoreArchived,
     ScoreCalculated,
     ScoreOverridden,
+    apply_finding_change,
     apply_score_override,
 )
 
@@ -45,6 +49,7 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
     services = state.card_services(card)
     decision_limit_ms = card.timers.limits[TimerCode.DDS_ACK]
     dds_decision = card.scenario.dds_decision
+    reaction_ms = state.criteria.dds_report_reaction_limit_seconds * 1000
     findings = evaluate_dispatcher(
         entries=card.status_log,
         services=services,
@@ -54,10 +59,16 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
         reply_text=card.reply_text,
         expected_decision=dds_decision.expected,
         expected_decision_reason=dds_decision.reason,
+        phone_reports=card.phone_reports,
+        report_reaction_ms=reaction_ms,
+        report_reaction_enabled=state.criteria.dds_report_reaction_enabled,
+        pause_intervals=state.pause_intervals,
     )
     metrics = dispatcher_metrics(
         card, decision_limit_ms, dds_decision.expected, dds_decision.reason,
-        services=services,
+        services=services, report_reaction_ms=reaction_ms,
+        report_reaction_enabled=state.criteria.dds_report_reaction_enabled,
+        pause_intervals=state.pause_intervals,
     )
     weighted = GostResult(metrics=metrics, findings=findings)
     work_limit_ms = card.timers.limits[TimerCode.DDS_WORK]
@@ -100,9 +111,11 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
         card_id=card.card_id,
         scenario_id=card.scenario.id,
         reply_text=card.reply_text,
-        metrics=[metric.model_copy(update={"title": f"Карточка {number}: {metric.title}"})
+        metrics=[metric.model_copy(update={"title": f"Карточка {number}: {metric.title}",
+                                           "card": number})
                  for metric in weighted.metrics],
-        findings=[finding.model_copy(update={"summary": f"Карточка {number}: {finding.summary}"})
+        findings=[finding.model_copy(update={"summary": f"Карточка {number}: {finding.summary}",
+                                             "card": number})
                   for finding in weighted.findings],
         actions=actions,
         duration_ms=max(0, int((now_utc() - card.dispatched_at).total_seconds() * 1000)),
@@ -181,7 +194,14 @@ async def end_session(session_id: UUID, state, reason: CallEndReason) -> None:
     """
     if state.ended:
         return
+    was_paused = state.paused
+    paused_ms_before = state.total_paused_ms
     ended_at = state.end(reason)
+    if was_paused:
+        hub.record(session_id, LessonResumed(
+            at=ended_at, author="система", role="system",
+            paused_ms=state.total_paused_ms - paused_ms_before,
+        ))
     if state.exercise is Exercise.CARD and state.dispatched_card is None:
         state.on_event("card.end")
     # Норматив отработки фиксируется событием, а не текущим значением часов.
@@ -200,6 +220,11 @@ async def end_session(session_id: UUID, state, reason: CallEndReason) -> None:
         hub.to_station(session_id, SessionEnded(reason=reason))
     else:
         hub.to_trainee(session_id, CallEnded(reason=reason))
+    if was_paused:
+        # Снятие паузы — после сообщения о конце: иначе клиент дошлёт отложенные
+        # на паузе правки карточки в уже закрытое занятие.
+        hub.broadcast(session_id, SessionPaused(paused=False))
+        hub.to_station(session_id, SessionPaused(paused=False))
     if state.score is None:
         return
     hub.to_observers(session_id, ScoreReady(session_id=session_id))
@@ -233,4 +258,15 @@ def override_score(state, override: ScoreOverridden) -> None:
     """
     hub.record(state.session_id, override)
     state.score = apply_score_override(state.score, override)
+    hub.to_observers(state.session_id, ScoreReady(session_id=state.session_id))
+
+
+def change_findings(state, change: FindingReviewed | FindingAdded) -> None:
+    """Решение преподавателя по отметке — тем же путём, что правка итога.
+
+    Вызывается внутри `hub.operation`: отметки, пересчитанный балл, архивный
+    разбор и строка аудита уходят одним commit.
+    """
+    state.score = apply_finding_change(state.score, change)
+    hub.record(state.session_id, change)
     hub.to_observers(state.session_id, ScoreReady(session_id=state.session_id))

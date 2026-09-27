@@ -86,6 +86,8 @@ class VoiceSession:
     # ── вход: кадры микрофона ──
 
     def feed(self, frame: bytes) -> None:
+        if self.state.paused:
+            return
         for event in self._vad.push(frame):
             if isinstance(event, SpeechStarted) and self.speaking:
                 self.barge_in()
@@ -104,6 +106,8 @@ class VoiceSession:
         первая фраза «Алло! Помогите!» — ровно та, которую оператор перебивает
         чаще всего, — не гасилась вовсе.
         """
+        if self.state.paused:
+            return asyncio.create_task(asyncio.sleep(0))
         if self.speaking:
             self._reply.cancel()
         self._reply = asyncio.create_task(self.say(text, mood))
@@ -119,6 +123,17 @@ class VoiceSession:
             self.send_event(TtsCancel(utterance_id=self._utterance_id, reason="barge_in"))
         log.info("сессия %s: перебивание", self.session_id)
 
+    def pause(self) -> None:
+        """Прервать текущую реплику и убрать речь, накопленную до паузы."""
+        if self.speaking:
+            self._reply.cancel()
+        if self._utterance_id is not None:
+            self.send_event(TtsCancel(utterance_id=self._utterance_id, reason="director"))
+            self._utterance_id = None
+        while not self._queue.empty():
+            self._queue.get_nowait()
+        self._vad.reset()
+
     async def close(self) -> None:
         for task in (self._reply, self._worker):
             if task is not None:
@@ -129,6 +144,8 @@ class VoiceSession:
     async def _work(self) -> None:
         while True:
             audio, ended_at = await self._queue.get()
+            if self.state.paused:
+                continue
             # Новая фраза оператора, пока звонящий ещё говорит, — тоже перебивание.
             if self.speaking:
                 self.barge_in()
@@ -143,6 +160,8 @@ class VoiceSession:
         timing = TurnTiming()
         started = time.monotonic()
         text = await self.models.transcribe(audio)
+        if self.state.paused:
+            return
         timing.stt_ms = (time.monotonic() - started) * 1000
         if not text:
             return
@@ -155,6 +174,8 @@ class VoiceSession:
 
         started = time.monotonic()
         line = await self._caller_line(text)
+        if self.state.paused:
+            return
         timing.caller_ms = (time.monotonic() - started) * 1000
         await self.say(line.text, line.mood, ended_at=ended_at, timing=timing)
 
@@ -171,6 +192,8 @@ class VoiceSession:
         self, text: str, mood: Mood, *, ended_at: float | None = None, timing: TurnTiming | None = None
     ) -> None:
         """Произнести реплику: событие с текстом, звук по предложениям, ожидание конца."""
+        if self.state.paused:
+            return
         self._utterance_id = utterance_id = uuid4()
         entry = self.state.append(Speaker.CALLER, text, mood)
         self.send_event(CallerUtterance(utterance_id=utterance_id, text=text, at=entry.at, mood=mood))
@@ -186,6 +209,8 @@ class VoiceSession:
                 pcm = await self._first_sentence(sentence, mood, ended_at, timing)
             else:
                 pcm = await self.synthesize(sentence)
+            if self.state.paused:
+                return
             if index == 0 and timing is not None:
                 timing.tts_first_ms = (time.monotonic() - synth_started) * 1000
             if not pcm:
@@ -205,6 +230,7 @@ class VoiceSession:
         # Ждём, пока курсант дослушает: перебивание в это время отменит задачу.
         await asyncio.sleep(max(0.0, playback_ends - time.monotonic()))
         self.send_event(TtsEnd(utterance_id=utterance_id))
+        self._utterance_id = None
 
     async def _first_sentence(
         self, sentence: str, mood: Mood, ended_at: float, timing: TurnTiming | None
@@ -212,17 +238,25 @@ class VoiceSession:
         """Первое предложение с филлером: если к секунде после конца фразы звука
         ещё нет, звонящий «переспрашивает», а ответ встанет в очередь за ним."""
         synthesis = asyncio.ensure_future(self.synthesize(sentence))
-        remaining = FILLER_AFTER_S - (time.monotonic() - ended_at)
-        if remaining > 0:
-            done, _ = await asyncio.wait({synthesis}, timeout=remaining)
-            if done:
-                return synthesis.result()
-        filler = await self.synthesize(FILLERS.get(mood, FILLERS[Mood.PANIC]))
-        if filler:
-            self.send_audio(filler)
-            if timing is not None:
-                timing.filler = True
-        return await synthesis
+        try:
+            remaining = FILLER_AFTER_S - (time.monotonic() - ended_at)
+            if remaining > 0:
+                done, _ = await asyncio.wait({synthesis}, timeout=remaining)
+                if done:
+                    return synthesis.result()
+            filler = await self.synthesize(FILLERS.get(mood, FILLERS[Mood.PANIC]))
+            if filler and not self.state.paused:
+                self.send_audio(filler)
+                if timing is not None:
+                    timing.filler = True
+            return await synthesis
+        finally:
+            if not synthesis.done():
+                synthesis.cancel()
+                try:
+                    await synthesis
+                except asyncio.CancelledError:
+                    pass
 
     async def synthesize(self, text: str) -> bytes:
         return await cached_synthesize(self.models, text)

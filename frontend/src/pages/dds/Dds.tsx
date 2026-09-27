@@ -47,6 +47,11 @@ function field(card: CardState, path: string): string {
   const value = readPath(card.server, path);
   return value === null || value === undefined || value === "" ? "—" : String(value);
 }
+/** Список из карточки: `field()` не годится — `String([])` пустая строка, а не «—». */
+function names(card: CardState, path: string): string[] {
+  const value = readPath(card.server, path);
+  return Array.isArray(value) ? value.map(String) : [];
+}
 function time(value: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleTimeString("ru-RU");
@@ -233,6 +238,7 @@ export function Dds() {
   const [checkText, setCheckText] = useState("");
   const [error, setError] = useState("");
   const [ended, setEnded] = useState(false);
+  const [paused, setPaused] = useState(false);
   // Разбор просим только после `score.ready`; новая карточка снимает флаг.
   const [scoreReady, setScoreReady] = useState(false);
   const { report, loading: reportLoading, error: reportError, refetch: refetchReport } =
@@ -252,6 +258,7 @@ export function Dds() {
         if (event.type === "station.state") {
           const snapshot = event.snapshot as DdsSnapshot;
           setStation(snapshot);
+          setPaused(snapshot.paused ?? false);
           setZone(snapshot.zone_decision ?? null);
           if (snapshot.card_id == null && (snapshot.pending_cards_count ?? 0) > 0) {
             activeCardId.current = null;
@@ -298,6 +305,7 @@ export function Dds() {
         } else if (event.type === "timer.tick") setTimers(event.timers);
         else if (event.type === "error") { setError(event.message); setDialing(false); setAdvancePending(false); }
         else if (event.type === "session.ended") { setEnded(true); setDialing(false); setAdvancePending(false); setPane(null); setView("registry"); }
+        else if (event.type === "session.paused") setPaused(event.paused);
         else if (event.type === "score.ready") setScoreReady(true);
         else if (event.type === "phone.report") {
           setLastReport(event);
@@ -318,7 +326,7 @@ export function Dds() {
     return () => clearInterval(timer);
   }, []);
 
-  const send = (command: StationToServer): boolean => channel.current?.send(command) ?? false;
+  const send = (command: StationToServer): boolean => !paused && (channel.current?.send(command) ?? false);
   if (!sessionId) return <DdsHistoryOnly cards={ddsHistory.cards} error={ddsHistory.error} />;
 
   const reports = station?.phone_reports ?? [];
@@ -328,6 +336,8 @@ export function Dds() {
   const phoneCall = station?.phone_pending ?? null;
   const phoneLines = (station?.phone_lines ?? []).filter((line) => line.crew === selectedCrew);
   const isConnected = status === "open";
+  // Вверх: короткая пауза не должна выглядеть как «0 с», а без пауз строки нет.
+  const pausedSeconds = Math.ceil((report?.total_paused_ms ?? 0) / 1000);
   const cardId = card ? String(readPath(card.server, "card_id") ?? "") : "";
   const cardIndex = station?.card_index ?? 1;
   const cardTotal = station?.card_total ?? 1;
@@ -368,18 +378,21 @@ export function Dds() {
       АРМ {role}: {isConnected ? "на связи" : status}
     </span>
     {error && <div className="dds-alert" role="alert">Действие не принято: {error}</div>}
+    {paused && !ended && <div className="dds-alert dds-paused">Пауза, ждите преподавателя</div>}
     {ended && <div className="dds-alert dds-done">Занятие завершено. Оценка появится после расчёта.</div>}
     {(ended || scoreReady) && <section className="dds-panel" aria-live="polite">
       <div className="dds-panel-title"><h2>Итог упражнения</h2></div>
       {report ? <div style={{ padding: 12 }}>
         <p><strong>Итоговая оценка: {report.score_final.toFixed(0)} из 100</strong>
           {report.score_final !== report.score_auto && ` · автооценка ${report.score_auto.toFixed(0)}`}</p>
+        {pausedSeconds > 0 && <p className="ref">Паузы занятия: {Math.floor(pausedSeconds / 60)} мин {pausedSeconds % 60} с. Время пауз исключено из нормативов.</p>}
         <p className="ref">Скачать отчёт: <a href={`/api/sessions/${sessionId}/report.csv`}>CSV</a>
           {" · "}<a href={`/api/sessions/${sessionId}/report.pdf`}>PDF</a></p>
         {Boolean(report.card_results?.length) && <>
           <h3>Результаты по карточкам</h3>
           {report.card_results?.map((item, index) => <details className="dds-details" key={item.card_id}>
-            <summary>Карточка {index + 1} · {item.scenario_id} · {item.score_auto.toFixed(0)} / 100</summary>
+            <summary>Карточка {index + 1} · {item.scenario_id} · {(item.score_reviewed ?? item.score_auto).toFixed(0)} / 100
+              {item.score_reviewed != null && ` после разбора (автооценка ${item.score_auto.toFixed(0)})`}</summary>
             <p><b>Ответ диспетчера:</b> {item.reply_text || "не внесён"}</p>
             {item.metrics.filter((metric) => !metric.passed || (metric.credit != null && metric.credit < 1)).map((metric) =>
               <p key={metric.key} className={metric.passed ? "ref" : "state-violated"}>
@@ -409,6 +422,7 @@ export function Dds() {
       </div>}
     </section>}
 
+    <fieldset className="dds-pause-controls" disabled={paused && !ended}>
     {view === "registry" && <>
     <section className="dds-search">
       <div className="dds-search-main">
@@ -548,6 +562,7 @@ export function Dds() {
           <div><b>{field(card, "description")}</b></div>
           <div>Класс: <b>{field(card, "incident_type")}</b></div>
           <div>Получатели карточки: <b>{station?.recipient_services?.join(", ") || field(card, "notify")}</b></div>
+          {names(card, "notify_extra").length > 0 && <div>Добавлены оператором: <b>{names(card, "notify_extra").join(", ")}</b></div>}
           <div>Ваша ДДС: <b>{station?.managed_service || "служба не назначена"}</b></div></div>
       </div>
       <div className="dds-case-stage">
@@ -703,6 +718,7 @@ export function Dds() {
         </div>
       </nav>
     </div>}
+    </fieldset>
   </main>;
 }
 

@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from app.api.ws.session import pump, run_command, session_socket
+from app.api.ws.session import close_fenced, pump, run_command, session_socket
 from app.domain.events import (
     BgStart,
     CallEnded,
@@ -31,6 +31,7 @@ from app.domain.events import (
     PatchSource,
     ScoreReady,
     SessionMode,
+    SessionPaused,
     StationState,
     TimerTick,
     TextTurnAccepted,
@@ -39,6 +40,7 @@ from app.domain.events import (
     TraineeToServer,
 )
 from app.dialog.slots import TurnResult
+from app.domain.kio import PatchRejected, get_field
 from app.domain.roles import Role
 from app.scenarios import store
 from app.session.dds import prepare_handoff_queue
@@ -191,6 +193,14 @@ async def _handle(session_id: UUID, state, event) -> None:
             code=ErrorKind.UNSUPPORTED_EVENT, message="Занятие уже завершено",
         ))
         return
+    if state.paused:
+        # Отказ временный, в отличие от отклонённого значения: `kio.patch`
+        # без `auto`-отката. useCall держит правку в pending и повторяет её
+        # после `session.paused: false` — откат стёр бы ввод курсанта.
+        hub.to_trainee(session_id, ErrorEvent(
+            code=ErrorKind.UNSUPPORTED_EVENT, message="Пауза, ждите преподавателя",
+        ))
+        return
     if (event.type == "text.turn" and state.exercise is not Exercise.CARD) or state.exercise is Exercise.DDS or (
         state.exercise is Exercise.CARD and event.type not in {"kio.patch", "card.submit", "text.turn"}
     ) or (state.exercise is Exercise.CALL and event.type == "card.submit"):
@@ -228,6 +238,9 @@ async def _handle(session_id: UUID, state, event) -> None:
                 hub.to_trainee(session_id, ErrorEvent(
                     code=ErrorKind.INTERNAL, message="Не удалось получить ответ заявителя. Попробуйте ещё раз.",
                 ))
+                return
+            if state.paused:
+                # Ответ модели мог закончиться уже после команды преподавателя.
                 return
             caller_entry = state.append(Speaker.CALLER, line.text, line.mood)
             hub.to_trainee(session_id, CallerUtterance(
@@ -270,16 +283,37 @@ async def _handle(session_id: UUID, state, event) -> None:
 
         case "kio.patch":
             old_code, old_notify = state.kio.incident_code, list(state.kio.notify)
-            state.patch_kio(event.fields)
+            old_extra = list(state.kio.notify_extra)
+            try:
+                state.patch_kio(event.fields)
+            except (ValidationError, PatchRejected) as exc:
+                reason = exc.errors()[0].get("msg", "") if isinstance(exc, ValidationError) else str(exc)
+                # Недопустимое значение — отказ курсанту, а не сбой операции:
+                # сбой закрыл бы занятие на этом узле.
+                hub.to_trainee(session_id, ErrorEvent(
+                    code=ErrorKind.UNSUPPORTED_EVENT,
+                    message=f"Поле карточки не принято: {reason}"[:200],
+                ))
+                # Пакет отклонён целиком, а фронт держит его в pending до эха.
+                # Серверное значение с `auto` снимает pending — иначе на экране
+                # останутся правки, которых на сервере нет.
+                hub.to_trainee(session_id, KioPatchOut(
+                    fields={path: get_field(state.kio, path) for path in event.fields},
+                    source=PatchSource.AUTO,
+                ))
+                return
             hub.to_trainee(session_id, KioPatchOut(
                 fields=event.fields, source=PatchSource.OPERATOR,
             ))
+            auto: dict = {}
             if (state.kio.incident_code, state.kio.notify) != (old_code, old_notify):
-                hub.to_trainee(session_id, KioPatchOut(
-                    fields={"incident_code": state.kio.incident_code,
-                            "notify": list(state.kio.notify)},
-                    source=PatchSource.AUTO,
-                ))
+                auto |= {"incident_code": state.kio.incident_code, "notify": list(state.kio.notify)}
+            # Добавки сервер чистит сам (повторы, службы из notify) — фронту
+            # нужно итоговое значение, а не эхо присланного.
+            if state.kio.notify_extra != event.fields.get("notify_extra", old_extra):
+                auto["notify_extra"] = list(state.kio.notify_extra)
+            if auto:
+                hub.to_trainee(session_id, KioPatchOut(fields=auto, source=PatchSource.AUTO))
             # Наблюдателю уходит карточка целиком: рассинхрон на внешнем мониторе
             # посреди занятия дороже лишних килобайт.
             hub.to_observers(session_id, KioState(kio=state.kio))
@@ -390,9 +424,16 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
     )
     if entered is None:
         return
-    _who, state = entered
+    who, state = entered
 
-    with hub.trainee(session_id) as queue:
+    async with hub.trainee_socket(
+        session_id, station=False, trainee=who.role is Role.TRAINEE,
+    ) as queue:
+        if hub.is_lease_fenced(session_id):
+            await close_fenced(ws)
+            return
+        # Переподключившийся клиент сначала узнаёт, разрешён ли ввод.
+        queue.put_nowait(SessionPaused(paused=state.paused))
         if state.exercise is Exercise.CARD:
             from app.api.ws.control import card_briefing
 
@@ -435,6 +476,10 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
                 # Бинарные кадры — аудио, текстовые — события. Направление определяется
                 # каналом, обёртки JSON вокруг звука нет (docs/arch/CONTRACT.md).
                 if message.get("bytes") is not None:
+                    if state.paused:
+                        # JSON-команды отказывает `_handle`; бинарные кадры сюда
+                        # не заходят, поэтому пауза глушит звук здесь же (lct-39).
+                        continue
                     if state.exercise is Exercise.CALL:
                         _on_audio(session_id, state, message["bytes"])
                     else:
