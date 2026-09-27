@@ -12,12 +12,19 @@ const LABEL: Record<SipStatus, string> = {
   error: "ошибка",
 };
 
+/** Абонент быстрого набора: пульт ДДС звонит бригаде и начальнику одной кнопкой. */
+export interface SipContact {
+  label: string;
+  number: string;
+}
+
 export function SipPhone({
-  defaultExtension = "6101", defaultTarget = "6102", title = "Локальный SIP/WebRTC",
+  defaultExtension = "6101", defaultTarget = "6102", title = "Локальный SIP/WebRTC", contacts = [],
 }: {
   defaultExtension?: string;
   defaultTarget?: string;
   title?: string;
+  contacts?: SipContact[];
 }) {
   const phone = useSipPhone();
   const [extension, setExtension] = useState(defaultExtension);
@@ -46,6 +53,10 @@ export function SipPhone({
       <label>Номер собеседника<input aria-label="Номер SIP собеседника" inputMode="numeric" value={target}
         disabled={inCall} onChange={(event) => setTarget(event.target.value)} /></label>
       {phone.status === "registered" && <button type="button" onClick={() => phone.dial(target)}>Позвонить</button>}
+      {phone.status === "registered" && contacts.map((contact) => <button type="button" key={contact.number}
+        onClick={() => { setTarget(contact.number); phone.dial(contact.number); }}>
+        Позвонить: {contact.label} · {contact.number}
+      </button>)}
       {phone.status === "incoming" && <button type="button" className="sip-answer" onClick={phone.answer}>Ответить · {phone.peer}</button>}
       {inCall && phone.status !== "incoming" && <span>{phone.peer || target}</span>}
       {inCall && <button type="button" className="sip-hangup" onClick={phone.hangup}>Завершить</button>}
