@@ -9,7 +9,7 @@ stop=$(<"$here/stopwords")
 
 # Комментарии git и вырезку под `-v` не проверяем — в коммит они не попадут.
 msg=$(sed -e '/^# ------------------------ >8 ------------------------$/,$d' -e '/^#/d' "$msg_file")
-subject=$(printf '%s\n' "$msg" | sed -n '/./{p;q}')
+subject=$(printf '%s\n' "$msg" | sed -n '/./{p;q;}')
 
 case $subject in
   Merge\ *|Revert\ *|fixup!\ *|squash!\ *|amend!\ *) exit 0 ;;
