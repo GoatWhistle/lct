@@ -104,6 +104,7 @@ def _build_state(session_id: UUID, event, who, scenario, scenarios,
         dds_service=identity.service or event.dds_service,
         attempt=identity.attempt,
         criteria=event.criteria,
+        socket_last_seen_at=now_utc(),
     )
     state.timers.limits[TimerCode.DDS_ACK] = event.criteria.decision_time_limit_seconds * 1000
     state.timers.limits[TimerCode.CARD_FILL] = event.criteria.card_fill_time_limit_seconds * 1000

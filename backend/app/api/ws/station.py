@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from app.api.ws.session import pump, run_command, session_socket
+from app.api.ws.session import close_fenced, pump, run_command, session_socket
 from app.domain.events import (
     CallEndReason,
     ErrorEvent,
@@ -59,9 +59,14 @@ async def station(ws: WebSocket, session_id: UUID, role: str = "dds") -> None:
     entered = await session_socket(ws, session_id, (Role.INSTRUCTOR, Role.TRAINEE))
     if entered is None:
         return
-    _who, state = entered
+    who, state = entered
 
-    with hub.station(session_id) as queue:
+    async with hub.trainee_socket(
+        session_id, station=True, trainee=who.role is Role.TRAINEE,
+    ) as queue:
+        if hub.is_lease_fenced(session_id):
+            await close_fenced(ws)
+            return
         sender = asyncio.create_task(pump(ws, queue))
         try:
             # Карточка, переданная до подключения станции, не теряется:
