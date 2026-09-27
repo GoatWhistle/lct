@@ -678,6 +678,22 @@ class CardReply(BaseModel):
     text: str = Field(max_length=2000)
 
 
+class CardErrorReport112(BaseModel):
+    """Сообщение диспетчера в 112 после доклада бригады с места."""
+
+    type: Literal["card.error_report_112"] = "card.error_report_112"
+    card_id: UUID
+    text: str = Field(min_length=10, max_length=500)
+
+    @field_validator("text")
+    @classmethod
+    def meaningful_text(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 10:
+            raise ValueError("Укажите, что сообщено оператору 112")
+        return value
+
+
 class CardNext(BaseModel):
     type: Literal["card.next"] = "card.next"
     card_id: UUID
@@ -721,7 +737,7 @@ ServerToStation = Annotated[
 StationToServer = Annotated[
     CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | PhoneBrief | PhoneCheck
     | PhoneHangup | PhoneReply | AdjacentDial | StationFinish
-    | CardReply | CardNext | CardOpen
+    | CardReply | CardErrorReport112 | CardNext | CardOpen
     | ZoneDecision | CrewDispatched | CrewArrived,
     Field(discriminator="type"),
 ]

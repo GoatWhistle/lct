@@ -288,6 +288,8 @@ class StationSnapshot(BaseModel):
     phone_reports: list[PhoneReportRecord] = []
     phone_lines: list[PhoneLineRecord] = []
     phone_pending: PhoneCallPending | None = None
+    card_error_discovered: bool = False
+    report_112_text: str | None = None
     card_id: UUID | None = None
     card_index: int = 1
     card_total: int = 1

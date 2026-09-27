@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -17,6 +17,7 @@ from app.domain.timers import TimerCode
 from app.main import app
 from app.scenarios import store
 from app.session.hub import hub
+from app.session.checkpoint import dump_state, load_state
 from app.session.store import MemorySessionStore
 
 
@@ -834,6 +835,76 @@ def send_status(station, service, status):
     station.send_json({"type": "card.status", "service": service, "status": status,
                        "comment": STATUS_COMMENT})
     read_until(station, "station.state")
+
+
+def test_crew_discovers_card_address_error_and_dispatcher_reports_it_to_112(client):
+    session_id, control = start(client, scenario_id="dds-card-address-error")
+    try:
+        state = hub.get(session_id)
+        card = state.desk.active
+        assert card.dispatched_card.address == "улица Ленина, 16"
+        assert card.scenario.ground_truth.address == "улица Ленина, 14"
+        with client.websocket_connect(f"/ws/station/{session_id}") as station:
+            service = accept_with_crew(station)
+            station.send_json({
+                "type": "card.error_report_112", "card_id": str(card.card_id),
+                "text": "В карточке неверный адрес",
+            })
+            assert "Сначала получите доклад" in read_until(station, "error")["message"]
+            complete_phone_call(station, state, "dispatched")
+            read_until(station, "station.state")
+            send_status(station, service, "responding")
+            report = complete_phone_call(station, state, "arrived")
+            snapshot = read_until(station, "station.state")["snapshot"]
+            assert "улица Ленина, 14" in report["text"]
+            assert "улица Ленина, 16" in report["text"]
+            assert snapshot["card_error_discovered"] is True
+            assert snapshot["report_112_text"] is None
+
+            message = "В карточке дом 16; бригада на месте установила дом 14."
+            station.send_json({
+                "type": "card.error_report_112", "card_id": str(card.card_id), "text": message,
+            })
+            snapshot = read_until(station, "station.state")["snapshot"]
+            assert snapshot["report_112_text"] == message
+            station.send_json({
+                "type": "card.error_report_112", "card_id": str(card.card_id), "text": message,
+            })
+            assert sum(action == "card.error_report_112" for action, _, _ in card.dds_log) == 1
+
+            active = client.get("/api/sessions/active").json()
+            teacher = next(row for row in active if row["session_id"] == str(session_id))
+            assert teacher["dds_snapshot"]["report_112_text"] == message
+            restored = load_state(dump_state(state), datetime.now(UTC))
+            assert restored.station_snapshot().report_112_text == message
+            station.send_json({"type": "station.finish"})
+            read_until(station, "score.ready")
+
+        report = client.get(f"/api/sessions/{session_id}/report").json()
+        actions = report["card_results"][0]["actions"]
+        assert any(action["type"] == "card.error_report_112" and action["text"] == message
+                   for action in actions)
+        assert message in client.get(f"/api/sessions/{session_id}/report.csv").text
+    finally:
+        control.__exit__(None, None, None)
+
+
+def test_report_to_112_is_unavailable_without_planted_card_error(client):
+    session_id, control = start(client)
+    try:
+        state = hub.get(session_id)
+        with client.websocket_connect(f"/ws/station/{session_id}") as station:
+            read_until(station, "card.received")
+            snapshot = read_until(station, "station.state")["snapshot"]
+            assert snapshot["card_error_discovered"] is False
+            station.send_json({
+                "type": "card.error_report_112", "card_id": str(state.desk.active.card_id),
+                "text": "Сообщаю об ошибке карточки в 112",
+            })
+            assert "Сначала получите доклад" in read_until(station, "error")["message"]
+            assert not state.desk.active.dds_log
+    finally:
+        control.__exit__(None, None, None)
 
 
 @pytest.mark.parametrize(("reaction", "passed"), [

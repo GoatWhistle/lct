@@ -1,0 +1,40 @@
+# Учебная ошибка уже переданной КИО: бригада обнаруживает верный адрес на месте.
+# Курсанту ДДС нужно сообщить расхождение оператору 112; автооценки этого шага нет.
+id: dds-card-address-error
+title: "Ошибка адреса в готовой карточке пожара"
+type: fire
+level: L2
+topics: [fires]
+modes: [training]
+signs: [жилой дом, балкон, открытое пламя]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+
+first_line: "На балконе пожар, приезжайте на улицу Ленина, дом 14."
+
+facts:
+  - id: f_address
+    value: "улица Ленина, 14, квартира 47"
+    reveal_on: { question: q_address }
+  - id: f_what_burns
+    value: "горит балкон, жильцы выходят из квартиры"
+    reveal_on: { question: q_what_burns }
+
+checklist:
+  - { id: q_address, fact: f_address, question: "Уточните адрес происшествия" }
+  - { id: q_what_burns, fact: f_what_burns, question: "Что именно горит?" }
+
+required_fields: [address, incident_type, description]
+ground_truth:
+  address: "улица Ленина, 14"
+  victims: 0
+
+dds_card_error:
+  field: address
+  card_value: "улица Ленина, 16"
+
+tree:
+  pregenerated: false

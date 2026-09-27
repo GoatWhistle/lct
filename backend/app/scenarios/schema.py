@@ -5,12 +5,15 @@
 на старте приложения, а не тихо игнорироваться и всплывать посреди занятия.
 """
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domain.classifiers import DDSCode, IncidentType, Level, Outcome
 from app.domain.events import Mood
 from app.domain.kio import EDITABLE_KIO_FIELDS, KIO
 from app.domain.statuses import NEXT, SERVICE_STATUS_LABELS, ServiceStatus
+from app.scoring.address import address_matches
 from app.scoring.taxonomy import METRIC_MAP
 
 
@@ -174,6 +177,21 @@ FALLBACK_NOTIFY: dict[str, str] = {
 }
 
 
+class DdsCardError(Strict):
+    """Заложенное расхождение готовой карточки с эталоном для занятия ДДС."""
+
+    field: Literal["address"]
+    card_value: str = Field(min_length=3)
+
+    @field_validator("card_value")
+    @classmethod
+    def nonempty_card_value(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("dds_card_error.card_value: укажите неверный адрес карточки")
+        return value
+
+
 class Scenario(Strict):
     id: str
     title: str
@@ -202,6 +220,7 @@ class Scenario(Strict):
     # справка и передача в другой регион разбираются в lct-36.
     outcome: Outcome = Outcome.CARD
     dds_decision: DdsDecision = DdsDecision()
+    dds_card_error: DdsCardError | None = None
 
     # Готовая КИО, сформированная курсантом и утверждённая преподавателем.
     # Для системных сценариев поле отсутствует; ДДС использует снимок как
@@ -256,6 +275,19 @@ class Scenario(Strict):
             raise ValueError(
                 "required_fields должны быть пустыми, если карточка КИО не создаётся"
             )
+        return self
+
+    @model_validator(mode="after")
+    def valid_dds_card_error(self):
+        error = self.dds_card_error
+        if error is None:
+            return self
+        if not self.ground_truth.address or not self.ground_truth.address.strip():
+            raise ValueError("dds_card_error: для ошибки адреса нужен ground_truth.address")
+        if self.student_card is not None:
+            raise ValueError("dds_card_error: используйте отдельный учебный сценарий без student_card")
+        if address_matches(self.ground_truth.address, error.card_value):
+            raise ValueError("dds_card_error: адрес карточки должен отличаться от эталона")
         return self
 
     @model_validator(mode="after")

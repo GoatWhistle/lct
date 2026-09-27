@@ -436,6 +436,13 @@ class SessionState(PersistedSession):
             phone_reports=list(card.phone_reports) if card is not None else [],
             phone_lines=list(card.phone_lines) if card is not None else [],
             phone_pending=card.phone_pending if card is not None else None,
+            card_error_discovered=(card.scenario.dds_card_error is not None and any(
+                report.phase == "arrived" for report in card.phone_reports
+            )) if card is not None else False,
+            report_112_text=(next(
+                (detail for action, _at, detail in reversed(card.dds_log)
+                 if action == "card.error_report_112"), None,
+            ) if card is not None else None),
             card_id=card.card_id if card is not None else None,
             card_index=(desk.card_index + 1 if card is not None
                         else min(desk.next_index + 1, len(desk.scenarios))),

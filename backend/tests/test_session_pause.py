@@ -236,8 +236,8 @@ def test_dispatcher_metric_dds_ack_excludes_pause_from_elapsed(clock):
     clock.advance(60)
     state.resume()
     clock.advance(15)
-    card.set_service_status(service, ServiceStatus.ACCEPTED, "Принято")
     card.on_event("dds.open")
+    card.set_service_status(service, ServiceStatus.ACCEPTED, "Принято")
 
     metric = next(m for m in dispatcher_metrics(card, 30_000, services=services) if m.key == "dds_ack")
     assert metric.passed is True
