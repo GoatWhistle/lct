@@ -56,14 +56,13 @@ _vanished: set[str] = set()
 AUTH_GENERATION_SYNC_SECONDS = 1.0
 AUTH_GENERATION_MAX_AGE_SECONDS = 2.0
 _generations_synced_at: float | None = None
-# One lock per login this node has not synced yet, so a concurrent HTTP
-# request and WS handshake for the same just-migrated login collapse into a
-# single SELECT instead of one each (lct-42).
+# Один lock на ещё неизвестный узлу логин: параллельные HTTP и WS входы
+# разделяют один запрос к БД до очередной синхронизации (lct-42).
 _lookup_locks: dict[str, asyncio.Lock] = {}
 
 
 class _AuthStateUnavailable(Exception):
-    """The one-shot lookup for a login unknown to this node could not reach PostgreSQL."""
+    """Разовая проверка неизвестного узлу логина не смогла обратиться к БД."""
 
 
 async def _close_revoked(ws: WebSocket) -> None:
@@ -116,15 +115,18 @@ async def load_generations() -> None:
 
 
 async def sync_generations() -> None:
-    """Refresh shared account epochs and close sockets revoked on peer nodes."""
+    """Сверить версии полномочий и закрыть отозванные на другом узле сокеты."""
+    known_before_query = set(_generations)
     async with get_sessionmaker()() as db:
         rows = (await db.execute(select(User.login, User.auth_version))).all()
     current = {login: version for login, version in rows}
     for login, version in current.items():
         previous = _generations.get(login)
+        # Снимок БД мог устареть за время запроса; меньшая версия не должна
+        # отменять локальный отзыв, который уже поднял поколение.
         if previous is None:
             _generations[login] = version
-        elif previous != version:
+        elif version > previous:
             invalidate_login(login, version)
     # Account deletion is not exposed by the application. Still close active
     # sockets if an operator removes one directly from the shared directory DB.
@@ -135,7 +137,9 @@ async def sync_generations() -> None:
     # lookup fall back to 0 and re-accept cookies issued before the revocation.
     synthetic = {"dev"} if get_settings().dev_auth_bypass else set()
     _vanished.intersection_update(_generations.keys() - current.keys())
-    for login in _generations.keys() - current.keys() - synthetic - _vanished:
+    # Разовая проверка могла найти учётку после снимка этого запроса.
+    # Её отсутствие в старом снимке не означает отзыв.
+    for login in known_before_query - current.keys() - synthetic - _vanished:
         invalidate_login(login)
         _vanished.add(login)
     global _generations_synced_at
@@ -143,32 +147,28 @@ async def sync_generations() -> None:
 
 
 async def _resolve_unknown_login(login: str) -> int | None:
-    """Look up a login absent from this node's cache without waiting a tick.
+    """Проверить неизвестный узлу логин сразу, не дожидаясь опроса БД.
 
-    A revoked login stays cached in `_generations` (see `_vanished` above),
-    so absence from `_generations` unambiguously means "this node has not
-    synced this login yet" — an unrecognized login is checked directly
-    rather than treated as revoked. Returns the current epoch, or `None` if
-    the login is not (or no longer) in `users`. Raises
-    `_AuthStateUnavailable` if PostgreSQL cannot be reached; the caller
-    fails closed.
+    Отозванный логин остаётся в `_generations` (см. `_vanished`), поэтому
+    отсутствие в кэше означает, что этот узел ещё не видел учётку.
+    Возвращает версию или None, если строки в `users` нет. При недоступной
+    БД вызывает `_AuthStateUnavailable`, чтобы вход был закрыт с 503/1013.
     """
     lock = _lookup_locks.setdefault(login, asyncio.Lock())
     async with lock:
         cached = _generations.get(login)
         if cached is not None:
-            return cached  # a concurrent request already resolved it
+            return cached  # параллельный запрос уже получил версию
         try:
             async with get_sessionmaker()() as db:
                 version = await db.scalar(
                     select(User.auth_version).where(User.login == login)
                 )
-        except Exception as exc:  # noqa: BLE001 — fail closed, not FORBIDDEN
+        except Exception as exc:  # noqa: BLE001 — ошибка БД должна закрыть вход
             log.error("разовая проверка полномочий не удалась (%s)", type(exc).__name__)
             raise _AuthStateUnavailable from exc
-        # A concurrent local revoke or sync tick may have written a newer
-        # generation while the SELECT above was in flight; the stale read
-        # must never clobber it back to an older, already-revoked epoch.
+        # Пока шёл SELECT, локальный отзыв или синхронизация могли записать
+        # новую версию. Старый ответ не должен вернуть отозванную cookie.
         cached = _generations.get(login)
         if cached is not None:
             return cached

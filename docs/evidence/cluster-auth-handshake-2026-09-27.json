@@ -1,0 +1,30 @@
+{
+  "date": "2026-09-27",
+  "scenario": "Вход на backend-a, немедленный scenario.start через TLS Nginx на backend-b, затем разрыв DB route владельца",
+  "environment": "Отдельный Compose project lct42-auth-smoke с PostgreSQL 16, двумя backend, TLS Nginx и двумя TCP DB proxy; отдельные сеть, тома и loopback-порты 25432/28000/28001/25173/25443",
+  "session_id": "9596439a-9742-45e7-818c-dc0441d1cc64",
+  "login_node": "backend-a",
+  "initial_owner": "backend-b",
+  "login_to_control_seconds": 0.0388,
+  "control_sent_within_first_second": true,
+  "partitioned_path": "backend-b -> db-proxy-b -> PostgreSQL",
+  "takeover_owner": "backend-a",
+  "fencing_epoch": [1, 2],
+  "takeover_seconds": 14.22,
+  "existing_channel_close_codes": {
+    "control": 1013,
+    "call": 1013,
+    "observe": 1013,
+    "station": 1013
+  },
+  "checkpoint_restored": true,
+  "lost_ack_command_replayed": true,
+  "stale_owner_control_rejected": true,
+  "dds_final_score": 99.1,
+  "dds_statuses_persisted_exactly_once": true,
+  "checks_passed": 29,
+  "checks_total": 29,
+  "pass": true,
+  "method": "scripts/test_cluster_failover.py --failure-mode partition --expect-initial-owner backend-b --session-id 9596439a-9742-45e7-818c-dc0441d1cc64; без ожидания после входа. Для четырёх проверок закрытия применено согласованное условие 1012/1013 из отдельной правки смоука; код приложения и интервалы таймеров не менялись.",
+  "limits": "Локальный прогон доказывает этот маршрут и восстановление одной карточки; он не измеряет HA на целевом оборудовании и не гарантирует одинаковую задержку при каждом отказе."
+}

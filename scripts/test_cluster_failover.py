@@ -72,7 +72,7 @@ def login(base: str, login_name: str, password: str) -> str:
     return cookie
 
 
-async def send_control(ws_base: str, session_id: UUID, cookie: str, payload: dict) -> None:
+async def send_control(ws_base: str, session_id: UUID, cookie: str, payload: dict) -> float:
     async with websockets.connect(
         f"{ws_base}/ws/control/{session_id}",
         additional_headers={"Cookie": cookie},
@@ -81,7 +81,9 @@ async def send_control(ws_base: str, session_id: UUID, cookie: str, payload: dic
         ping_interval=None,
     ) as socket:
         await socket.send(json.dumps(payload, ensure_ascii=False))
+        sent_at = time.monotonic()
         await asyncio.sleep(0.15)
+        return sent_at
 
 
 async def probe_ws(ws_base: str, path: str, cookie: str) -> dict:
@@ -220,7 +222,7 @@ async def main(args: argparse.Namespace) -> int:
     factory = async_sessionmaker(engine, expire_on_commit=False)
     observer_engine = create_async_engine(database_url, poolclass=NullPool)
     run_id = uuid4().hex[:12]
-    session_id = uuid4()
+    session_id = args.session_id or uuid4()
     trainee = Trainee(name=f"Failover smoke {run_id}")
     instructor_login = f"fo-i-{run_id}"
     trainee_login = f"fo-t-{run_id}"
@@ -232,6 +234,7 @@ async def main(args: argparse.Namespace) -> int:
     fault_stopped = False
     result: dict = {"session_id": str(session_id), "checks": {}}
     backend = f"http://127.0.0.1:{args.backend_port}"
+    result["login_node"] = "backend-a"
     ws_base = args.frontend_url.replace("https://", "wss://").replace("http://", "ws://")
     instructor_cookie = trainee_cookie = None
     try:
@@ -249,12 +252,18 @@ async def main(args: argparse.Namespace) -> int:
             await db.commit()
 
         instructor_cookie = login(backend, instructor_login, instructor_password)
+        login_completed_at = time.monotonic()
         trainee_cookie = login(backend, trainee_login, trainee_password)
-        await send_control(ws_base, session_id, instructor_cookie, {
+        control_sent_at = await send_control(ws_base, session_id, instructor_cookie, {
             "type": "scenario.start", "scenario_id": args.scenario,
             "trainee": trainee.name, "trainee_id": str(trainee.id),
             "mode": "training", "exercise": "dds",
         })
+        result["login_to_control_seconds"] = round(control_sent_at - login_completed_at, 4)
+        if args.expect_initial_owner == "backend-b":
+            result["checks"]["control_sent_within_first_second"] = (
+                result["login_to_control_seconds"] < 1
+            )
 
         async def session_row():
             async with factory() as db:
@@ -289,6 +298,12 @@ async def main(args: argparse.Namespace) -> int:
         old_epoch = row.backend_fencing_epoch
         result["initial_owner"] = row.backend_node_id
         result["initial_epoch"] = old_epoch
+        if args.expect_initial_owner and row.backend_node_id != args.expect_initial_owner:
+            raise RuntimeError(
+                f"session routed to {row.backend_node_id}, expected {args.expect_initial_owner}"
+            )
+        if args.expect_initial_owner == "backend-b":
+            result["checks"]["login_a_initial_control_b"] = True
 
         # Commit real DDS work before the fault. These actions must survive the
         # checkpoint handoff and remain part of the final scored report.
@@ -642,4 +657,6 @@ if __name__ == "__main__":
     parser.add_argument("--reconnect-attempts", type=int, default=5)
     parser.add_argument("--rest-timeout", type=float, default=60)
     parser.add_argument("--failure-mode", choices=("kill", "partition"), default="kill")
+    parser.add_argument("--expect-initial-owner", choices=("backend-a", "backend-b"))
+    parser.add_argument("--session-id", type=UUID)
     raise SystemExit(asyncio.run(main(parser.parse_args())))

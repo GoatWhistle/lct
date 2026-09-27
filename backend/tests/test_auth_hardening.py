@@ -135,6 +135,76 @@ def test_generation_sync_preserves_synthetic_dev_account(monkeypatch):
     asyncio.run(run())
 
 
+@pytest.mark.asyncio
+async def test_stale_generation_snapshot_does_not_revoke_newly_resolved_login(monkeypatch):
+    snapshot_read = asyncio.Event()
+    release_snapshot = asyncio.Event()
+
+    class FakeResult:
+        def all(self):
+            return []
+
+    class FakeDb:
+        async def execute(self, _query):
+            snapshot_read.set()
+            await release_snapshot.wait()
+            return FakeResult()
+
+        async def scalar(self, _query):
+            return 0
+
+    class FakeSession:
+        async def __aenter__(self):
+            return FakeDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    auth.prime_generations({})
+    monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(dev_auth_bypass=False))
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: FakeSession())
+    sync = asyncio.create_task(auth.sync_generations())
+    await snapshot_read.wait()
+    assert await auth._resolve_unknown_login("just-created") == 0
+    release_snapshot.set()
+    await sync
+    assert auth._generations["just-created"] == 0
+    assert "just-created" not in auth._vanished
+
+
+@pytest.mark.asyncio
+async def test_stale_generation_snapshot_does_not_restore_revoked_cookie(monkeypatch):
+    snapshot_read = asyncio.Event()
+    release_snapshot = asyncio.Event()
+
+    class FakeResult:
+        def all(self):
+            return [("revoked", 0)]
+
+    class FakeDb:
+        async def execute(self, _query):
+            snapshot_read.set()
+            await release_snapshot.wait()
+            return FakeResult()
+
+    class FakeSession:
+        async def __aenter__(self):
+            return FakeDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    auth.prime_generations({"revoked": 0})
+    monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(dev_auth_bypass=False))
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: FakeSession())
+    sync = asyncio.create_task(auth.sync_generations())
+    await snapshot_read.wait()
+    auth.invalidate_login("revoked", 1)
+    release_snapshot.set()
+    await sync
+    assert auth._generations["revoked"] == 1
+
+
 def test_cross_origin_browser_websocket_is_rejected_before_handshake(client):
     assert client.post("/api/auth/dev-token").status_code == 200
     with pytest.raises(WebSocketDisconnect) as exc:
