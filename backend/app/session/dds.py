@@ -575,12 +575,12 @@ class DdsDesk(BaseModel):
                     outcome.events.append(session.card_received_event())
                 outcome.events.append(StationState(snapshot=session.station_snapshot()))
                 if not self.cards and len(self.completed) >= len(self.scenarios):
-                    self._finish_work()
+                    self.finish_work()
                     outcome.finished = True
             case "station.finish":
                 if not dds_lesson:
                     return _refused("Операторское занятие завершается после звонка 112")
-                self._finish_work()
+                self.finish_work()
                 outcome.finished = True
             case "card.bounce":
                 return _refused(
@@ -608,7 +608,7 @@ class DdsDesk(BaseModel):
                 card.dds_log.append(("crew.arrived", now_utc(), None))
         return outcome
 
-    def _finish_work(self) -> None:
+    def finish_work(self) -> None:
         """Конец занятия останавливает трёхминутный таймер у каждой начатой карточки."""
         for card in self.cards.values():
             timer = card.timers.timers.get(TimerCode.DDS_WORK)

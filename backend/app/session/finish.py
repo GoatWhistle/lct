@@ -12,7 +12,7 @@ import logging
 import time
 from uuid import UUID
 
-from app.domain.events import Exercise, Metric, ScoreReady
+from app.domain.events import CallEnded, CallEndReason, Exercise, Metric, ScoreReady, SessionEnded
 from app.domain.statuses import ServiceStatus, current
 from app.domain.taxonomy import Competency, ErrorCode, Finding, FindingSource
 from app.domain.timers import TimerCode
@@ -29,7 +29,13 @@ from app.scoring.timing import time_credit
 from app.scoring.weights import apply_weights
 from app.session.hub import hub
 from app.session.state import DdsCardRecord, DdsLiveCard, now_utc
-from app.session.store import ScoreArchived, ScoreCalculated, ScoreOverridden, apply_score_override
+from app.session.store import (
+    LessonEnded,
+    ScoreArchived,
+    ScoreCalculated,
+    ScoreOverridden,
+    apply_score_override,
+)
 
 log = logging.getLogger(__name__)
 
@@ -353,10 +359,53 @@ async def finish(session_id: UUID, state) -> None:
     log.info("сессия %s: оценка %.1f, отметок %d", session_id, result.score, len(result.findings))
 
     # Оценка и аудит уходят в commit операции, завершившей занятие; ScoreReady
-    # ждёт того же commit — без записи итог не выдаётся.
+    # рассылает `end_session` и ждёт того же commit — без записи итог не выдаётся.
     hub.record(session_id, ScoreCalculated(result.score, state.score))
+
+
+def _ends_on_station(state) -> bool:
+    """Итог занятия видит пульт ДДС: упражнение ДДС или связка, где карточка
+    уже передана диспетчеру. Иначе конец звонка узнаёт курсант 112."""
+    return state.exercise is Exercise.DDS or (
+        state.handoff_to_dds and state.dispatched_card is not None
+    )
+
+
+async def end_session(session_id: UUID, state, reason: CallEndReason) -> None:
+    """Единственный переход занятия в «завершено» — для станции, пульта и звонка.
+
+    Вызывается внутри уже открытой `hub.operation`: строки журнала и события
+    уходят её commit, сверка `(node_id, epoch)` остаётся за вызывающим.
+    Порядок один для всех причин: таймеры фиксируются событием до оценки,
+    журнал пишется до оценки, рассылка — после, `ScoreReady` — последним.
+    """
+    if state.ended:
+        return
+    ended_at = state.end(reason)
+    if state.exercise is Exercise.CARD and state.dispatched_card is None:
+        state.on_event("card.end")
+    # Норматив отработки фиксируется событием, а не текущим значением часов.
+    state.desk.finish_work()
+
+    if state.voice is not None:
+        await state.voice.close()
+    hub.stop_ticker(session_id)
+
+    hub.record(session_id, LessonEnded(ended_at, reason.value))
+    await finish(session_id, state)
+
+    hub.to_observers(session_id, SessionEnded(reason=reason))
+    on_station = _ends_on_station(state)
+    if on_station:
+        hub.to_station(session_id, SessionEnded(reason=reason))
+    else:
+        hub.to_trainee(session_id, CallEnded(reason=reason))
+    if state.score is None:
+        return
     hub.to_observers(session_id, ScoreReady(session_id=session_id))
     await release_score(session_id, state)
+    if on_station:
+        hub.to_station(session_id, ScoreReady(session_id=session_id))
 
 
 async def refresh_archived_report(session_id: UUID, state) -> None:
