@@ -844,6 +844,8 @@ def test_crew_discovers_card_address_error_and_dispatcher_reports_it_to_112(clie
         assert card.dispatched_card.address == "улица Ленина, 16"
         assert card.scenario.ground_truth.address == "улица Ленина, 14"
         assert "Ленина, 14" not in card.dispatched_card.description
+        assert "Ленина, 14" not in state.card_received_event().model_dump_json()
+        assert "Ленина, 14" not in state.station_snapshot().model_dump_json()
         with client.websocket_connect(f"/ws/station/{session_id}") as station:
             service = accept_with_crew(station)
             station.send_json({
