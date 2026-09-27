@@ -209,7 +209,7 @@ async def main(args: argparse.Namespace) -> int:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from app.api.auth import hash_password
+    from app.api.auth import hash_password, login_log_marker
     from app.db.models import AuditLog, Session, Trainee, User
 
     database_url = (
@@ -250,19 +250,26 @@ async def main(args: argparse.Namespace) -> int:
                      trainee_id=trainee.id, blocked=False),
             ])
             await db.commit()
+        users_committed_at = time.monotonic()
 
         instructor_cookie = login(backend, instructor_login, instructor_password)
-        login_completed_at = time.monotonic()
         trainee_cookie = login(backend, trainee_login, trainee_password)
         control_sent_at = await send_control(ws_base, session_id, instructor_cookie, {
             "type": "scenario.start", "scenario_id": args.scenario,
             "trainee": trainee.name, "trainee_id": str(trainee.id),
             "mode": "training", "exercise": "dds",
         })
-        result["login_to_control_seconds"] = round(control_sent_at - login_completed_at, 4)
+        result["users_commit_to_control_seconds"] = round(control_sent_at - users_committed_at, 4)
         if args.expect_initial_owner == "backend-b":
             result["checks"]["control_sent_within_first_second"] = (
-                result["login_to_control_seconds"] < 1
+                result["users_commit_to_control_seconds"] < 1
+            )
+            # Сверка B идёт раз в секунду в случайной фазе, и время само по себе
+            # не доказывает, что B не знал логин. Доказательство — запись B о
+            # разовой проверке именно этого логина.
+            result["checks"]["backend_b_resolved_login_one_shot"] = (
+                login_log_marker(instructor_login)
+                in compose(args, "logs", "--no-color", "backend-b")
             )
 
         async def session_row():
