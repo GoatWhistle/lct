@@ -227,10 +227,13 @@ async def score_session(
             reply_text=live_card.reply_text,
             expected_decision=scenario.dds_decision.expected,
             expected_decision_reason=scenario.dds_decision.reason,
+            phone_reports=live_card.phone_reports,
+            report_reaction_limit_seconds=snapshot.criteria.dds_report_reaction_limit_seconds,
         ))
         result.metrics.extend(dispatcher_metrics(
             live_card, decision_limit_ms, scenario.dds_decision.expected,
             scenario.dds_decision.reason, services=services,
+            report_reaction_limit_seconds=snapshot.criteria.dds_report_reaction_limit_seconds,
         ))
     # Карточки ДДС уже взвешены каждая своим сценарием плюс настройкой
     # занятия. Веса первого сценария поверх них испортили бы остальные.

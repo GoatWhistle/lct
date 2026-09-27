@@ -54,7 +54,7 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
         ) : improvementPoints.length ? (
           <>
             <p>Начните с этих критериев — по ним нужно разобрать решение курсанта:</p>
-            <ul>{improvementPoints.map((metric) => <li key={metric.key}>{metric.title} — {metric.fact}</li>)}</ul>
+            <ul>{improvementPoints.map((metric, index) => <li key={`${metric.key}-${index}`}>{metric.title} — {metric.fact}</li>)}</ul>
           </>
         ) : (
           <p>Зачёт не получен. Сверьте отметки и факты ниже с ходом занятия.</p>
@@ -75,6 +75,8 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
           {` ${report.criteria.decision_time_limit_seconds} с`}</>}
         {report.exercise === "dds" && <>; норматив отработки карточки ДДС —
           {` ${report.criteria.dds_card_work_time_limit_seconds ?? 180} с`}</>}
+        {(report.exercise === "dds" || Boolean(report.card_results?.length)) && <>; статус после доклада бригады —
+          {` ${report.criteria.dds_report_reaction_limit_seconds ?? 45} с`}</>}
         {report.exercise === "card" && <>Норматив заполнения КИО —
           {` ${report.criteria.card_fill_time_limit_seconds ?? 180} с`}</>}
         {report.exercise && report.exercise !== "dds" && <>
@@ -94,8 +96,8 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
           {card.managed_service && <p><strong>Ответственная служба:</strong> {card.managed_service}</p>}
           <p><strong>Ответ диспетчера:</strong> {card.reply_text || "не внесён"}</p>
           {card.metrics.some((metric) => !metric.passed || (metric.credit != null && metric.credit < 1)) && <ul>
-            {card.metrics.filter((metric) => !metric.passed || (metric.credit != null && metric.credit < 1)).map((metric) =>
-              <li key={metric.key} className={metric.passed ? "ref" : "state-violated"}>
+            {card.metrics.filter((metric) => !metric.passed || (metric.credit != null && metric.credit < 1)).map((metric, index) =>
+              <li key={`${metric.key}-${index}`} className={metric.passed ? "ref" : "state-violated"}>
                 <strong>{metric.title}:</strong> {metric.fact} · норматив {metric.norm}
                 {metric.credit != null && ` · вклад ${Math.round(metric.credit * 100)}%`}
               </li>)}
@@ -112,8 +114,8 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
           <p className="ref">Сравните, что сделал курсант, с ожидаемым порядком действий.</p>
           <table className="grid">
             <tbody>
-              {report.metrics.map((metric) => (
-                <tr key={metric.key}>
+              {report.metrics.map((metric, index) => (
+                <tr key={`${metric.key}-${index}`}>
                   <th>{metric.title}</th>
                   <td className={metric.passed ? "state-ok" : "state-violated"}>
                     <strong className={`debrief-metric-status ${metric.passed ? "is-ok" : "is-needs-work"}`}>
@@ -129,7 +131,7 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
 
           {report.metrics.some((metric) => metric.weight != null || metric.credit != null) && <details className="debrief-scoring-details">
             <summary>Как критерии повлияли на балл</summary>
-            <ul>{report.metrics.filter((metric) => metric.weight != null || metric.credit != null).map((metric) => <li key={metric.key}>
+            <ul>{report.metrics.filter((metric) => metric.weight != null || metric.credit != null).map((metric, index) => <li key={`${metric.key}-${index}`}>
               <strong>{metric.title}:</strong> вес {metric.weight ?? 1}
               {metric.credit != null && ` · вклад в оценку ${Math.round(metric.credit * 100)}%`}
             </li>)}</ul>

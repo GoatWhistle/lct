@@ -378,6 +378,7 @@ export interface KioState {
 /** Настраиваемые преподавателем условия именно этого занятия. Нормативы ГОСТ для приёма вызова сюда не входят. Для занятия меняются учебные лимиты первичной реакции и полного цикла карточки ДДС, заполнения КИО, порог успешности и веса метрик; веса сценария остаются базовыми, настройки занятия могут их переопределить. */
 export interface LessonCriteria {
   decision_time_limit_seconds?: number;
+  dds_report_reaction_limit_seconds?: number;
   card_fill_time_limit_seconds?: number;
   dds_card_work_time_limit_seconds?: number;
   allowed_errors?: number;

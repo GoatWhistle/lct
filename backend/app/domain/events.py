@@ -51,6 +51,7 @@ class LessonCriteria(BaseModel):
     """
 
     decision_time_limit_seconds: int = Field(default=30, ge=5, le=300)
+    dds_report_reaction_limit_seconds: int = Field(default=45, ge=5, le=300)
     card_fill_time_limit_seconds: int = Field(default=180, ge=30, le=1800)
     dds_card_work_time_limit_seconds: int = Field(default=180, ge=30, le=1800)
     allowed_errors: int = Field(default=0, ge=0, le=50)

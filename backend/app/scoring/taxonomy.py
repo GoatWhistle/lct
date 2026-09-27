@@ -29,6 +29,7 @@ METRIC_MAP: dict[str, tuple[ErrorCode, Competency]] = {
     "dds_crew": (ErrorCode.D2, Competency.ROUTING),
     "dds_contact": (ErrorCode.D6, Competency.COMMUNICATION),
     "dds_progress": (ErrorCode.D6, Competency.CARD),
+    "dds_report_reaction": (ErrorCode.D6, Competency.CARD),
     "dds_completion": (ErrorCode.D6, Competency.CARD),
     "dds_reply": (ErrorCode.D5, Competency.COMMUNICATION),
     "dds_grammar": (ErrorCode.D5, Competency.COMMUNICATION),

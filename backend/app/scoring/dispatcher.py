@@ -13,6 +13,7 @@
 
 from app.domain.statuses import (
     COMMENT_REQUIRED,
+    PhoneReportRecord,
     PRIMARY,
     REFUSAL_COMMENT_REQUIRED,
     SERVICE_STATUS_LABELS,
@@ -26,6 +27,50 @@ from app.domain.timers import GOST_REF
 
 #: Статусы, означающие, что реагирование действительно шло.
 PROGRESS = (ServiceStatus.RESPONDING, ServiceStatus.ARRIVED, ServiceStatus.WORKING)
+REPORT_STATUS = {
+    "dispatched": ServiceStatus.RESPONDING,
+    "arrived": ServiceStatus.ARRIVED,
+    "working": ServiceStatus.WORKING,
+    "completed": ServiceStatus.COMPLETED,
+}
+
+
+def _report_reactions(
+    entries: list[StatusEntry], reports: list[PhoneReportRecord], service: str,
+    limit_seconds: int,
+) -> tuple[list[Metric], list[Finding]]:
+    """Сверить каждый доклад с отметкой той же службы и фазы."""
+    metrics: list[Metric] = []
+    findings: list[Finding] = []
+    for report in reports:
+        if report.service != service or report.phase not in REPORT_STATUS:
+            continue
+        status = REPORT_STATUS[report.phase]
+        label = SERVICE_STATUS_LABELS[status]
+        mark = next((item for item in entries if item.service == service and item.status == status), None)
+        elapsed = max(0.0, (mark.at - report.at).total_seconds()) if mark else None
+        passed = elapsed is not None and elapsed <= limit_seconds
+        if mark is None:
+            fact = f"после доклада бригады «{report.crew}» от {report.at.isoformat()} статус «{label}» не отмечен"
+        elif mark.at <= report.at:
+            fact = f"статус «{label}» отмечен до доклада бригады «{report.crew}» от {report.at.isoformat()}"
+        else:
+            fact = (f"статус «{label}» отмечен через {elapsed:.1f} с после доклада "
+                    f"бригады «{report.crew}» от {report.at.isoformat()}")
+        norm = f"статус «{label}» не позже {limit_seconds} с после доклада"
+        metrics.append(Metric(
+            key="dds_report_reaction", title=f"{service}: реакция на доклад — {label}",
+            fact=fact, norm=norm, ref="памятка «Работа на АРМ-112», статусы реагирования",
+            passed=passed, weight=1.0,
+        ))
+        if not passed:
+            findings.append(_finding(
+                ErrorCode.D6, (f"{service}: статус хода работ не отмечен после доклада"
+                              if mark is None else
+                              f"{service}: задержана отметка хода работ после доклада"),
+                fact=fact, norm=norm,
+            ))
+    return metrics, findings
 
 
 def _finding(code: ErrorCode, summary: str, fact: str, norm: str | None = None) -> Finding:
@@ -91,6 +136,8 @@ def evaluate_dispatcher(
     reply_text: str = "",
     expected_decision: str = "accept",
     expected_decision_reason: str | None = None,
+    phone_reports: list[PhoneReportRecord] | None = None,
+    report_reaction_limit_seconds: int = 45,
 ) -> list[Finding]:
     """Отметки по работе диспетчера. Пустой список — работа без нарушений.
 
@@ -106,6 +153,10 @@ def evaluate_dispatcher(
     for service in services:
         marks = [entry for entry in entries if entry.service == service]
         latest = current(entries, service)
+        _, reaction_findings = _report_reactions(
+            marks, phone_reports or [], service, report_reaction_limit_seconds,
+        )
+        findings.extend(reaction_findings)
 
         # D5 — мягкая проверка памятки: если диспетчер оставил комментарий,
         # в нём должен быть назван получатель сведений. Статусы и внешние
@@ -288,6 +339,7 @@ def dispatcher_metrics(
     expected_decision_reason: str | None = None,
     *,
     services: list[str] | None = None,
+    report_reaction_limit_seconds: int = 45,
 ) -> list[Metric]:
     """Числовая часть оценки ДДС; каждый проверяемый шаг имеет факт и норму.
 
@@ -298,6 +350,10 @@ def dispatcher_metrics(
     for service in (services if services is not None else state.managed_services()):
         marks = [mark for mark in state.status_log if mark.service == service]
         statuses = {mark.status for mark in marks}
+        reaction_metrics, _ = _report_reactions(
+            marks, state.phone_reports, service, report_reaction_limit_seconds,
+        )
+        metrics.extend(reaction_metrics)
 
         def add(key: str, title: str, passed: bool, fact: str, norm: str, weight: float = 1.0):
             metrics.append(Metric(

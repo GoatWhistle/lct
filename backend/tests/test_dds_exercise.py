@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -452,6 +452,7 @@ def test_instructor_criteria_change_timer_and_success_threshold(client, monkeypa
         report = client.get(f"/api/sessions/{session_id}/report").json()
         assert report["criteria"] == {
             "decision_time_limit_seconds": 45,
+            "dds_report_reaction_limit_seconds": 45,
             "card_fill_time_limit_seconds": 180,
             "dds_card_work_time_limit_seconds": 180,
             "allowed_errors": 50,
@@ -563,6 +564,7 @@ def test_dds_d5_comment_is_explanatory_and_does_not_change_numeric_score(client)
             read_until(station, "score.ready")
         score = wait_for(lambda: hub.get(session_id).score)
         assert score["score_auto"] == 100.0
+        assert not any(item["key"] == "dds_report_reaction" for item in score["metrics"])
         d5 = next(finding for finding in score["findings"] if finding["code"] == "D5")
         assert "получателя" in d5["summary"]
     finally:
@@ -686,6 +688,7 @@ def test_complete_dds_workflow_scores_100_with_assignment_without_call(client):
             read_until(station, "score.ready")
         score = wait_for(lambda: hub.get(session_id).score)
         assert score["score_auto"] == 100.0
+        assert not any(item["key"] == "dds_report_reaction" for item in score["metrics"])
         assert not score["findings"]
         assert all(metric["key"].startswith("dds_") for metric in score["metrics"])
         crew_metric = next(
@@ -789,6 +792,7 @@ def test_complete_dds_workflow_with_training_calls_and_status_updates(client):
             read_until(station, "score.ready")
         score = wait_for(lambda: state.score)
         assert score["score_auto"] == 100.0
+        assert len([item for item in score["metrics"] if item["key"] == "dds_report_reaction"]) == 4
         assert [report.phase for report in state.desk.active.phone_reports] == [
             "dispatched",
             "arrived",
@@ -797,6 +801,72 @@ def test_complete_dds_workflow_with_training_calls_and_status_updates(client):
         ]
         assert all(report.crew == crew for report in state.desk.active.phone_reports)
         assert not score["findings"]
+    finally:
+        control.__exit__(None, None, None)
+
+
+@pytest.mark.parametrize("reaction,passed", [
+    ("fast", True), ("slow", False), ("missing", False), ("early", True),
+])
+def test_dds_report_reaction_is_scored_per_report(client, reaction, passed):
+    session_id, control = start(client, criteria={
+        "dds_report_reaction_limit_seconds": 20,
+        "score_weights": {"dds_report_reaction": 3.5},
+    })
+    try:
+        state = hub.get(session_id)
+        with client.websocket_connect(f"/ws/station/{session_id}") as station:
+            read_until(station, "card.received")
+            snapshot = read_until(station, "station.state")["snapshot"]
+            service = snapshot["services"][0]
+            crew = next(option for option in snapshot["crew_options"]
+                        if option.startswith(service + " — "))
+            station.send_json({"type": "card.status", "service": service, "status": "accepted",
+                               "comment": "Основание: карточка службы.\nСведения: принята бригадой."})
+            read_until(station, "station.state")
+            station.send_json({"type": "crew.select", "crew": crew})
+            read_until(station, "station.state")
+            if reaction == "early":
+                station.send_json({"type": "card.status", "service": service,
+                                   "status": "responding", "comment": "Основание: связь с бригадой.\nСведения: бригада выехала."})
+                read_until(station, "station.state")
+            complete_phone_call(station, state, "dispatched")
+            read_until(station, "station.state")
+            if reaction in {"fast", "slow"}:
+                station.send_json({"type": "card.status", "service": service,
+                                   "status": "responding", "comment": "Основание: доклад бригады.\nСведения: бригада выехала."})
+                read_until(station, "station.state")
+            if reaction == "slow":
+                state.desk.active.phone_reports[0].at -= timedelta(seconds=70)
+            station.send_json({"type": "station.finish"})
+            read_until(station, "score.ready")
+
+        score = wait_for(lambda: hub.get(session_id).score)
+        reaction_metrics = [item for item in score["metrics"]
+                            if item["key"] == "dds_report_reaction"]
+        assert len(reaction_metrics) == 1
+        metric = reaction_metrics[0]
+        assert metric["passed"] is passed
+        assert metric["weight"] == 3.5
+        assert metric["norm"] == "статус «Начало реагирования» не позже 20 с после доклада"
+        reaction_findings = [item for item in score["findings"]
+                             if item["code"] == "D6" and "после доклада" in item["summary"]]
+        assert len(reaction_findings) == (0 if passed else 1)
+        if reaction == "slow":
+            assert "70." in metric["fact"]
+            assert "доклада" in reaction_findings[0]["fact"]
+        if reaction == "missing":
+            assert "не отмечен" in reaction_findings[0]["fact"]
+        if reaction == "early":
+            assert "до доклада" in metric["fact"]
+        report = client.get(f"/api/sessions/{session_id}/report").json()
+        assert report["criteria"]["dds_report_reaction_limit_seconds"] == 20
+        assert [item for item in report["metrics"] if item["key"] == "dds_report_reaction"] == reaction_metrics
+        if reaction == "slow":
+            csv_report = client.get(f"/api/sessions/{session_id}/report.csv")
+            assert csv_report.status_code == 200
+            assert "Лимит реакции на доклад бригады" in csv_report.content.decode("utf-8-sig")
+            assert "70." in csv_report.content.decode("utf-8-sig")
     finally:
         control.__exit__(None, None, None)
 

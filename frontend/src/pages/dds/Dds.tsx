@@ -381,8 +381,8 @@ export function Dds() {
           {report.card_results?.map((item, index) => <details className="dds-details" key={item.card_id}>
             <summary>Карточка {index + 1} · {item.scenario_id} · {item.score_auto.toFixed(0)} / 100</summary>
             <p><b>Ответ диспетчера:</b> {item.reply_text || "не внесён"}</p>
-            {item.metrics.filter((metric) => !metric.passed || (metric.credit != null && metric.credit < 1)).map((metric) =>
-              <p key={metric.key} className={metric.passed ? "ref" : "state-violated"}>
+            {item.metrics.filter((metric) => !metric.passed || (metric.credit != null && metric.credit < 1)).map((metric, metricIndex) =>
+              <p key={`${metric.key}-${metricIndex}`} className={metric.passed ? "ref" : "state-violated"}>
                 {metric.title}: {metric.fact} · норматив {metric.norm}
                 {metric.credit != null && ` · оценочный вклад ${Math.round(metric.credit * 100)}%`}</p>)}
             {item.findings.map((finding, findingIndex) =>
@@ -391,7 +391,7 @@ export function Dds() {
         </>}
         <h3>Нормативы и оценочный вклад</h3>
         <table className="dds-registry"><tbody>
-          {report.metrics.filter((metric) => !metric.passed || (metric.credit != null && metric.credit < 1)).map((metric) => <tr key={metric.key}>
+          {report.metrics.filter((metric) => !metric.passed || (metric.credit != null && metric.credit < 1)).map((metric, index) => <tr key={`${metric.key}-${index}`}>
             <th>{metric.title}</th><td>{metric.fact} · норматив: {metric.norm}
               {metric.credit != null && ` · оценочный вклад ${Math.round(metric.credit * 100)}%`}</td></tr>)}
           {report.metrics.every((metric) => metric.passed && (metric.credit == null || metric.credit === 1)) &&
