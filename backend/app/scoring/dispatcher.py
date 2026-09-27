@@ -11,6 +11,8 @@
 привязывает статус к звонку или SIP: сведения можно получить по любому рабочему каналу.
 """
 
+import math
+
 from app.domain.statuses import (
     COMMENT_REQUIRED,
     PRIMARY,
@@ -24,6 +26,9 @@ from app.domain.statuses import (
 from app.domain.taxonomy import Competency, ErrorCode, Finding, FindingSource
 from app.domain.events import Metric
 from app.domain.timers import GOST_REF
+from app.scoring.timing import TimeNorm, time_metric
+
+MEMO_REF = "памятка «Работа на АРМ-112», раздел «Статусы реагирования»"
 
 #: Статусы, означающие, что реагирование действительно шло.
 PROGRESS = (ServiceStatus.RESPONDING, ServiceStatus.ARRIVED, ServiceStatus.WORKING)
@@ -43,6 +48,22 @@ REPORT_LABELS = {
 }
 #: Лимит реакции на доклад по умолчанию; занятие задаёт свой в критериях.
 REPORT_REACTION_MS = 45_000
+#: Реакция на доклад — норматив времени, как отработка карточки, но отметка
+#: D6 из памятки: опоздавший статус — тот же неполный ход работ.
+DDS_REPORT_REACTION = TimeNorm(
+    key="dds_report_reaction",
+    title="реакция на доклад бригады",
+    summary="статус по докладу бригады отмечен с нарушением норматива",
+    action="отметить статус по докладу",
+    unmeasured="не отмечен",
+    incomplete="не отмечен",
+    code=ErrorCode.D6,
+    source=FindingSource.DISPATCHER,
+    ref=MEMO_REF,
+)
+#: Терминальный отказ: работ не было, поэтому неотмеченный по докладу статус
+#: не штрафуется ни отметкой, ни метрикой.
+TERMINAL_REFUSAL = {ServiceStatus.DECLINED, ServiceStatus.REFUSED}
 
 
 def report_reactions(
@@ -70,6 +91,38 @@ def report_reactions(
     return result
 
 
+def report_reaction(
+    service: str, marks: list[StatusEntry], reports: list[PhoneReportRecord], limit_ms: int,
+) -> tuple[Metric, Finding | None] | None:
+    """Метрика и отметка D6 по самой поздней реакции службы на доклады бригады.
+
+    Одна функция для отметок и для балла: иначе метрика провалится там,
+    где отметки нет. None — реагировать было не на что.
+    """
+    refused = current(marks, service) in TERMINAL_REFUSAL
+    reactions = [(report, delay) for report, delay in report_reactions(marks, reports)
+                 if delay is not None or not refused]
+    if not reactions:
+        return None
+    report, delay = max(reactions, key=lambda item: math.inf if item[1] is None else item[1])
+    metric, finding = time_metric(DDS_REPORT_REACTION, delay, limit_ms, completed=True)
+    label = SERVICE_STATUS_LABELS[REPORT_STATUS[report.phase]]
+    detail = "отмечен не позже доклада" if delay == 0 else metric.fact
+    fact = (f"статус «{label}» по докладу бригады «{report.crew}» "
+            f"{REPORT_LABELS[report.phase]}: {detail}")
+    if len(reactions) > 1:
+        late = sum(item is None or item > limit_ms for _, item in reactions)
+        fact += f"; с нарушением {late} из {len(reactions)} докладов"
+    metric = metric.model_copy(update={
+        "title": f"{service}: {metric.title}", "fact": fact, "service": service,
+    })
+    if finding is not None:
+        finding = finding.model_copy(update={
+            "summary": f"{service}: {finding.summary}", "fact": fact, "service": service,
+        })
+    return metric, finding
+
+
 def _finding(service: str, code: ErrorCode, summary: str, fact: str,
              norm: str | None = None) -> Finding:
     return Finding(
@@ -79,7 +132,7 @@ def _finding(service: str, code: ErrorCode, summary: str, fact: str,
         summary=summary,
         fact=fact,
         norm=norm,
-        ref="памятка «Работа на АРМ-112», раздел «Статусы реагирования»",
+        ref=MEMO_REF,
         competency=(
             Competency.COMMUNICATION if code is ErrorCode.D5 else Competency.CARD
         ),
@@ -328,30 +381,9 @@ def evaluate_dispatcher(
             )
 
         # D6 — статус по докладу бригады отмечен позже лимита или не отмечен.
-        # Код новый не вводится: это тот же неполный ход работ из памятки,
-        # только с измеримым временем реакции на доклад.
-        terminal = latest in {ServiceStatus.DECLINED, ServiceStatus.REFUSED}
-        limit_s = report_reaction_ms // 1000
-        for report, delay_ms in report_reactions(marks, reports):
-            label = SERVICE_STATUS_LABELS[REPORT_STATUS[report.phase]]
-            source = f"доклад бригады «{report.crew}» {REPORT_LABELS[report.phase]}"
-            if delay_ms is None and not terminal:
-                finding = _finding(
-                    service, ErrorCode.D6,
-                    f"{service}: по докладу бригады статус «{label}» не отмечен",
-                    fact=f"{source} получен, статус «{label}» не отмечен",
-                    norm=f"отметить статус по докладу не позже {limit_s} с",
-                )
-            elif delay_ms is not None and delay_ms > report_reaction_ms:
-                finding = _finding(
-                    service, ErrorCode.D6,
-                    f"{service}: статус «{label}» отмечен позже норматива после доклада",
-                    fact=f"статус «{label}» отмечен через {round(delay_ms / 1000)} с; {source}",
-                    norm=f"отметить статус по докладу не позже {limit_s} с",
-                )
-            else:
-                continue
-            findings.append(finding.model_copy(update={"metric_key": "dds_report_reaction"}))
+        reaction = report_reaction(service, marks, reports, report_reaction_ms)
+        if reaction is not None and reaction[1] is not None:
+            findings.append(reaction[1])
 
     return findings
 
@@ -393,6 +425,12 @@ def dispatcher_metrics(
             f"≤ {deadline_ms // 1000} с")
         if primary is None:
             continue
+        # Метрика есть только там, где бригада докладывала: без докладов
+        # реагировать не на что, и отсутствие звонков не штраф.
+        reports = [report for report in getattr(state, "phone_reports", ()) if report.service == service]
+        reaction = report_reaction(service, marks, reports, report_reaction_ms)
+        if reaction is not None:
+            metrics.append(reaction[0])
         expected_status = (ServiceStatus.ACCEPTED if expected_decision == "accept"
                            else ServiceStatus.DECLINED)
         expected_label = "Принята" if expected_decision == "accept" else "Не принята"
@@ -429,17 +467,4 @@ def dispatcher_metrics(
             notes_complete,
             "; ".join(notes) if notes else "комментарии к статусам не внесены",
             "к каждой ручной отметке добавить основание и содержание полученных сведений")
-        # Метрика есть только там, где бригада докладывала: без докладов
-        # реагировать не на что, и отсутствие звонков не штраф.
-        reports = [report for report in getattr(state, "phone_reports", ()) if report.service == service]
-        reactions = report_reactions(marks, reports)
-        if reactions:
-            add("dds_report_reaction", "реакция на доклады бригады",
-                all(delay is not None and delay <= report_reaction_ms for _, delay in reactions),
-                "; ".join(
-                    f"{REPORT_LABELS[report.phase]}: "
-                    + (f"{round(delay / 1000)} с" if delay is not None else "статус не отмечен")
-                    for report, delay in reactions
-                ),
-                f"статус по каждому докладу не позже {report_reaction_ms // 1000} с")
     return metrics

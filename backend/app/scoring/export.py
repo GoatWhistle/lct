@@ -19,7 +19,7 @@ def _cell(value: object) -> str:
     if value is None:
         return ""
     result = str(value)
-    probe = result.lstrip(" \t\r\n\ufeff\u200b")
+    probe = result.lstrip(" \t\r\n﻿​")
     if probe.startswith(("=", "+", "-", "@")) or result.startswith(("\t", "\r", "\n")):
         return "'" + result
     return result
@@ -98,7 +98,7 @@ def to_csv(report: SessionReport) -> bytes:
             row("Сверка самооценки", "", label, ", ".join(values))
     for number, item in enumerate(report.notes, 1):
         row("Пометки преподавателя", number, item.transcript_ref, item.text, item.author)
-    return ("\ufeff" + output.getvalue()).encode("utf-8")
+    return ("﻿" + output.getvalue()).encode("utf-8")
 
 
 def _font_paths() -> tuple[Path, Path | None]:
@@ -172,6 +172,7 @@ def to_pdf(report: SessionReport) -> bytes:
         ("Режим", report.mode.value),
         ("Попытка", report.attempt),
         ("Лимит решения ДДС", f"{report.criteria.decision_time_limit_seconds} с"),
+        ("Лимит реакции на доклад бригады", f"{report.criteria.dds_report_reaction_limit_seconds} с"),
         ("Допустимо ошибок", report.criteria.allowed_errors),
         ("Грамматика обязательна", "да" if report.criteria.require_correct_grammar else "нет"),
         ("Переопределения весов", report.criteria.score_weights or "стандартные"),

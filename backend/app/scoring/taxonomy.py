@@ -60,4 +60,5 @@ METRIC_WEIGHTS: dict[str, float] = {
     "description_grammar": 1.0,
     "card_fill_time": 1.5,
     "dds_work_time": 1.5,
+    "dds_report_reaction": 1.5,
 }

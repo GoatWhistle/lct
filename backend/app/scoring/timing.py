@@ -23,8 +23,8 @@ def time_credit(elapsed_ms: int | None, limit_ms: int) -> float:
 
 @dataclass(frozen=True)
 class TimeNorm:
-    """Формулировки норматива времени: карточка 112 и карточка ДДС различаются
-    только словами, расчёт и отметка E3 у них общие."""
+    """Формулировки норматива времени: нормативы различаются словами и кодом
+    отметки, расчёт вклада и формат факта у них общие."""
 
     key: str
     title: str
@@ -32,6 +32,10 @@ class TimeNorm:
     action: str
     unmeasured: str
     incomplete: str
+    code: ErrorCode = ErrorCode.E3
+    source: FindingSource = FindingSource.TIMERS
+    competency: Competency = Competency.NORMS
+    ref: str = TIME_REF
 
 
 CARD_FILL_TIME = TimeNorm(
@@ -55,7 +59,7 @@ DDS_WORK_TIME = TimeNorm(
 def time_metric(
     norm: TimeNorm, elapsed_ms: int | None, limit_ms: int, *, completed: bool
 ) -> tuple[Metric, Finding | None]:
-    """Метрика норматива и отметка E3, если он не выполнен.
+    """Метрика норматива и отметка (по умолчанию E3), если он не выполнен.
 
     Незавершённая работа не получает временного вклада: быстрое, но брошенное
     заполнение не должно выглядеть скоростью.
@@ -64,13 +68,20 @@ def time_metric(
         fact = norm.unmeasured
     else:
         delta_ms = elapsed_ms - limit_ms
+        # Превышение до полусекунды при округлении до целых читалось бы
+        # как «45 с (+0 с)» при нормативе 45 с — тогда нужна десятая доля.
+        precise = 0 < delta_ms <= 500
+
+        def seconds(ms: int) -> str:
+            return f"{ms / 1000:.1f}" if precise else f"{round(ms / 1000)}"
+
         if delta_ms > 0:
-            deviation = f"+{round(delta_ms / 1000)} с сверх норматива"
+            deviation = f"+{seconds(delta_ms)} с сверх норматива"
         elif delta_ms < 0:
             deviation = f"на {round(abs(delta_ms) / 1000)} с быстрее норматива"
         else:
             deviation = "точно в норматив"
-        fact = f"{round(elapsed_ms / 1000)} с ({deviation})"
+        fact = f"{seconds(elapsed_ms)} с ({deviation})"
     if not completed:
         fact = f"{norm.incomplete}; {fact}"
     norm_text = f"{norm.action} за {round(limit_ms / 1000)} с"
@@ -80,7 +91,7 @@ def time_metric(
         title=norm.title,
         fact=fact,
         norm=norm_text,
-        ref=TIME_REF,
+        ref=norm.ref,
         passed=passed,
         weight=METRIC_WEIGHTS[norm.key],
         credit=time_credit(elapsed_ms, limit_ms) if completed else 0.0,
@@ -88,12 +99,12 @@ def time_metric(
     if passed:
         return metric, None
     return metric, Finding(
-        code=ErrorCode.E3,
-        source=FindingSource.TIMERS,
+        code=norm.code,
+        source=norm.source,
         summary=norm.summary,
         fact=fact,
         norm=norm_text,
-        ref=TIME_REF,
-        competency=Competency.NORMS,
+        ref=norm.ref,
+        competency=norm.competency,
         metric_key=norm.key,
     )
