@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.auth import Principal
+from app.api.ws import session as session_ws
 from app.domain.roles import Role
 from app.main import app
 from app.scenarios import store
@@ -47,7 +48,7 @@ def test_trainee_cannot_open_foreign_or_unassigned_call_or_station(client, monke
             for role_name, module in modules.items():
                 who = Principal(login="foreign", full_name="Чужой",
                                 role=Role.TRAINEE, trainee_id=foreign_id)
-                monkeypatch.setattr(module, "principal_of", lambda _ws, user=who: user)
+                monkeypatch.setattr(session_ws, "principal_of", lambda _ws, user=who: user)
                 with client.websocket_connect(f"/ws/{role_name}/{session_id}") as socket:
                     event = socket.receive_json()
                     assert event["type"] == "error" and event["code"] == "forbidden"
@@ -56,7 +57,7 @@ def test_trainee_cannot_open_foreign_or_unassigned_call_or_station(client, monke
         for role_name, module in modules.items():
             who = Principal(login="owner", full_name="Назначенный",
                             role=Role.TRAINEE, trainee_id=owner_id)
-            monkeypatch.setattr(module, "principal_of", lambda _ws, user=who: user)
+            monkeypatch.setattr(session_ws, "principal_of", lambda _ws, user=who: user)
             with client.websocket_connect(f"/ws/{role_name}/{session_id}") as socket:
                 socket.send_json({"type": "unknown"})
                 for _ in range(8):
@@ -114,8 +115,8 @@ def test_idle_control_socket_closes_when_backend_lease_becomes_uncertain(monkeyp
     )
     hub.register(state)
     who = Principal(login="lease-owner", full_name="Преподаватель", role=Role.INSTRUCTOR)
-    monkeypatch.setattr(control_module, "websocket_origin_allowed", lambda _ws: True)
-    monkeypatch.setattr(control_module, "principal_of", lambda _ws: who)
+    monkeypatch.setattr(session_ws, "websocket_origin_allowed", lambda _ws: True)
+    monkeypatch.setattr(session_ws, "principal_of", lambda _ws: who)
 
     class IdleSocket:
         accepted = False
@@ -180,8 +181,8 @@ def test_control_command_checkpoint_failure_returns_fencing_error(monkeypatch):
     old_store = hub.store
     hub.store = BrokenStore()
     hub.register(state)
-    monkeypatch.setattr(control_module, "websocket_origin_allowed", lambda _ws: True)
-    monkeypatch.setattr(control_module, "principal_of", lambda _ws: who)
+    monkeypatch.setattr(session_ws, "websocket_origin_allowed", lambda _ws: True)
+    monkeypatch.setattr(session_ws, "principal_of", lambda _ws: who)
     try:
         with hub.observer(session_id) as observer_queue:
             asyncio.run(control_module.control(socket, session_id))
@@ -214,8 +215,8 @@ def test_control_does_not_lose_command_read_during_fencing_poll(monkeypatch):
     )
     hub.register(state)
     who = Principal(login="lease-owner", full_name="Преподаватель", role=Role.INSTRUCTOR)
-    monkeypatch.setattr(control_module, "websocket_origin_allowed", lambda _ws: True)
-    monkeypatch.setattr(control_module, "principal_of", lambda _ws: who)
+    monkeypatch.setattr(session_ws, "websocket_origin_allowed", lambda _ws: True)
+    monkeypatch.setattr(session_ws, "principal_of", lambda _ws: who)
 
     class SlowReturnSocket:
         def __init__(self):

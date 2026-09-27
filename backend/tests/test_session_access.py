@@ -14,6 +14,7 @@ from app.api.auth import Principal
 from app.api.http import sessions
 from app.api.ws import call as call_ws
 from app.api.ws import observe as observe_ws
+from app.api.ws import session as session_ws
 from app.api.ws import station as station_ws
 from app.domain.events import Exercise, SessionMode, Speaker
 from app.domain.roles import Role
@@ -306,8 +307,8 @@ async def test_instructor_cannot_join_foreign_live_session(monkeypatch, ws_modul
     session_id = uuid4()
     who = Principal(login="teacher-a", full_name="Преподаватель A", role=Role.INSTRUCTOR)
     state = SimpleNamespace(owner_login="teacher-b")
-    monkeypatch.setattr(ws_module, "websocket_origin_allowed", lambda _ws: True)
-    monkeypatch.setattr(ws_module, "principal_of", lambda _ws: who)
+    monkeypatch.setattr(session_ws, "websocket_origin_allowed", lambda _ws: True)
+    monkeypatch.setattr(session_ws, "principal_of", lambda _ws: who)
     monkeypatch.setattr(ws_module.hub, "get", lambda _session_id: state)
 
     class Socket:

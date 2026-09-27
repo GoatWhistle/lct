@@ -18,7 +18,7 @@ from app.api.http import (
     groups as groups_api, materials as materials_api,
     scenario_submissions, scenarios as scenarios_api, sessions as sessions_api,
 )
-from app.api.ws import control as control_ws, station as station_ws
+from app.api.ws import session as session_ws
 from app.api.http.scenarios import _hidden_scenario_ids
 from app.config import get_settings
 from app.db import repo
@@ -881,8 +881,10 @@ async def test_kio_submission_moderation_and_dds_card_persist_on_real_postgres(
         scenarios_api, "require",
         lambda *_args, **_kwargs: instructor_principal,
     )
-    monkeypatch.setattr(control_ws, "principal_of", lambda _ws: instructor_principal)
-    monkeypatch.setattr(station_ws, "principal_of", lambda _ws: trainee_principal)
+    monkeypatch.setattr(
+        session_ws, "principal_of",
+        lambda ws: instructor_principal if "/ws/control/" in ws.scope["path"] else trainee_principal,
+    )
 
     scenario_id = None
     live_session_id = uuid4()

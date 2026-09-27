@@ -27,6 +27,7 @@ from app.domain.statuses import SERVICE_STATUS_LABELS, StationSnapshot, current
 from app.domain.timers import TimerCode
 from app.scoring.export import to_csv, to_pdf
 from app.scoring.report import build as build_report
+from app.session.access import can_access
 from app.session.checkpoint import load_state
 from app.session.finish import override_score, scoring_scenario
 from app.session.hub import hub
@@ -328,16 +329,23 @@ async def create(body: SessionCreate, request: Request, db: AsyncSession = Depen
     return _out(session)
 
 
+def _require_access(who, lesson, what: str = "session") -> None:
+    """Отказ по правилу `can_access`: курсанту — 403, чужому преподавателю
+    занятие «не существует» — 404, владелец не раскрывается."""
+    if can_access(who, lesson):
+        return
+    if who.role is Role.TRAINEE:
+        raise HTTPException(status_code=403, detail=f"not_your_{what}")
+    raise HTTPException(status_code=404, detail=f"{what}_not_found")
+
+
 @router.get("/{session_id}", response_model=SessionOut)
 async def read(session_id: UUID, request: Request, db: AsyncSession = Depends(get_session)) -> SessionOut:
     who = require(request)
     session = await repo.get_session(db, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="session_not_found")
-    if who.role is Role.TRAINEE and session.trainee_id != who.trainee_id:
-        raise HTTPException(status_code=403, detail="not_your_session")
-    if who.role is Role.INSTRUCTOR and session.owner_login != who.login:
-        raise HTTPException(status_code=404, detail="session_not_found")
+    _require_access(who, session)
     return _out(session)
 
 
@@ -358,10 +366,7 @@ async def checklist(session_id: UUID, request: Request) -> list[ChecklistItemOut
     state = hub.get(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="session_not_found")
-    if who.role is Role.TRAINEE and state.trainee_id != who.trainee_id:
-        raise HTTPException(status_code=403, detail="not_your_session")
-    if who.role is Role.INSTRUCTOR and state.owner_login != who.login:
-        raise HTTPException(status_code=404, detail="session_not_found")
+    _require_access(who, state)
     if not state.ended:
         raise HTTPException(status_code=409, detail="call_not_ended")
     scenario = scoring_scenario(state)
@@ -417,10 +422,7 @@ async def _report_data(
         state = None
         scenario = None
     if state is not None and scenario is not None:
-        if who.role is Role.INSTRUCTOR and state.owner_login != who.login:
-            raise HTTPException(status_code=404, detail="session_not_found")
-        if who.role is Role.TRAINEE and state.trainee_id != who.trainee_id:
-            raise HTTPException(status_code=403, detail="not_your_session")
+        _require_access(who, state)
         if who.role is Role.TRAINEE and state.exercise is Exercise.CALL and not state.self_assessed:
             raise HTTPException(status_code=409, detail="self_assessment_required")
         if state.score is None:
@@ -443,10 +445,7 @@ async def _report_data(
     session = await repo.get_session(db, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="session_not_found")
-    if who.role is Role.TRAINEE and session.trainee_id != who.trainee_id:
-        raise HTTPException(status_code=403, detail="not_your_session")
-    if who.role is Role.INSTRUCTOR and session.owner_login != who.login:
-        raise HTTPException(status_code=404, detail="session_not_found")
+    _require_access(who, session)
     score = await db.scalar(select(Score).where(Score.session_id == session_id))
     if score is None:
         raise HTTPException(status_code=409, detail="score_not_ready")
@@ -516,20 +515,13 @@ async def recording(session_id: UUID, request: Request, db: AsyncSession = Depen
         state = hub.get(session_id)
         if state is None:
             raise HTTPException(status_code=404, detail="session_not_found")
-        owner_id = state.trainee_id
-        owner_login = state.owner_login
-        ended = state.ended
+        lesson, ended = state, state.ended
     else:
         row = await repo.get_session(db, session_id)
         if row is None:
             raise HTTPException(status_code=404, detail="session_not_found")
-        owner_id = row.trainee_id
-        owner_login = row.owner_login
-        ended = row.ended_at is not None
-    if who.role is Role.TRAINEE and (owner_id is None or owner_id != who.trainee_id):
-        raise HTTPException(status_code=403, detail="not_your_recording")
-    if who.role is Role.INSTRUCTOR and owner_login != who.login:
-        raise HTTPException(status_code=404, detail="recording_not_found")
+        lesson, ended = row, row.ended_at is not None
+    _require_access(who, lesson, "recording")
     if not ended:
         raise HTTPException(status_code=409, detail="recording_not_ready")
     path = recording_path(session_id)
@@ -562,8 +554,7 @@ async def override(
     )
     state = hub.get(session_id)
     if state is not None:
-        if state.owner_login != who.login:
-            raise HTTPException(status_code=404, detail="session_not_found")
+        _require_access(who, state)
         if state.score is None:
             raise HTTPException(status_code=409, detail="score_not_ready")
         scenario = scoring_scenario(state)
@@ -577,8 +568,9 @@ async def override(
     if db is None:
         raise HTTPException(status_code=404, detail="session_not_found")
     session = await repo.get_session(db, session_id)
-    if session is None or session.owner_login != who.login:
+    if session is None:
         raise HTTPException(status_code=404, detail="session_not_found")
+    _require_access(who, session)
     score = await db.scalar(select(Score).where(Score.session_id == session_id))
     if score is None:
         raise HTTPException(status_code=409, detail="score_not_ready")

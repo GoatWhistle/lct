@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from app.api.auth import principal_of, websocket_origin_allowed
+from app.api.ws.session import pump, run_command, session_socket
 from app.domain.events import (
     BgStart,
     CallEnded,
@@ -43,7 +43,7 @@ from app.domain.roles import Role
 from app.scenarios import store
 from app.session.dds import prepare_handoff_queue
 from app.session.finish import end_session, refresh_archived_report, release_score
-from app.session.hub import LEASE_FENCED_MESSAGE, hub
+from app.session.hub import hub
 from app.session.state import now_utc
 from app.session.store import (
     HintRecorded,
@@ -381,66 +381,16 @@ def _start_voice(session_id: UUID, state, *, initial_statement: bool = True) -> 
         state.voice.speak(scenario.first_line, state.persona.mood)
 
 
-async def _pump(ws: WebSocket, queue: asyncio.Queue) -> None:
-    while True:
-        item = await queue.get()
-        # Бинарь — звук звонящего, без обёртки JSON (docs/arch/CONTRACT.md).
-        if isinstance(item, bytes):
-            await ws.send_bytes(item)
-        else:
-            await ws.send_text(item.model_dump_json())
-            if (isinstance(item, ErrorEvent) and item.code is ErrorKind.INTERNAL
-                    and item.message == LEASE_FENCED_MESSAGE):
-                await ws.close(code=1012)
-                return
-
-
-async def _reject(ws: WebSocket, message: str) -> None:
-    """Отказ до входа в цикл: сокет закрывается с объяснением, а не молча."""
-    await ws.send_text(
-        ErrorEvent(code=ErrorKind.FORBIDDEN, message=message).model_dump_json()
-    )
-    await ws.close()
-
-
 @router.websocket("/ws/call/{session_id}")
 async def call(ws: WebSocket, session_id: UUID) -> None:
-    if not websocket_origin_allowed(ws):
-        await ws.close(code=1008)
-        return
-    if hub.is_lease_fenced(session_id):
-        await ws.close(code=1012)
-        return
-    await ws.accept()
-
     # АРМ курсанта. Преподаватель допущен, чтобы показать приём вызова группе.
-    who = principal_of(ws)
-    if who is None or who.role not in (Role.TRAINEE, Role.INSTRUCTOR):
-        await _reject(ws, "Недостаточно прав для этого экрана")
+    entered = await session_socket(
+        ws, session_id, (Role.TRAINEE, Role.INSTRUCTOR),
+        not_found="Занятие ещё не запущено преподавателем",
+    )
+    if entered is None:
         return
-
-    state = hub.get(session_id)
-    if state is None:
-        await ws.send_text(
-            ErrorEvent(
-                code=ErrorKind.SESSION_NOT_FOUND, message="Занятие ещё не запущено преподавателем"
-            ).model_dump_json()
-        )
-        await ws.close()
-        return
-    if who.role is Role.INSTRUCTOR and state.owner_login != who.login:
-        await ws.send_text(
-            ErrorEvent(
-                code=ErrorKind.SESSION_NOT_FOUND, message="Занятие ещё не запущено преподавателем"
-            ).model_dump_json()
-        )
-        await ws.close()
-        return
-    if who.role is Role.TRAINEE and (
-        state.trainee_id is None or state.trainee_id != who.trainee_id
-    ):
-        await _reject(ws, "Занятие не назначено этому обучающемуся")
-        return
+    _who, state = entered
 
     with hub.trainee(session_id) as queue:
         if state.exercise is Exercise.CARD:
@@ -476,7 +426,7 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
                 if state.recorder is None:
                     state.recorder = start_recording(session_id)
                 _start_voice(session_id, state, initial_statement=False)
-        writer = asyncio.create_task(_pump(ws, queue))
+        writer = asyncio.create_task(pump(ws, queue))
         try:
             while True:
                 message = await ws.receive()
@@ -509,8 +459,12 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
                         ErrorEvent(code=ErrorKind.UNSUPPORTED_EVENT, message=str(payload)[:200]),
                     )
                     continue
-                async with hub.operation(session_id):
-                    await _handle(session_id, state, event)
+                # `_command_id` у `kio.patch` подтверждается эхом правки, а не
+                # `CommandAck`: его нет в событиях курсанта, повторы не отсеиваются.
+                if not await run_command(
+                    ws, session_id, lambda: _handle(session_id, state, event), sender=writer,
+                ):
+                    return
         except WebSocketDisconnect:
             return
         finally:

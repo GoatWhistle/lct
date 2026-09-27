@@ -7,21 +7,19 @@
 этаж, и отбивает карточку обратно. Неполнота КИО перестаёт быть процентом
 в отчёте и становится сорванным выездом с конкретной причиной.
 
-Правила пульта — в `DdsDesk.apply`; здесь разбор команды, отсев повторов,
-операция хранилища и рассылка итога.
+Правила пульта — в `DdsDesk.apply`; здесь разбор команды и рассылка итога.
+Отсев повторов и операция хранилища — в `run_command`.
 """
 
 import asyncio
-import logging
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from app.api.auth import principal_of, websocket_origin_allowed
+from app.api.ws.session import pump, run_command, session_socket
 from app.domain.events import (
     CallEndReason,
-    CommandAck,
     ErrorEvent,
     ErrorKind,
     StationState,
@@ -29,9 +27,8 @@ from app.domain.events import (
 )
 from app.domain.roles import Role
 from app.session.finish import end_session
-from app.session.hub import LEASE_FENCED_MESSAGE, hub
+from app.session.hub import hub
 
-log = logging.getLogger(__name__)
 router = APIRouter()
 
 _adapter = TypeAdapter(StationToServer)
@@ -56,61 +53,16 @@ async def _handle(session_id: UUID, state, event) -> None:
     hub.to_observers(session_id, state.snapshot())
 
 
-async def _pump(ws: WebSocket, queue: asyncio.Queue) -> None:
-    while True:
-        event = await queue.get()
-        await ws.send_text(event.model_dump_json())
-        if (isinstance(event, ErrorEvent) and event.code is ErrorKind.INTERNAL
-                and event.message == LEASE_FENCED_MESSAGE):
-            await ws.close(code=1012)
-            return
-
-
-async def _reject(ws: WebSocket, message: str) -> None:
-    """Отказ до входа в цикл: сокет закрывается с объяснением, а не молча."""
-    await ws.send_text(
-        ErrorEvent(code=ErrorKind.FORBIDDEN, message=message).model_dump_json()
-    )
-    await ws.close()
-
-
 @router.websocket("/ws/station/{session_id}")
 async def station(ws: WebSocket, session_id: UUID, role: str = "dds") -> None:
-    if not websocket_origin_allowed(ws):
-        await ws.close(code=1008)
-        return
-    if hub.is_lease_fenced(session_id):
-        await ws.close(code=1012)
-        return
-    await ws.accept()
-
     # За АРМ ДДС садится обучающийся, преподаватель смотрит и подменяет.
-    who = principal_of(ws)
-    if who is None or who.role not in (Role.INSTRUCTOR, Role.TRAINEE):
-        await _reject(ws, "Недостаточно прав для этого экрана")
+    entered = await session_socket(ws, session_id, (Role.INSTRUCTOR, Role.TRAINEE))
+    if entered is None:
         return
-
-    state = hub.get(session_id)
-    if state is None:
-        await ws.send_text(
-            ErrorEvent(code=ErrorKind.SESSION_NOT_FOUND, message="Занятие не запущено").model_dump_json()
-        )
-        await ws.close()
-        return
-    if who.role is Role.INSTRUCTOR and state.owner_login != who.login:
-        await ws.send_text(
-            ErrorEvent(code=ErrorKind.SESSION_NOT_FOUND, message="Занятие не запущено").model_dump_json()
-        )
-        await ws.close()
-        return
-    if who.role is Role.TRAINEE and (
-        state.trainee_id is None or state.trainee_id != who.trainee_id
-    ):
-        await _reject(ws, "Занятие не назначено этому обучающемуся")
-        return
+    _who, state = entered
 
     with hub.station(session_id) as queue:
-        sender = asyncio.create_task(_pump(ws, queue))
+        sender = asyncio.create_task(pump(ws, queue))
         try:
             # Карточка, переданная до подключения станции, не теряется:
             # диспетчер садится за АРМ, когда вызов уже идёт.
@@ -137,32 +89,13 @@ async def station(ws: WebSocket, session_id: UUID, role: str = "dds") -> None:
                                    message="Некорректный идентификатор команды"),
                     )
                     continue
-                if command_id is not None and str(command_id) in state.processed_station_commands:
-                    # The checkpoint already proves this exact command committed.
-                    # Re-ack it without rerunning its business transition.
-                    hub.to_station(session_id, CommandAck(command_id=command_id))
-                    continue
-                async with hub.operation(session_id):
-                    await _handle(session_id, state, event)
-                    if command_id is not None:
-                        # ID команды входит в тот же снимок, что и её переход:
-                        # подтверждение уходит только после их общего commit.
-                        state.processed_station_commands.append(str(command_id))
-                        del state.processed_station_commands[:-512]
-                        hub.to_station(session_id, CommandAck(command_id=command_id))
+                if not await run_command(
+                    ws, session_id, lambda: _handle(session_id, state, event),
+                    command_id=command_id, sender=sender,
+                    ack=lambda item: hub.to_station(session_id, item),
+                ):
+                    return
         except WebSocketDisconnect:
-            return
-        except Exception:  # noqa: BLE001 — failed durable transition may fence the owner
-            if not state.lease_fenced:
-                raise
-            log.info(
-                "закрытие станционного WebSocket после fencing занятия %s",
-                session_id,
-            )
-            # `hub.operation` broadcasts a structured fence event before
-            # propagating the failed database write. Let the sender deliver
-            # that event and close with 1012 instead of an opaque 1006.
-            await asyncio.gather(sender, return_exceptions=True)
             return
         finally:
             sender.cancel()
