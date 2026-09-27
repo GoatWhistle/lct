@@ -113,6 +113,10 @@ class Timer(BaseModel):
         return data
 
     def start(self, now: float) -> None:
+        if self.paused:
+            # Таймер уже идёт, просто заморожен: запуск с нуля потерял бы
+            # набранное время, а ход до `resume` посчитал бы паузу.
+            return
         if self.stopped:
             # Повторный запуск после остановки — это новая попытка (обратный дозвон).
             self.attempt += 1

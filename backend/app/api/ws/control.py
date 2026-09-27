@@ -418,6 +418,14 @@ async def _command(session_id: UUID, event, who) -> None:
         case "director.inject":
             if state is None:
                 return
+            if state.paused:
+                # Обрыв на паузе запустил бы норматив обратного дозвона, и простой
+                # ушёл бы в него; курсант же за баннером паузы не может ответить.
+                hub.to_observers(session_id, ErrorEvent(
+                    code=ErrorKind.UNSUPPORTED_EVENT,
+                    message="Занятие на паузе",
+                ))
+                return
             if state.exercise is not Exercise.CALL:
                 hub.to_observers(session_id, ErrorEvent(
                     code=ErrorKind.UNSUPPORTED_EVENT,

@@ -190,8 +190,6 @@ async def end_session(session_id: UUID, state, reason: CallEndReason) -> None:
             at=ended_at, author="система", role="system",
             paused_ms=state.total_paused_ms - paused_ms_before,
         ))
-        hub.broadcast(session_id, SessionPaused(paused=False))
-        hub.to_station(session_id, SessionPaused(paused=False))
     if state.exercise is Exercise.CARD and state.dispatched_card is None:
         state.on_event("card.end")
     # Норматив отработки фиксируется событием, а не текущим значением часов.
@@ -210,6 +208,11 @@ async def end_session(session_id: UUID, state, reason: CallEndReason) -> None:
         hub.to_station(session_id, SessionEnded(reason=reason))
     else:
         hub.to_trainee(session_id, CallEnded(reason=reason))
+    if was_paused:
+        # Снятие паузы — после сообщения о конце: иначе клиент дошлёт отложенные
+        # на паузе правки карточки в уже закрытое занятие.
+        hub.broadcast(session_id, SessionPaused(paused=False))
+        hub.to_station(session_id, SessionPaused(paused=False))
     if state.score is None:
         return
     hub.to_observers(session_id, ScoreReady(session_id=session_id))

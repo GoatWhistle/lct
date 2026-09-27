@@ -9,7 +9,6 @@ import asyncio
 import time
 from datetime import timedelta
 from pathlib import Path
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -18,7 +17,30 @@ from fastapi.testclient import TestClient
 from app.api.http import sessions as sessions_http
 from app.api.ws import control as control_ws
 from app.api.ws import call as call_ws
-from app.domain.events import CallEndReason, Exercise, LessonCriteria, SessionMode, SessionPaused, TtsCancel, TtsEnd
+from app.api.ws import station as station_ws
+from app.domain.classifiers import DDSCode
+from app.domain.events import (
+    CallbackDial,
+    CallEnded,
+    CallEndReason,
+    CardAck,
+    DdsDispatch,
+    DirectorInject,
+    ErrorEvent,
+    Exercise,
+    HintRequest,
+    KioPatchIn,
+    LessonCriteria,
+    Principal,
+    SelfAssessmentSubmit,
+    SessionMode,
+    SessionPause,
+    SessionPaused,
+    SessionResume,
+    TtsCancel,
+    TtsEnd,
+)
+from app.domain.roles import Role
 from app.domain.statuses import ServiceStatus
 from app.domain.timers import TimerCode
 from app.main import app
@@ -33,6 +55,7 @@ from app.session.store import LessonPaused, LessonResumed, MemorySessionStore
 from app.session.timers import Timer
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
+TEACHER = Principal(login="teacher", full_name="Преподаватель", role=Role.INSTRUCTOR)
 
 
 def _dds_state_with_active_card(clock, criteria_ms: int = 30_000):
@@ -185,17 +208,12 @@ def test_pause_and_resume_are_recorded_for_audit(monkeypatch):
     store = MemorySessionStore()
     monkeypatch.setitem(hub._sessions, state.session_id, state)
     monkeypatch.setattr(hub, "store", store)
-    who = type("Who", (), {"login": "teacher", "role": type("R", (), {"value": "instructor"})()})()
 
     async def run():
         async with hub.operation(state.session_id):
-            await control_ws._command(
-                state.session_id, type("E", (), {"type": "session.pause"})(), who,
-            )
+            await control_ws._command(state.session_id, SessionPause(), TEACHER)
         async with hub.operation(state.session_id):
-            await control_ws._command(
-                state.session_id, type("E", (), {"type": "session.resume"})(), who,
-            )
+            await control_ws._command(state.session_id, SessionResume(), TEACHER)
 
     asyncio.run(run())
 
@@ -267,7 +285,7 @@ def test_ending_session_while_paused_finalizes_pause_and_unblocks_report(clock, 
             async with hub.operation(state.session_id):
                 await call_ws._handle(
                     state.session_id, state,
-                    SimpleNamespace(type="self_assessment.submit", missed=[], comment="Проверил"),
+                    SelfAssessmentSubmit(missed=[], comment="Проверил"),
                 )
             while not queue.empty():
                 events.append(queue.get_nowait())
@@ -281,6 +299,10 @@ def test_ending_session_while_paused_finalizes_pause_and_unblocks_report(clock, 
     assert state.score is not None
     assert state.score["full_report"]["total_paused_ms"] >= 30_000
     assert any(isinstance(event, SessionPaused) and not event.paused for event in events)
+    # Снятие паузы приходит после `call.ended`: иначе клиент дошлёт отложенные
+    # на паузе правки в уже закрытое занятие.
+    kinds = [type(event) for event in events]
+    assert kinds.index(CallEnded) < kinds.index(SessionPaused)
     assert any(isinstance(record, LessonResumed) for _sid, batch in store.commits for record in batch)
 
 
@@ -450,3 +472,174 @@ async def test_pause_cancels_inflight_voice_and_clears_buffer(monkeypatch):
         assert voice._vad.reset_count == 1
     finally:
         await voice.close()
+
+
+def _call_state():
+    scenario = load_file(LIBRARY / "fire-apartment-l2.yaml", LIBRARY)
+    return SessionState(
+        session_id=uuid4(), scenario_id=scenario.id, scenario_title=scenario.title,
+        level=scenario.level.value, mode=SessionMode.TRAINING, exercise=Exercise.CALL,
+        scenario=scenario, owner_login="teacher",
+    )
+
+
+def _drain(queue) -> list:
+    events = []
+    while not queue.empty():
+        events.append(queue.get_nowait())
+    return events
+
+
+def test_timer_start_on_pause_keeps_frozen_elapsed(clock):
+    """Повторное событие запуска на паузе не должно пустить часы с нуля."""
+    timer = Timer(code=TimerCode.CALLBACK)
+    timer.start(clock.now)
+    clock.advance(4)
+    timer.pause(clock.now)
+
+    timer.start(clock.now)
+    clock.advance(120)
+
+    assert timer.paused is True
+    assert timer.current_ms(clock.now) == 4_000
+
+
+def test_director_inject_rejected_while_paused(clock, monkeypatch):
+    """Регрессия: обрыв связи на паузе запускал норматив обратного дозвона,
+    и весь простой уходил в него; курсант получал `call.ended` под баннером."""
+    state = _call_state()
+    monkeypatch.setattr(hub, "store", MemorySessionStore())
+    monkeypatch.setitem(hub._sessions, state.session_id, state)
+    state.on_event("call.incoming")
+    state.on_event("call.answer")
+    state.pause()
+
+    async def run():
+        with hub.observer(state.session_id) as observer, hub.trainee(state.session_id) as trainee:
+            async with hub.operation(state.session_id):
+                await control_ws._command(
+                    state.session_id, DirectorInject(directive="line_dropped"), TEACHER,
+                )
+            return _drain(observer), _drain(trainee)
+
+    observed, to_trainee = asyncio.run(run())
+    clock.advance(120)
+
+    assert any(isinstance(event, ErrorEvent) for event in observed)
+    assert to_trainee == []
+    assert state.directives == []
+    assert TimerCode.CALLBACK not in state.timers.timers
+    assert state.timers.timers[TimerCode.INTERVIEW].paused is True
+
+
+@pytest.mark.parametrize("event", [
+    KioPatchIn(fields={"address": "ул. Ленина, 1"}),
+    HintRequest(),
+    DdsDispatch(service=DDSCode.FIRE),
+    CallbackDial(),
+], ids=lambda event: event.type)
+def test_call_channel_rejects_trainee_actions_while_paused(clock, monkeypatch, event):
+    """Истина — сервер: кнопки на фронте выключены, но команда с паузы
+    не должна ни менять карточку, ни останавливать норматив опроса."""
+    state = _call_state()
+    monkeypatch.setattr(hub, "store", MemorySessionStore())
+    monkeypatch.setitem(hub._sessions, state.session_id, state)
+    state.on_event("call.incoming")
+    state.on_event("call.answer")
+    clock.advance(5)
+    state.pause()
+    kio_before = state.kio.model_dump()
+
+    async def run():
+        with hub.trainee(state.session_id) as queue:
+            async with hub.operation(state.session_id):
+                await call_ws._handle(state.session_id, state, event)
+            return _drain(queue)
+
+    events = asyncio.run(run())
+
+    assert [type(item) for item in events] == [ErrorEvent]
+    assert state.kio.model_dump() == kio_before
+    interview = state.timers.timers[TimerCode.INTERVIEW]
+    assert interview.paused and not interview.stopped
+    assert TimerCode.DDS_ACK not in state.timers.timers
+    assert TimerCode.CALLBACK not in state.timers.timers
+    assert state.hints_shown == []
+
+
+def test_station_channel_rejects_card_ack_while_paused(clock, monkeypatch):
+    state, card = _dds_state_with_active_card(clock)
+    monkeypatch.setattr(hub, "store", MemorySessionStore())
+    monkeypatch.setitem(hub._sessions, state.session_id, state)
+    clock.advance(5)
+    state.pause()
+    card_before = card.model_dump()
+
+    async def run():
+        with hub.station(state.session_id) as queue:
+            async with hub.operation(state.session_id):
+                await station_ws._handle(state.session_id, state, CardAck(comment="Принято"))
+            return _drain(queue)
+
+    events = asyncio.run(run())
+
+    assert [type(item) for item in events] == [ErrorEvent]
+    assert card.model_dump() == card_before
+    ack = card.timers.timers[TimerCode.DDS_ACK]
+    assert ack.paused and not ack.stopped
+    assert ack.current_ms(clock.now) == 5_000
+
+
+def test_repeated_pause_and_resume_are_idempotent(clock, monkeypatch):
+    state, card = _dds_state_with_active_card(clock)
+    store = MemorySessionStore()
+    monkeypatch.setattr(hub, "store", store)
+    monkeypatch.setitem(hub._sessions, state.session_id, state)
+    base = now_utc()
+    monkeypatch.setattr("app.session.state.now_utc", lambda: base)
+
+    async def command(event):
+        async with hub.operation(state.session_id):
+            await control_ws._command(state.session_id, event, TEACHER)
+
+    async def run():
+        with hub.station(state.session_id) as queue:
+            clock.advance(5)
+            await command(SessionPause())
+            clock.advance(30)
+            await command(SessionPause())  # второе нажатие не сдвигает начало паузы
+            monkeypatch.setattr("app.session.state.now_utc", lambda: base + timedelta(seconds=60))
+            await command(SessionResume())
+            await command(SessionResume())
+            return _drain(queue)
+
+    events = asyncio.run(run())
+    clock.advance(10)
+
+    records = [record for _sid, batch in store.commits for record in batch]
+    assert sum(isinstance(record, LessonPaused) for record in records) == 1
+    assert sum(isinstance(record, LessonResumed) for record in records) == 1
+    assert [event.paused for event in events if isinstance(event, SessionPaused)] == [True, False]
+    assert state.total_paused_ms == 60_000
+    assert card.timers.timers[TimerCode.DDS_ACK].current_ms(clock.now) == 15_000
+
+
+def test_pause_is_ignored_in_ended_session(clock, monkeypatch):
+    state, _card = _dds_state_with_active_card(clock)
+    store = MemorySessionStore()
+    monkeypatch.setattr(hub, "store", store)
+    monkeypatch.setitem(hub._sessions, state.session_id, state)
+    state.end(CallEndReason.INSTRUCTOR)
+
+    async def run():
+        with hub.station(state.session_id) as queue:
+            async with hub.operation(state.session_id):
+                await control_ws._command(state.session_id, SessionPause(), TEACHER)
+            return _drain(queue)
+
+    events = asyncio.run(run())
+
+    assert state.paused is False
+    assert state.paused_at is None
+    assert events == []
+    assert not any(isinstance(record, LessonPaused) for _sid, batch in store.commits for record in batch)
