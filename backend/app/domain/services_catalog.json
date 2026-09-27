@@ -1,0 +1,1470 @@
+{
+ "source": "СЛУЖБЫ 112.docx — раздаточный материал задачи № 9 (сообщение 686), 55 скриншотов окна «Добавьте службы»",
+ "transcription": "alex-indi/training-simulator-112, коммит ded466988f505082922aacac9fff32b777d1279a, backend/seed/services/services.json",
+ "license": "MIT; использование разрешено авторами, разрешение получено командой 27.09.2026",
+ "services": [
+  {
+   "id": "catalog-001",
+   "name": "Служба 101 (ГУ МЧС России по г.Москве, ГКУ \"Пожарно спасательный центр\" ОДС)",
+   "organization": "ГУ МЧС России по г.Москве, ГКУ \"Пожарно спасательный центр\" ОДС",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image1.png/row-01"
+  },
+  {
+   "id": "catalog-002",
+   "name": "ФСБ",
+   "organization": null,
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image1.png/row-02"
+  },
+  {
+   "id": "catalog-003",
+   "name": "ЦЭМП",
+   "organization": null,
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image1.png/row-03"
+  },
+  {
+   "id": "catalog-004",
+   "name": "Служба 103 (ГБУ города Москвы Станция скорой и неотложной медицинской помощи им.А.С. Пучкова)",
+   "organization": "ГБУ города Москвы Станция скорой и неотложной медицинской помощи им.А.С. Пучкова",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image1.png/row-04"
+  },
+  {
+   "id": "catalog-005",
+   "name": "Служба 104 (АО \"МОСГАЗ\" Диспетчерское управление)",
+   "organization": "АО \"МОСГАЗ\" Диспетчерское управление",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image1.png/row-05"
+  },
+  {
+   "id": "catalog-006",
+   "name": "Поселение Теплый Стан (ДДС района Теплый Стан города Москвы)",
+   "organization": "ДДС района Теплый Стан города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image10.png/row-01"
+  },
+  {
+   "id": "catalog-007",
+   "name": "Поселение Рязанский (ДДС Рязанского района города Москвы)",
+   "organization": "ДДС Рязанского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image10.png/row-02"
+  },
+  {
+   "id": "catalog-008",
+   "name": "Поселение ЗелАО (ДДС префектуры Зеленоградского административного округа города Москвы)",
+   "organization": "ДДС префектуры Зеленоградского административного округа города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image10.png/row-03"
+  },
+  {
+   "id": "catalog-009",
+   "name": "Поселение Печатники (ДДС района Печатники города Москвы)",
+   "organization": "ДДС района Печатники города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image10.png/row-04"
+  },
+  {
+   "id": "catalog-010",
+   "name": "Поселение САО (ДДС префектуры Северного административного округа города Москвы)",
+   "organization": "ДДС префектуры Северного административного округа города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image11.png/row-01"
+  },
+  {
+   "id": "catalog-011",
+   "name": "Поселение Новокосино (ДДС района Новокосино города Москвы)",
+   "organization": "ДДС района Новокосино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image11.png/row-02"
+  },
+  {
+   "id": "catalog-012",
+   "name": "Поселение Царицыно (ДДС района Царицыно города Москвы)",
+   "organization": "ДДС района Царицыно города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image11.png/row-03"
+  },
+  {
+   "id": "catalog-013",
+   "name": "Поселение Марьино (ДДС района Марьино города Москвы)",
+   "organization": "ДДС района Марьино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image12.png/row-01"
+  },
+  {
+   "id": "catalog-014",
+   "name": "Поселение Кузьминки (ДДС района Кузьминки города Москвы)",
+   "organization": "ДДС района Кузьминки города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image12.png/row-02"
+  },
+  {
+   "id": "catalog-015",
+   "name": "Поселение Митино (ДДС района Митино города Москвы)",
+   "organization": "ДДС района Митино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image12.png/row-03"
+  },
+  {
+   "id": "catalog-016",
+   "name": "Поселение Савеловский (ДДС Савеловского района города Москвы)",
+   "organization": "ДДС Савеловского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image12.png/row-04"
+  },
+  {
+   "id": "catalog-017",
+   "name": "Поселение Щукино (ДДС района Щукино города Москвы)",
+   "organization": "ДДС района Щукино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image12.png/row-05"
+  },
+  {
+   "id": "catalog-018",
+   "name": "Поселение Покровское-Стрешнево (ДДС района Покровское-Стрешнево города Москвы)",
+   "organization": "ДДС района Покровское-Стрешнево города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image13.png/row-02"
+  },
+  {
+   "id": "catalog-019",
+   "name": "Поселение Первомайское (ДДС поселения Первомайское в городе Москве)",
+   "organization": "ДДС поселения Первомайское в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image13.png/row-03"
+  },
+  {
+   "id": "catalog-020",
+   "name": "МЖД (Московская железная дорога)",
+   "organization": "Московская железная дорога",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image13.png/row-04"
+  },
+  {
+   "id": "catalog-021",
+   "name": "112 Кал. обл. (112 Калужская область)",
+   "organization": "112 Калужская область",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image13.png/row-05"
+  },
+  {
+   "id": "catalog-022",
+   "name": "Поселение Северное Тушино (ДДС района Северное Тушино города Москвы)",
+   "organization": "ДДС района Северное Тушино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image14.png/row-02"
+  },
+  {
+   "id": "catalog-023",
+   "name": "Поселение Нагатинский Затон (ДДС района Нагатинский Затон города Москвы)",
+   "organization": "ДДС района Нагатинский Затон города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image14.png/row-03"
+  },
+  {
+   "id": "catalog-024",
+   "name": "Поселение Дорогомилово (ДДС района Дорогомилово города Москвы)",
+   "organization": "ДДС района Дорогомилово города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image14.png/row-04"
+  },
+  {
+   "id": "catalog-025",
+   "name": "Поселение Коптево (ДДС района Коптево города Москвы)",
+   "organization": "ДДС района Коптево города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image15.png/row-01"
+  },
+  {
+   "id": "catalog-026",
+   "name": "Поселение Крылатское (ДДС района Крылатское города Москвы)",
+   "organization": "ДДС района Крылатское города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image15.png/row-02"
+  },
+  {
+   "id": "catalog-027",
+   "name": "Поселение Тверской (ДДС Тверского района города Москвы)",
+   "organization": "ДДС Тверского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image15.png/row-03"
+  },
+  {
+   "id": "catalog-028",
+   "name": "Поселение Внуково (ДДС района Внуково города Москвы)",
+   "organization": "ДДС района Внуково города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image15.png/row-04"
+  },
+  {
+   "id": "catalog-029",
+   "name": "Поселение Ярославский (ДДС Ярославского района города Москвы)",
+   "organization": "ДДС Ярославского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image16.png/row-01"
+  },
+  {
+   "id": "catalog-030",
+   "name": "Поселение ЮАО (ДДС префектуры Южного административного округа города Москвы)",
+   "organization": "ДДС префектуры Южного административного округа города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image16.png/row-02"
+  },
+  {
+   "id": "catalog-031",
+   "name": "Поселение Михайлово-Ярцевское (ДДС поселения Михайлово-Ярцевское города Москвы)",
+   "organization": "ДДС поселения Михайлово-Ярцевское города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image16.png/row-03"
+  },
+  {
+   "id": "catalog-032",
+   "name": "Поселение Некрасовка (ДДС района Некрасовка города Москвы)",
+   "organization": "ДДС района Некрасовка города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image16.png/row-04"
+  },
+  {
+   "id": "catalog-033",
+   "name": "Поселение Выхино-Жулебино (ДДС района Выхино-Жулебино города Москвы)",
+   "organization": "ДДС района Выхино-Жулебино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image17.png/row-01"
+  },
+  {
+   "id": "catalog-034",
+   "name": "Поселение Москворечье-Сабурово (ДДС района Москворечье-Сабурово города Москвы)",
+   "organization": "ДДС района Москворечье-Сабурово города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image17.png/row-02"
+  },
+  {
+   "id": "catalog-035",
+   "name": "Поселение ЮЗАО (ДДС префектура Юго-Западного административного округа города Москвы)",
+   "organization": "ДДС префектура Юго-Западного административного округа города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image17.png/row-03"
+  },
+  {
+   "id": "catalog-036",
+   "name": "Поселение Донской (ДДС Донского района города Москвы)",
+   "organization": "ДДС Донского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image18.png/row-01"
+  },
+  {
+   "id": "catalog-037",
+   "name": "Поселение Куркино (ДДС района Куркино города Москвы)",
+   "organization": "ДДС района Куркино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image18.png/row-02"
+  },
+  {
+   "id": "catalog-038",
+   "name": "Поселение Южное Бутово (ДДС района Южное Бутово города Москвы)",
+   "organization": "ДДС района Южное Бутово города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image18.png/row-03"
+  },
+  {
+   "id": "catalog-039",
+   "name": "Поселение Лианозово (ДДС района Лианозово города Москвы)",
+   "organization": "ДДС района Лианозово города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image18.png/row-04"
+  },
+  {
+   "id": "catalog-040",
+   "name": "Деп. Обр. (Московский Департамент Образования)",
+   "organization": "Московский Департамент Образования",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image19.png/row-01"
+  },
+  {
+   "id": "catalog-041",
+   "name": "Поселение Лефортово (ДДС района Лефортово города Москвы)",
+   "organization": "ДДС района Лефортово города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image19.png/row-02"
+  },
+  {
+   "id": "catalog-042",
+   "name": "Поселение Замоскворечье (ДДС района Замоскворечье города Москвы)",
+   "organization": "ДДС района Замоскворечье города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image19.png/row-03"
+  },
+  {
+   "id": "catalog-043",
+   "name": "Поселение СВАО (ДДС префектуры Северо-Восточного административного округа города Москвы)",
+   "organization": "ДДС префектуры Северо-Восточного административного округа города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image19.png/row-04"
+  },
+  {
+   "id": "catalog-044",
+   "name": "ОГДЦ",
+   "organization": null,
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image2.png/row-01"
+  },
+  {
+   "id": "catalog-045",
+   "name": "ЦОДД (ГКУ \"Центр организации дорожного движения\")",
+   "organization": "ГКУ \"Центр организации дорожного движения\"",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image2.png/row-02"
+  },
+  {
+   "id": "catalog-046",
+   "name": "Гормост (Гормост)",
+   "organization": "Гормост",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image2.png/row-03"
+  },
+  {
+   "id": "catalog-047",
+   "name": "Мосгортранс",
+   "organization": null,
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image2.png/row-04"
+  },
+  {
+   "id": "catalog-048",
+   "name": "Автодороги",
+   "organization": null,
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image2.png/row-05"
+  },
+  {
+   "id": "catalog-049",
+   "name": "Поселение Сокольники (ДДС района Сокольники города Москвы)",
+   "organization": "ДДС района Сокольники города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image20.png/row-01"
+  },
+  {
+   "id": "catalog-050",
+   "name": "Поселение Измайлово (ДДС района Измайлово города Москвы)",
+   "organization": "ДДС района Измайлово города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image20.png/row-02"
+  },
+  {
+   "id": "catalog-051",
+   "name": "Поселение Богородское (ДДС района Богородское города Москвы)",
+   "organization": "ДДС района Богородское города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image20.png/row-03"
+  },
+  {
+   "id": "catalog-052",
+   "name": "Поселение Преображенский (ДДС района Преображенское города Москвы)",
+   "organization": "ДДС района Преображенское города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image21.png/row-01"
+  },
+  {
+   "id": "catalog-053",
+   "name": "Поселение Восточное Измайлово (ДДС района Восточное Измайлово города Москвы)",
+   "organization": "ДДС района Восточное Измайлово города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image21.png/row-02"
+  },
+  {
+   "id": "catalog-054",
+   "name": "Поселение Ростокино (ДДС района Ростокино города Москвы)",
+   "organization": "ДДС района Ростокино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image21.png/row-03"
+  },
+  {
+   "id": "catalog-055",
+   "name": "Поселение Соколиная гора (ДДС района Соколиная гора города Москвы)",
+   "organization": "ДДС района Соколиная гора города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image21.png/row-04"
+  },
+  {
+   "id": "catalog-056",
+   "name": "Поселение Хорошево-Мневники (ДДС района Хорошево-Мневники города Москвы)",
+   "organization": "ДДС района Хорошево-Мневники города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image22.png/row-01"
+  },
+  {
+   "id": "catalog-057",
+   "name": "Поселение Гольяново (ДДС района Гольяново города Москвы)",
+   "organization": "ДДС района Гольяново города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image22.png/row-02"
+  },
+  {
+   "id": "catalog-058",
+   "name": "Поселение Северное Измайлово (ДДС района Северное Измайлово города Москвы)",
+   "organization": "ДДС района Северное Измайлово города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image22.png/row-03"
+  },
+  {
+   "id": "catalog-059",
+   "name": "Поселение Марфино (ДДС района Марфино города Москвы)",
+   "organization": "ДДС района Марфино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image22.png/row-04"
+  },
+  {
+   "id": "catalog-060",
+   "name": "Поселение Метрогородок (ДДС района Метрогородок города Москвы)",
+   "organization": "ДДС района Метрогородок города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image23.png/row-01"
+  },
+  {
+   "id": "catalog-061",
+   "name": "Поселение Фили-Давыдково (ДДС района Фили-Давыдково города Москвы)",
+   "organization": "ДДС района Фили-Давыдково города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image23.png/row-02"
+  },
+  {
+   "id": "catalog-062",
+   "name": "Поселение Южное Медведково (ДДС района Южное Медведково города Москвы)",
+   "organization": "ДДС района Южное Медведково города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image23.png/row-03"
+  },
+  {
+   "id": "catalog-063",
+   "name": "Поселение Рязановское (ДДС поселения Рязановское в городе Москве)",
+   "organization": "ДДС поселения Рязановское в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image24.png/row-01"
+  },
+  {
+   "id": "catalog-064",
+   "name": "Деп. природопользования (Департамент природопользования и охраны окружающей среды города Москвы)",
+   "organization": "Департамент природопользования и охраны окружающей среды города Москвы",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image24.png/row-02"
+  },
+  {
+   "id": "catalog-065",
+   "name": "Поселение Тимирязевский (ДДС Тимирязевского района города Москвы)",
+   "organization": "ДДС Тимирязевского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image24.png/row-03"
+  },
+  {
+   "id": "catalog-066",
+   "name": "Поселение Бирюлево Западное (ДДС района Бирюлево Западное города Москвы)",
+   "organization": "ДДС района Бирюлево Западное города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image24.png/row-04"
+  },
+  {
+   "id": "catalog-067",
+   "name": "Поселение Ивановский (ДДС Ивановского района города Москвы)",
+   "organization": "ДДС Ивановского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image25.png/row-01"
+  },
+  {
+   "id": "catalog-068",
+   "name": "Поселение Ново-Переделкино (ДДС района Ново-Переделкино города Москвы)",
+   "organization": "ДДС района Ново-Переделкино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image25.png/row-02"
+  },
+  {
+   "id": "catalog-069",
+   "name": "Поселение Восточное Дегунино (ДДС района Восточное Дегунино города Москвы)",
+   "organization": "ДДС района Восточное Дегунино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image25.png/row-03"
+  },
+  {
+   "id": "catalog-070",
+   "name": "Поселение Ховрино (ДДС района Ховрино города Москвы)",
+   "organization": "ДДС района Ховрино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image26.png/row-01"
+  },
+  {
+   "id": "catalog-071",
+   "name": "Поселение Головинский (ДДС Головинского района города Москвы)",
+   "organization": "ДДС Головинского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image26.png/row-02"
+  },
+  {
+   "id": "catalog-072",
+   "name": "Поселение Бескудниково (ДДС Бескудниковского района города Москвы)",
+   "organization": "ДДС Бескудниковского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image26.png/row-03"
+  },
+  {
+   "id": "catalog-073",
+   "name": "Поселение Левобережный (ДДС района Левобережный города Москвы)",
+   "organization": "ДДС района Левобережный города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image26.png/row-04"
+  },
+  {
+   "id": "catalog-074",
+   "name": "Поселение Дмитровский (ДДС Дмитровского района города Москвы)",
+   "organization": "ДДС Дмитровского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image27.png/row-01"
+  },
+  {
+   "id": "catalog-075",
+   "name": "Поселение Сокол (ДДС района Сокол города Москвы)",
+   "organization": "ДДС района Сокол города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image27.png/row-02"
+  },
+  {
+   "id": "catalog-076",
+   "name": "Поселение Молжаниновский (ДДС Молжаниновского района города Москвы)",
+   "organization": "ДДС Молжаниновского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image27.png/row-03"
+  },
+  {
+   "id": "catalog-077",
+   "name": "Поселение Хамовники (ДДС района Хамовники города Москвы)",
+   "organization": "ДДС района Хамовники города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image27.png/row-04"
+  },
+  {
+   "id": "catalog-078",
+   "name": "Поселение Басманный (ДДС Басманного района города Москвы)",
+   "organization": "ДДС Басманного района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image28.png/row-01"
+  },
+  {
+   "id": "catalog-079",
+   "name": "Поселение Якиманка (ДДС района Якиманка города Москвы)",
+   "organization": "ДДС района Якиманка города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image28.png/row-02"
+  },
+  {
+   "id": "catalog-080",
+   "name": "Поселение Мещанский (ДДС Мещанского района города Москвы)",
+   "organization": "ДДС Мещанского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image28.png/row-03"
+  },
+  {
+   "id": "catalog-081",
+   "name": "Поселение Пресненский (ДДС Пресненского района города Москвы)",
+   "organization": "ДДС Пресненского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image28.png/row-04"
+  },
+  {
+   "id": "catalog-082",
+   "name": "Служба 102 (Дежурная часть ГУ МВД России по г.Москве)",
+   "organization": "Дежурная часть ГУ МВД России по г.Москве",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image29.png/row-02"
+  },
+  {
+   "id": "catalog-083",
+   "name": "Поселение Мосрентген (ДДС поселения «Мосрентген» в городе Москве)",
+   "organization": "ДДС поселения «Мосрентген» в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image29.png/row-03"
+  },
+  {
+   "id": "catalog-084",
+   "name": "Поселение Ясенево (ДДС района Ясенево города Москвы)",
+   "organization": "ДДС района Ясенево города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image29.png/row-04"
+  },
+  {
+   "id": "catalog-085",
+   "name": "Мосводоканал (АО \"Мосводоканал\")",
+   "organization": "АО \"Мосводоканал\"",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image3.png/row-01"
+  },
+  {
+   "id": "catalog-086",
+   "name": "Россети МР",
+   "organization": null,
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image3.png/row-02"
+  },
+  {
+   "id": "catalog-087",
+   "name": "МОЭК",
+   "organization": null,
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image3.png/row-03"
+  },
+  {
+   "id": "catalog-088",
+   "name": "Деп. ЖКХ (Департамент ЖКХ)",
+   "organization": "Департамент ЖКХ",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image3.png/row-04"
+  },
+  {
+   "id": "catalog-089",
+   "name": "Метро",
+   "organization": null,
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image3.png/row-05"
+  },
+  {
+   "id": "catalog-090",
+   "name": "МГТС (Московская городская телефонная сеть)",
+   "organization": "Московская городская телефонная сеть",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image30.png/row-01"
+  },
+  {
+   "id": "catalog-091",
+   "name": "Поселение Щербинка (ДДС городского округа Щербинка города Москвы)",
+   "organization": "ДДС городского округа Щербинка города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image30.png/row-02"
+  },
+  {
+   "id": "catalog-092",
+   "name": "Поселение Капотня (ДДС района Капотня города Москвы)",
+   "organization": "ДДС района Капотня города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image30.png/row-03"
+  },
+  {
+   "id": "catalog-093",
+   "name": "Поселение Троицк (ДДС городского округа Троицк города Москвы)",
+   "organization": "ДДС городского округа Троицк города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image30.png/row-04"
+  },
+  {
+   "id": "catalog-094",
+   "name": "Поселение Нагатино-Садовники (ДДС района Нагатино Садовники)",
+   "organization": "ДДС района Нагатино Садовники",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image31.png/row-01"
+  },
+  {
+   "id": "catalog-095",
+   "name": "Поселение Клёновское (ДДС поселения Клёновское в городе Москве)",
+   "organization": "ДДС поселения Клёновское в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image31.png/row-02"
+  },
+  {
+   "id": "catalog-096",
+   "name": "Поселение Нагорный (ДДС района Нагорный города Москвы)",
+   "organization": "ДДС района Нагорный города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image31.png/row-03"
+  },
+  {
+   "id": "catalog-097",
+   "name": "Поселение Бабушкинский (ДДС Бабушкинского района города Москвы)",
+   "organization": "ДДС Бабушкинского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image31.png/row-04"
+  },
+  {
+   "id": "catalog-098",
+   "name": "Поселение Бутырский (ДДС Бутырского района города Москвы)",
+   "organization": "ДДС Бутырского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image32.png/row-01"
+  },
+  {
+   "id": "catalog-099",
+   "name": "Поселение Лосиноостровский (ДДС Лосиноостровского района города Москвы)",
+   "organization": "ДДС Лосиноостровского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image32.png/row-02"
+  },
+  {
+   "id": "catalog-100",
+   "name": "Поселение Останкинский (ДДС Останкинского района города Москвы)",
+   "organization": "ДДС Останкинского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image32.png/row-03"
+  },
+  {
+   "id": "catalog-101",
+   "name": "Поселение Отрадное (ДДС района Отрадное города Москвы)",
+   "organization": "ДДС района Отрадное города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image33.png/row-01"
+  },
+  {
+   "id": "catalog-102",
+   "name": "Поселение Свиблово (ДДС района Свиблово города Москвы)",
+   "organization": "ДДС района Свиблово города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image33.png/row-02"
+  },
+  {
+   "id": "catalog-103",
+   "name": "Поселение Северное Медведково (ДДС района Северное Медведково города Москвы)",
+   "organization": "ДДС района Северное Медведково города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image33.png/row-03"
+  },
+  {
+   "id": "catalog-104",
+   "name": "Поселение Северный (ДДС района Северный города Москвы)",
+   "organization": "ДДС района Северный города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image33.png/row-04"
+  },
+  {
+   "id": "catalog-105",
+   "name": "Поселение Орехово-Борисово Северное (ДДС Орехово-Борисово Северное города Москвы)",
+   "organization": "ДДС Орехово-Борисово Северное города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image34.png/row-01"
+  },
+  {
+   "id": "catalog-106",
+   "name": "Поселение Перово (ДДС района Перово города Москвы)",
+   "organization": "ДДС района Перово города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image34.png/row-02"
+  },
+  {
+   "id": "catalog-107",
+   "name": "Поселение Алтуфьевский (ДДС Алтуфьевского района города Москвы)",
+   "organization": "ДДС Алтуфьевского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image34.png/row-03"
+  },
+  {
+   "id": "catalog-108",
+   "name": "Поселение Можайский (ДДС Можайского района города Москвы)",
+   "organization": "ДДС Можайского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image34.png/row-04"
+  },
+  {
+   "id": "catalog-109",
+   "name": "Поселение Раменки (ДДС района Раменки города Москвы)",
+   "organization": "ДДС района Раменки города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image35.png/row-03"
+  },
+  {
+   "id": "catalog-110",
+   "name": "Поселение Алексеевский (ДДС Алексеевского района города Москвы)",
+   "organization": "ДДС Алексеевского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image35.png/row-04"
+  },
+  {
+   "id": "catalog-111",
+   "name": "Поселение Кунцево (ДДС района Кунцево города Москвы)",
+   "organization": "ДДС района Кунцево города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image36.png/row-01"
+  },
+  {
+   "id": "catalog-112",
+   "name": "Поселение Тропарево-Никулино (ДДС района Тропарево-Никулино города Москвы)",
+   "organization": "ДДС района Тропарево-Никулино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image36.png/row-02"
+  },
+  {
+   "id": "catalog-113",
+   "name": "Поселение Восточный (ДДС района Восточный города Москвы)",
+   "organization": "ДДС района Восточный города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image36.png/row-03"
+  },
+  {
+   "id": "catalog-114",
+   "name": "Поселение Аэропорт (ДДС района Аэропорт города Москвы)",
+   "organization": "ДДС района Аэропорт города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image37.png/row-01"
+  },
+  {
+   "id": "catalog-115",
+   "name": "Поселение Западное Дегунино (ДДС района Западное Дегунино города Москвы)",
+   "organization": "ДДС района Западное Дегунино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image37.png/row-02"
+  },
+  {
+   "id": "catalog-116",
+   "name": "Поселение Войковский (ДДС Войковского района города Москвы)",
+   "organization": "ДДС Войковского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image37.png/row-03"
+  },
+  {
+   "id": "catalog-117",
+   "name": "Поселение Хорошевский (ДДС Хорошевского района города Москвы)",
+   "organization": "ДДС Хорошевского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image37.png/row-04"
+  },
+  {
+   "id": "catalog-118",
+   "name": "Поселение Беговой (ДДС района Беговой города Москвы)",
+   "organization": "ДДС района Беговой города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image38.png/row-01"
+  },
+  {
+   "id": "catalog-119",
+   "name": "Поселение Текстильщики (ДДС района Текстильщики города Москвы)",
+   "organization": "ДДС района Текстильщики города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image38.png/row-02"
+  },
+  {
+   "id": "catalog-120",
+   "name": "Поселение Московское (ДДС поселения Московский в городе Москве)",
+   "organization": "ДДС поселения Московский в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image38.png/row-03"
+  },
+  {
+   "id": "catalog-121",
+   "name": "Поселение Братеево (ДДС района Братеево города Москвы)",
+   "organization": "ДДС района Братеево города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image38.png/row-04"
+  },
+  {
+   "id": "catalog-122",
+   "name": "Поселение Филимонковское (ДДС поселения Филимонковское в городе Москве)",
+   "organization": "ДДС поселения Филимонковское в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image39.png/row-01"
+  },
+  {
+   "id": "catalog-123",
+   "name": "Канал им. Москвы (ФГБУ \"Канал имени Москвы\")",
+   "organization": "ФГБУ \"Канал имени Москвы\"",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image39.png/row-02"
+  },
+  {
+   "id": "catalog-124",
+   "name": "Поселение Люблино (ДДС района Люблино города Москвы)",
+   "organization": "ДДС района Люблино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image39.png/row-03"
+  },
+  {
+   "id": "catalog-125",
+   "name": "Поселение Марушкинское (ДДС поселения Марушкинское в городе Москве)",
+   "organization": "ДДС поселения Марушкинское в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image39.png/row-04"
+  },
+  {
+   "id": "catalog-126",
+   "name": "112 Мос. обл. (112 Московской области)",
+   "organization": "112 Московской области",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image4.png/row-01"
+  },
+  {
+   "id": "catalog-127",
+   "name": "ФГУП РСВО (Российские сети вещания и оповещения)",
+   "organization": "Российские сети вещания и оповещения",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image4.png/row-02"
+  },
+  {
+   "id": "catalog-128",
+   "name": "ОЭК (Объединенная энергетическая компания)",
+   "organization": "Объединенная энергетическая компания",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image4.png/row-03"
+  },
+  {
+   "id": "catalog-129",
+   "name": "Мослифт (Лифт МСК)",
+   "organization": "Лифт МСК",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image4.png/row-04"
+  },
+  {
+   "id": "catalog-130",
+   "name": "Мосводосток (Мосводосток)",
+   "organization": "Мосводосток",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image4.png/row-05"
+  },
+  {
+   "id": "catalog-131",
+   "name": "Деп. труда и соц.защиты (Департамент труда и социальной защиты населения города Москвы)",
+   "organization": "Департамент труда и социальной защиты населения города Москвы",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image40.png/row-02"
+  },
+  {
+   "id": "catalog-132",
+   "name": "Поселение Орехово-Борисово Южное (ДДС района Орехово-Борисово Южное города Москвы)",
+   "organization": "ДДС района Орехово-Борисово Южное города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image40.png/row-03"
+  },
+  {
+   "id": "catalog-133",
+   "name": "Поселение Даниловский (ДДС Даниловского района города Москвы)",
+   "organization": "ДДС Даниловского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image40.png/row-04"
+  },
+  {
+   "id": "catalog-134",
+   "name": "Поселение Роговское (ДДС поселения Роговское в городе Москве)",
+   "organization": "ДДС поселения Роговское в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image41.png/row-01"
+  },
+  {
+   "id": "catalog-135",
+   "name": "Поселение ЗАО (ДДС префектуры Западного административного округа города Москвы)",
+   "organization": "ДДС префектуры Западного административного округа города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image41.png/row-02"
+  },
+  {
+   "id": "catalog-136",
+   "name": "Поселение Нижегородский (ДДС Нижегородского района города Москвы)",
+   "organization": "ДДС Нижегородского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image41.png/row-03"
+  },
+  {
+   "id": "catalog-137",
+   "name": "Поселение Щаповское (ДДС поселения Щаповское в городе Москве)",
+   "organization": "ДДС поселения Щаповское в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image41.png/row-04"
+  },
+  {
+   "id": "catalog-138",
+   "name": "Поселение Южнопортовый (ДДС Южнопортового района города Москвы)",
+   "organization": "ДДС Южнопортового района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image42.png/row-01"
+  },
+  {
+   "id": "catalog-139",
+   "name": "ЭВАЖД (ГБУ \"Учреждение по эксплуатации высотных административных и жилых домов\")",
+   "organization": "ГБУ \"Учреждение по эксплуатации высотных административных и жилых домов\"",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image42.png/row-02"
+  },
+  {
+   "id": "catalog-140",
+   "name": "Поселение ЦАО (ДДС префектуры Центрального административного округа)",
+   "organization": "ДДС префектуры Центрального административного округа",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image42.png/row-03"
+  },
+  {
+   "id": "catalog-141",
+   "name": "Поселение Черемушки (ДДС района Черемушки города Москвы)",
+   "organization": "ДДС района Черемушки города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image43.png/row-01"
+  },
+  {
+   "id": "catalog-142",
+   "name": "Поселение Марьина роща (ДДС района Марьина роща города Москвы)",
+   "organization": "ДДС района Марьина роща города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image43.png/row-02"
+  },
+  {
+   "id": "catalog-143",
+   "name": "Поселение Красносельский (ДДС Красносельского района города Москвы)",
+   "organization": "ДДС Красносельского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image43.png/row-03"
+  },
+  {
+   "id": "catalog-144",
+   "name": "Поселение Строгино (ДДС района Строгино города Москвы)",
+   "organization": "ДДС района Строгино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image43.png/row-04"
+  },
+  {
+   "id": "catalog-145",
+   "name": "Поселение СЗАО (ДДС префектуры Северо-Западного административного округа города Москвы)",
+   "organization": "ДДС префектуры Северо-Западного административного округа города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image44.png/row-01"
+  },
+  {
+   "id": "catalog-146",
+   "name": "Поселение Бирюлево Восточное (ДДС района Бирюлево Восточное города Москвы)",
+   "organization": "ДДС района Бирюлево Восточное города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image44.png/row-02"
+  },
+  {
+   "id": "catalog-147",
+   "name": "Поселение Чертаново Центральное (ДДС района Чертаново Центральное города Москвы)",
+   "organization": "ДДС района Чертаново Центральное города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image44.png/row-03"
+  },
+  {
+   "id": "catalog-148",
+   "name": "Поселение Гагаринский (ДДС Гагаринского района города Москвы)",
+   "organization": "ДДС Гагаринского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image44.png/row-04"
+  },
+  {
+   "id": "catalog-149",
+   "name": "Поселение Обручевский (ДДС Обручевского района города Москвы)",
+   "organization": "ДДС Обручевского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image45.png/row-01"
+  },
+  {
+   "id": "catalog-150",
+   "name": "Поселение Зюзино (ДДС района Зюзино города Москвы)",
+   "organization": "ДДС района Зюзино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image45.png/row-02"
+  },
+  {
+   "id": "catalog-151",
+   "name": "Поселение Коньково (ДДС района Коньково города Москвы)",
+   "organization": "ДДС района Коньково города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image45.png/row-03"
+  },
+  {
+   "id": "catalog-152",
+   "name": "Поселение Котловка (ДДС района Котловка города Москвы)",
+   "organization": "ДДС района Котловка города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image45.png/row-04"
+  },
+  {
+   "id": "catalog-153",
+   "name": "Поселение Северное Бутово (ДДС района Северное Бутово города Москвы)",
+   "organization": "ДДС района Северное Бутово города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image46.png/row-01"
+  },
+  {
+   "id": "catalog-154",
+   "name": "Поселение Косино-Ухтомский (ДДС района Косино-Ухтомский города Москвы)",
+   "organization": "ДДС района Косино-Ухтомский города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image46.png/row-02"
+  },
+  {
+   "id": "catalog-155",
+   "name": "Поселение Солнцево (ДДС района Солнцево города Москвы)",
+   "organization": "ДДС района Солнцево города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image46.png/row-03"
+  },
+  {
+   "id": "catalog-156",
+   "name": "Поселение Таганский (ДДС района Таганский города Москвы)",
+   "organization": "ДДС района Таганский города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image47.png/row-01"
+  },
+  {
+   "id": "catalog-157",
+   "name": "Поселение Очаково-Матвеевское (ДДС района Очаково-Матвеевское города Москвы)",
+   "organization": "ДДС района Очаково-Матвеевское города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image47.png/row-02"
+  },
+  {
+   "id": "catalog-158",
+   "name": "Поселение Южное Тушино (ДДС района Южное Тушино города Москвы)",
+   "organization": "ДДС района Южное Тушино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image47.png/row-03"
+  },
+  {
+   "id": "catalog-159",
+   "name": "Поселение Филевский парк (ДДС района Филевский парк города Москвы)",
+   "organization": "ДДС района Филевский парк города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image47.png/row-04"
+  },
+  {
+   "id": "catalog-160",
+   "name": "Поселение ТИНАО (ДДС префектуры Троицкого и Новомосковского округов города Москвы)",
+   "organization": "ДДС префектуры Троицкого и Новомосковского округов города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image48.png/row-01"
+  },
+  {
+   "id": "catalog-161",
+   "name": "Поселение Проспект Вернадского (ДДС района Проспект Вернадского города Москвы)",
+   "organization": "ДДС района Проспект Вернадского города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image48.png/row-02"
+  },
+  {
+   "id": "catalog-162",
+   "name": "Поселение Десеновское (ДДС поселения Десеновское в городе Москве)",
+   "organization": "ДДС поселения Десеновское в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image48.png/row-03"
+  },
+  {
+   "id": "catalog-163",
+   "name": "Поселение Арбат (ДДС района Арбат города Москвы)",
+   "organization": "ДДС района Арбат города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image48.png/row-04"
+  },
+  {
+   "id": "catalog-164",
+   "name": "Дежурно-диспетчерская служба (Дежурно-диспетчерская служба)",
+   "organization": "Дежурно-диспетчерская служба",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image49.png/row-02"
+  },
+  {
+   "id": "catalog-165",
+   "name": "Поселение Сосенское (ДДС поселения Сосенское в городе Москве)",
+   "organization": "ДДС поселения Сосенское в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image49.png/row-03"
+  },
+  {
+   "id": "catalog-166",
+   "name": "Поселение Кокошкино (ДДС поселения Кокошкино в городе Москве)",
+   "organization": "ДДС поселения Кокошкино в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image49.png/row-04"
+  },
+  {
+   "id": "catalog-167",
+   "name": "Центррегионводхоз (Центррегионводхоз)",
+   "organization": "Центррегионводхоз",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image49.png/row-05"
+  },
+  {
+   "id": "catalog-168",
+   "name": "Москоллектор (Москоллектор)",
+   "organization": "Москоллектор",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image5.png/row-01"
+  },
+  {
+   "id": "catalog-169",
+   "name": "Воен. комендатура (Воен. комендатура)",
+   "organization": "Воен. комендатура",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image5.png/row-02"
+  },
+  {
+   "id": "catalog-170",
+   "name": "Поселение Чертаново Северное (ДДС района Чертаново Северное города Москвы)",
+   "organization": "ДДС района Чертаново Северное города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image5.png/row-03"
+  },
+  {
+   "id": "catalog-171",
+   "name": "Поселение Академический (ДДС Академического района города Москвы)",
+   "organization": "ДДС Академического района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image5.png/row-04"
+  },
+  {
+   "id": "catalog-172",
+   "name": "Поселение Воскресенское (ДДС поселения Воскресенское в городе Москве)",
+   "organization": "ДДС поселения Воскресенское в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image50.png/row-02"
+  },
+  {
+   "id": "catalog-173",
+   "name": "Поселение Краснопахорское (ДДС поселения Краснопахорское в городе Москве)",
+   "organization": "ДДС поселения Краснопахорское в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image50.png/row-03"
+  },
+  {
+   "id": "catalog-174",
+   "name": "Поселение Вороновское (ДДС поселения Вороновское в городе Москве)",
+   "organization": "ДДС поселения Вороновское в городе Москве",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image50.png/row-04"
+  },
+  {
+   "id": "catalog-175",
+   "name": "Мособлгаз (Мособлгаз)",
+   "organization": "Мособлгаз",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image50.png/row-05"
+  },
+  {
+   "id": "catalog-176",
+   "name": "Поселение Внуковское (ДДС поселения Внуковское города Москвы)",
+   "organization": "ДДС поселения Внуковское города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image51.png/row-02"
+  },
+  {
+   "id": "catalog-177",
+   "name": "Поселение Новофедоровское (ДДС поселения Новофедоровское города Москвы)",
+   "organization": "ДДС поселения Новофедоровское города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image51.png/row-03"
+  },
+  {
+   "id": "catalog-178",
+   "name": "Поселение Киевский (ДДС поселения Киевский города Москвы)",
+   "organization": "ДДС поселения Киевский города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image51.png/row-04"
+  },
+  {
+   "id": "catalog-179",
+   "name": "ГБУ АД ВАО (ГБУ Автодороги ВАО)",
+   "organization": "ГБУ Автодороги ВАО",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image51.png/row-05"
+  },
+  {
+   "id": "catalog-180",
+   "name": "ГБУ АД СВАО (ГБУ Автодороги СВАО)",
+   "organization": "ГБУ Автодороги СВАО",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image52.png/row-02"
+  },
+  {
+   "id": "catalog-181",
+   "name": "ГБУ АД ЮВАО (ГБУ Автодороги ЮВАО)",
+   "organization": "ГБУ Автодороги ЮВАО",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image52.png/row-03"
+  },
+  {
+   "id": "catalog-182",
+   "name": "ГБУ АД ЗелАО (ГБУ Автодороги ЗелАО)",
+   "organization": "ГБУ Автодороги ЗелАО",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image52.png/row-04"
+  },
+  {
+   "id": "catalog-183",
+   "name": "ГБУ АД ЮЗАО (ГБУ Автодороги ЮЗАО)",
+   "organization": "ГБУ Автодороги ЮЗАО",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image52.png/row-05"
+  },
+  {
+   "id": "catalog-184",
+   "name": "ГБУ АД ЮАО (ГБУ Автодороги ЮАО)",
+   "organization": "ГБУ Автодороги ЮАО",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image52.png/row-06"
+  },
+  {
+   "id": "catalog-185",
+   "name": "ГБУ АД САО (ГБУ Автодороги САО)",
+   "organization": "ГБУ Автодороги САО",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image53.png/row-02"
+  },
+  {
+   "id": "catalog-186",
+   "name": "ГБУ АД СЗАО (ГБУ Автодороги СЗАО)",
+   "organization": "ГБУ Автодороги СЗАО",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image53.png/row-03"
+  },
+  {
+   "id": "catalog-187",
+   "name": "ГБУ АД ЦАО (ГБУ Автодороги ЦАО)",
+   "organization": "ГБУ Автодороги ЦАО",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image53.png/row-04"
+  },
+  {
+   "id": "catalog-188",
+   "name": "ГБУ АД ЗАО (ГБУ Автодороги ЗАО)",
+   "organization": "ГБУ Автодороги ЗАО",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image53.png/row-05"
+  },
+  {
+   "id": "catalog-189",
+   "name": "Департамент культуры города Москвы (Департамент культуры города Москвы)",
+   "organization": "Департамент культуры города Москвы",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image54.png/row-01"
+  },
+  {
+   "id": "catalog-190",
+   "name": "ГКУ ЦСА (Центр социальной помощи)",
+   "organization": "Центр социальной помощи",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image54.png/row-02"
+  },
+  {
+   "id": "catalog-191",
+   "name": "Мостуризм (Комитет по туризму города Москвы)",
+   "organization": "Комитет по туризму города Москвы",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image54.png/row-03"
+  },
+  {
+   "id": "catalog-192",
+   "name": "Департамент строительства (Департамент строительства)",
+   "organization": "Департамент строительства",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image54.png/row-04"
+  },
+  {
+   "id": "catalog-193",
+   "name": "Комитет ветеринарии (Комитет ветеринарии города Москвы)",
+   "organization": "Комитет ветеринарии города Москвы",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image55.png/row-04"
+  },
+  {
+   "id": "catalog-194",
+   "name": "Мосжилинспекция (Государственная жилищная инспекция города Москвы)",
+   "organization": "Государственная жилищная инспекция города Москвы",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image55.png/row-05"
+  },
+  {
+   "id": "catalog-195",
+   "name": "Поселение Ломоносовский (ДДС Ломоносовского района города Москвы)",
+   "organization": "ДДС Ломоносовского района города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image6.png/row-01"
+  },
+  {
+   "id": "catalog-196",
+   "name": "Поселение Бибирево (ДДС района Бибирево города Москвы)",
+   "organization": "ДДС района Бибирево города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image6.png/row-02"
+  },
+  {
+   "id": "catalog-197",
+   "name": "Поселение ЮВАО (ДДС префектуры Юго-Восточного административного округа города Москвы)",
+   "organization": "ДДС префектуры Юго-Восточного административного округа города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image6.png/row-03"
+  },
+  {
+   "id": "catalog-198",
+   "name": "Поселение ВАО (ДДС префектуры Восточного административного округа города Москвы)",
+   "organization": "ДДС префектуры Восточного административного округа города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image6.png/row-04"
+  },
+  {
+   "id": "catalog-199",
+   "name": "Поселение Зябликово (ДДС района Зябликово города Москвы)",
+   "organization": "ДДС района Зябликово города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image7.png/row-01"
+  },
+  {
+   "id": "catalog-200",
+   "name": "Поселение Силино (ДДС района Силино города Москвы)",
+   "organization": "ДДС района Силино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image7.png/row-02"
+  },
+  {
+   "id": "catalog-201",
+   "name": "ОАТИ (Объединение Административно-Технических Инспекций города Москвы)",
+   "organization": "Объединение Административно-Технических Инспекций города Москвы",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image7.png/row-03"
+  },
+  {
+   "id": "catalog-202",
+   "name": "ГБУ МСППН (Московская служба психологической помощи населению ГБУ города Москвы)",
+   "organization": "Московская служба психологической помощи населению ГБУ города Москвы",
+   "service_level": null,
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image7.png/row-04"
+  },
+  {
+   "id": "catalog-203",
+   "name": "Упр. района Вешняки (ДДС района Вешняки города Москвы)",
+   "organization": "ДДС района Вешняки города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image8.png/row-01"
+  },
+  {
+   "id": "catalog-204",
+   "name": "Поселение Крюково (ДДС района Крюково города Москвы)",
+   "organization": "ДДС района Крюково города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image8.png/row-02"
+  },
+  {
+   "id": "catalog-205",
+   "name": "Поселение Матушкино (ДДС района Матушкино города Москвы)",
+   "organization": "ДДС района Матушкино города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image8.png/row-03"
+  },
+  {
+   "id": "catalog-206",
+   "name": "Поселение Новогиреево (ДДС района Новогиреево города Москвы)",
+   "organization": "ДДС района Новогиреево города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image9.png/row-01"
+  },
+  {
+   "id": "catalog-207",
+   "name": "Поселение Савелки (ДДС района Савелки города Москвы)",
+   "organization": "ДДС района Савелки города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image9.png/row-02"
+  },
+  {
+   "id": "catalog-208",
+   "name": "Поселение Старое Крюково (ДДС района Старое Крюково города Москвы)",
+   "organization": "ДДС района Старое Крюково города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image9.png/row-03"
+  },
+  {
+   "id": "catalog-209",
+   "name": "Поселение Чертаново Южное (ДДС района Чертаново Южное города Москвы)",
+   "organization": "ДДС района Чертаново Южное города Москвы",
+   "service_level": "ДДС",
+   "source_reference": "СЛУЖБЫ 112.docx#word/media/image9.png/row-04"
+  }
+ ]
+}

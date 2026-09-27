@@ -15,6 +15,9 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 DATA = Path(__file__).parent / "ekp.json"
+#: Каталог окна «Добавьте службы» из «СЛУЖБЫ 112.docx»: 209 служб, в том числе
+#: районные ДДС. Источник и лицензия — в шапке файла и в docs/delivery/THIRD-PARTY.md.
+CATALOG = Path(__file__).parent / "services_catalog.json"
 
 #: Часть строк книги существует ради интеграции с чужими системами, а оператору
 #: не показывается — книга помечает их прямо в первом признаке.
@@ -87,6 +90,37 @@ class Reference(BaseModel):
 @lru_cache(maxsize=1)
 def reference() -> Reference:
     return Reference.model_validate_json(DATA.read_text(encoding="utf-8"))
+
+
+class CatalogService(BaseModel):
+    """Служба каталога боевого АРМ — то, что оператор добавляет в карточку вручную."""
+
+    id: str
+    name: str
+    organization: str | None = None
+    #: «ДДС», если это явно указано в названии в каталоге.
+    service_level: str | None = None
+    #: Скриншот и строка списка в «СЛУЖБЫ 112.docx».
+    source_reference: str
+
+
+class Catalog(BaseModel):
+    source: str
+    transcription: str
+    license: str
+    services: list[CatalogService]
+
+
+@lru_cache(maxsize=1)
+def catalog() -> Catalog:
+    """Каталог только расширяет выбор служб. Список оповещения по-прежнему
+    считается из признаков по классификатору, эталоны сценариев от него не зависят."""
+    return Catalog.model_validate_json(CATALOG.read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=1)
+def catalog_names() -> frozenset[str]:
+    return frozenset(service.name for service in catalog().services)
 
 
 @lru_cache(maxsize=1)

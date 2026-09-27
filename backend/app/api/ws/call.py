@@ -39,6 +39,7 @@ from app.domain.events import (
     TraineeToServer,
 )
 from app.dialog.slots import TurnResult
+from app.domain.kio import PatchRejected, get_field
 from app.domain.roles import Role
 from app.scenarios import store
 from app.session.dds import prepare_handoff_queue
@@ -270,16 +271,37 @@ async def _handle(session_id: UUID, state, event) -> None:
 
         case "kio.patch":
             old_code, old_notify = state.kio.incident_code, list(state.kio.notify)
-            state.patch_kio(event.fields)
+            old_extra = list(state.kio.notify_extra)
+            try:
+                state.patch_kio(event.fields)
+            except (ValidationError, PatchRejected) as exc:
+                reason = exc.errors()[0].get("msg", "") if isinstance(exc, ValidationError) else str(exc)
+                # Недопустимое значение — отказ курсанту, а не сбой операции:
+                # сбой закрыл бы занятие на этом узле.
+                hub.to_trainee(session_id, ErrorEvent(
+                    code=ErrorKind.UNSUPPORTED_EVENT,
+                    message=f"Поле карточки не принято: {reason}"[:200],
+                ))
+                # Пакет отклонён целиком, а фронт держит его в pending до эха.
+                # Серверное значение с `auto` снимает pending — иначе на экране
+                # останутся правки, которых на сервере нет.
+                hub.to_trainee(session_id, KioPatchOut(
+                    fields={path: get_field(state.kio, path) for path in event.fields},
+                    source=PatchSource.AUTO,
+                ))
+                return
             hub.to_trainee(session_id, KioPatchOut(
                 fields=event.fields, source=PatchSource.OPERATOR,
             ))
+            auto: dict = {}
             if (state.kio.incident_code, state.kio.notify) != (old_code, old_notify):
-                hub.to_trainee(session_id, KioPatchOut(
-                    fields={"incident_code": state.kio.incident_code,
-                            "notify": list(state.kio.notify)},
-                    source=PatchSource.AUTO,
-                ))
+                auto |= {"incident_code": state.kio.incident_code, "notify": list(state.kio.notify)}
+            # Добавки сервер чистит сам (повторы, службы из notify) — фронту
+            # нужно итоговое значение, а не эхо присланного.
+            if state.kio.notify_extra != event.fields.get("notify_extra", old_extra):
+                auto["notify_extra"] = list(state.kio.notify_extra)
+            if auto:
+                hub.to_trainee(session_id, KioPatchOut(fields=auto, source=PatchSource.AUTO))
             # Наблюдателю уходит карточка целиком: рассинхрон на внешнем мониторе
             # посреди занятия дороже лишних килобайт.
             hub.to_observers(session_id, KioState(kio=state.kio))

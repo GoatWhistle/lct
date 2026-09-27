@@ -47,6 +47,11 @@ function field(card: CardState, path: string): string {
   const value = readPath(card.server, path);
   return value === null || value === undefined || value === "" ? "—" : String(value);
 }
+/** Список из карточки: `field()` не годится — `String([])` пустая строка, а не «—». */
+function names(card: CardState, path: string): string[] {
+  const value = readPath(card.server, path);
+  return Array.isArray(value) ? value.map(String) : [];
+}
 function time(value: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleTimeString("ru-RU");
@@ -548,6 +553,7 @@ export function Dds() {
           <div><b>{field(card, "description")}</b></div>
           <div>Класс: <b>{field(card, "incident_type")}</b></div>
           <div>Получатели карточки: <b>{station?.recipient_services?.join(", ") || field(card, "notify")}</b></div>
+          {names(card, "notify_extra").length > 0 && <div>Добавлены оператором: <b>{names(card, "notify_extra").join(", ")}</b></div>}
           <div>Ваша ДДС: <b>{station?.managed_service || "служба не назначена"}</b></div></div>
       </div>
       <div className="dds-case-stage">
