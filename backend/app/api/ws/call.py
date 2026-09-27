@@ -30,7 +30,6 @@ from app.domain.events import (
     KioState,
     PatchSource,
     ScoreReady,
-    SessionEnded,
     SessionMode,
     StationState,
     TimerTick,
@@ -39,17 +38,15 @@ from app.domain.events import (
     TranscriptAppend,
     TraineeToServer,
 )
-from app.domain.kio import ResponseStatus
 from app.dialog.slots import TurnResult
 from app.domain.roles import Role
 from app.scenarios import store
 from app.session.dds import prepare_handoff_queue
-from app.session.finish import finish, refresh_archived_report, release_score
+from app.session.finish import end_session, refresh_archived_report, release_score
 from app.session.hub import LEASE_FENCED_MESSAGE, hub
 from app.session.state import now_utc
 from app.session.store import (
     HintRecorded,
-    LessonEnded,
     LessonStarted,
     SelfAssessed,
     UtteranceAppended,
@@ -242,9 +239,7 @@ async def _handle(session_id: UUID, state, event) -> None:
         case "card.submit":
             state.on_event("card.submit")
             state.kio.registered_at = state.started_at or now_utc()
-            state.kio.response_status = ResponseStatus.TRANSFERRED
-            state.dispatched_card = state.kio.model_copy(deep=True)
-            state.dispatched_at = now_utc()
+            state.dispatch()
             if state.handoff_to_dds:
                 prepare_handoff_queue(
                     state,
@@ -253,20 +248,14 @@ async def _handle(session_id: UUID, state, event) -> None:
                     max_waiting=state.desk.max_waiting,
                 )
                 state.pending_dds_scenarios = []
-            else:
-                state.ended_at = state.dispatched_at
-                state.end_reason = CallEndReason.COMPLETE
-                hub.stop_ticker(session_id)
             hub.to_station(session_id, state.card_received_event())
             hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
             hub.to_observers(session_id, KioState(kio=state.kio))
-            hub.to_trainee(session_id, CallEnded(reason=CallEndReason.COMPLETE))
             if state.handoff_to_dds:
+                hub.to_trainee(session_id, CallEnded(reason=CallEndReason.COMPLETE))
                 hub.to_observers(session_id, state.snapshot())
             else:
-                hub.to_observers(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
-                hub.record(session_id, LessonEnded(state.ended_at, CallEndReason.COMPLETE.value))
-                await finish(session_id, state)
+                await end_session(session_id, state, CallEndReason.COMPLETE)
         case "call.answer":
             first_answer = state.started_at is None
             if first_answer:
@@ -362,15 +351,7 @@ async def _handle(session_id: UUID, state, event) -> None:
             await release_score(session_id, state)
 
         case "call.hangup":
-            if state.voice is not None:
-                await state.voice.close()
-            state.ended_at = now_utc()
-            state.end_reason = CallEndReason.HANGUP
-            hub.stop_ticker(session_id)
-            hub.to_trainee(session_id, CallEnded(reason=CallEndReason.HANGUP))
-            hub.to_observers(session_id, SessionEnded(reason=CallEndReason.HANGUP))
-            hub.record(session_id, LessonEnded(state.ended_at, CallEndReason.HANGUP.value))
-            await finish(session_id, state)
+            await end_session(session_id, state, CallEndReason.HANGUP)
 
 
 def _start_voice(session_id: UUID, state, *, initial_statement: bool = True) -> None:

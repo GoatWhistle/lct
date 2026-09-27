@@ -40,7 +40,6 @@ from app.domain.events import (
     InstructorToServer,
     ModeSet,
     ReferenceStarted,
-    ScoreReady,
     SessionEnded,
     StationState,
 )
@@ -49,9 +48,9 @@ from app.domain.timers import TimerCode
 from app.scenarios import store
 from app.session.dds import prepare_queue
 from app.session.hub import LEASE_FENCED_MESSAGE, hub
-from app.session.finish import finish, override_score
+from app.session.finish import end_session, override_score
 from app.session.state import SessionState, now_utc
-from app.session.store import LessonEnded, LessonIdentity, LessonRequest, NoteAdded, ScoreOverridden
+from app.session.store import LessonIdentity, LessonRequest, NoteAdded, ScoreOverridden
 from app.voice.models import get_voice_models
 from app.voice.pipeline import FILLERS, prefetch
 
@@ -331,28 +330,9 @@ async def _start(session_id: UUID, event, who=None) -> None:
 
 async def _stop(session_id: UUID) -> None:
     state = hub.get(session_id)
-    if state is None or state.ended:
+    if state is None:
         return
-    state.ended_at = now_utc()
-    if state.exercise is Exercise.CARD and state.dispatched_card is None:
-        state.on_event("card.end")
-    state.end_reason = CallEndReason.INSTRUCTOR
-    if state.voice is not None:
-        await state.voice.close()
-    hub.stop_ticker(session_id)
-    hub.to_observers(session_id, SessionEnded(reason=CallEndReason.INSTRUCTOR))
-
-    if state.exercise in {Exercise.DDS, Exercise.CARD}:
-        if state.exercise is Exercise.DDS or state.handoff_to_dds and state.dispatched_card is not None:
-            hub.to_station(session_id, SessionEnded(reason=CallEndReason.INSTRUCTOR))
-        else:
-            hub.to_trainee(session_id, CallEnded(reason=CallEndReason.INSTRUCTOR))
-        if state.exercise is Exercise.DDS or state.handoff_to_dds and state.dispatched_card is not None:
-            hub.to_station(session_id, ScoreReady(session_id=session_id))
-    else:
-        hub.to_trainee(session_id, CallEnded(reason=CallEndReason.INSTRUCTOR))
-    hub.record(session_id, LessonEnded(state.ended_at, CallEndReason.INSTRUCTOR.value))
-    await finish(session_id, state)
+    await end_session(session_id, state, CallEndReason.INSTRUCTOR)
 
 
 async def _command(session_id: UUID, event, who) -> None:

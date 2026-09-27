@@ -24,15 +24,12 @@ from app.domain.events import (
     CommandAck,
     ErrorEvent,
     ErrorKind,
-    ScoreReady,
-    SessionEnded,
     StationState,
     StationToServer,
 )
 from app.domain.roles import Role
-from app.session.finish import finish
+from app.session.finish import end_session
 from app.session.hub import LEASE_FENCED_MESSAGE, hub
-from app.session.store import LessonEnded
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -44,16 +41,6 @@ def _error(session_id: UUID, message: str) -> None:
     hub.to_station(session_id, ErrorEvent(code=ErrorKind.UNSUPPORTED_EVENT, message=message))
 
 
-async def _finish_dds(session_id: UUID, state) -> None:
-    ended_at = state.end(CallEndReason.COMPLETE)
-    hub.stop_ticker(session_id)
-    hub.to_station(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
-    hub.to_observers(session_id, SessionEnded(reason=CallEndReason.COMPLETE))
-    hub.record(session_id, LessonEnded(ended_at, CallEndReason.COMPLETE.value))
-    await finish(session_id, state)
-    hub.to_station(session_id, ScoreReady(session_id=session_id))
-
-
 async def _handle(session_id: UUID, state, event) -> None:
     outcome = state.desk.apply(event, state)
     if outcome.error is not None:
@@ -62,7 +49,7 @@ async def _handle(session_id: UUID, state, event) -> None:
     for item in outcome.events:
         hub.to_station(session_id, item)
     if outcome.finished:
-        await _finish_dds(session_id, state)
+        await end_session(session_id, state, CallEndReason.COMPLETE)
     if not outcome.changed:
         return
     hub.to_station(session_id, StationState(snapshot=state.station_snapshot()))
