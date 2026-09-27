@@ -314,6 +314,12 @@ class SessionHub:
     def observer_count(self, session_id: UUID) -> int:
         return len(self._observers.get(session_id, set()))
 
+    def station_connected(self, session_id: UUID) -> bool:
+        return bool(self._stations.get(session_id))
+
+    def trainee_connected(self, session_id: UUID) -> bool:
+        return bool(self._trainees.get(session_id))
+
     # ── такт таймеров ──
 
     def start_ticker(self, session_id: UUID) -> None:

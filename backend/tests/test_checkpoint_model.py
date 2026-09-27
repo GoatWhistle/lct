@@ -161,6 +161,7 @@ def full_state() -> SessionState:
         resolve_comment="передано в другой регион",
         processed_station_commands=[str(uuid4())],
         text_revealed_facts={"f_address": "улица Ленина, 14"},
+        consecutive_refusals=2,
     )
 
 

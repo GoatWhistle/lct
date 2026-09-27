@@ -120,6 +120,11 @@ class Settings(BaseSettings):
     def limit_ms(self, code: TimerCode) -> int:
         return self.timer_limits_ms.get(code, NORMATIVES[code].limit_ms)
 
+    # Пороги сигналов реестра живых занятий (пульт преподавателя).
+    signal_backlog_threshold: int = Field(default=4, ge=1)
+    signal_refusals_threshold: int = Field(default=2, ge=1)
+    signal_offline_window_seconds: int = Field(default=45, ge=1)
+
     def validate_deployment_security(self) -> None:
         """Reject known development authentication defaults on a production app."""
         if self.app_env != "production":

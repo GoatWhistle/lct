@@ -94,6 +94,12 @@ export interface SessionInfo {
   end_reason: string | null;
 }
 
+export interface Signal {
+  kind: "backlog" | "refusals" | "offline";
+  severity: "warn" | "violated";
+  text: string;
+}
+
 export interface ActiveSessionInfo {
   session_id: string;
   trainee_name: string | null;
@@ -109,6 +115,7 @@ export interface ActiveSessionInfo {
   dds_work_overdue_cards: number;
   dds_statuses: Record<string, string>;
   dds_snapshot: StationSnapshot | null;
+  signals: Signal[];
 }
 
 export const useActiveSessions = () =>

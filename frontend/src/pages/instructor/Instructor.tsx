@@ -338,7 +338,7 @@ export function Instructor() {
           Список ваших активных сессий обновляется автоматически каждые 2 секунды.
         </p>
         <div className="dds-table-wrap"><table className="grid">
-          <thead><tr><th>Курсант</th><th>Упражнение · карточка</th><th>Ход</th><th>ДДС</th><th>Задержки</th><th></th></tr></thead>
+          <thead><tr><th>Курсант</th><th>Упражнение · карточка</th><th>Ход</th><th>ДДС</th><th>Задержки</th><th>Сигналы</th><th></th></tr></thead>
           <tbody>
             {(activeSessions.data ?? []).map((item) => (
               <tr key={item.session_id}>
@@ -383,12 +383,17 @@ export function Instructor() {
                     ? `Просрочено: первичная реакция ${item.dds_overdue_cards}; отработка карточки ${item.dds_work_overdue_cards}`
                     : "Нормативы не нарушены"}
                 </td>
+                <td className={item.signals.length ? `state-${item.signals[0].severity}` : "state-ok"}>
+                  {item.signals.length
+                    ? item.signals.map((signal) => <span key={signal.kind}>{signal.text}<br /></span>)
+                    : "Сигналов нет"}
+                </td>
                 <td><button type="button" onClick={() => openActiveSession(item)}>
                   {sessionId === item.session_id ? "Открыто" : "Наблюдать"}
                 </button></td>
               </tr>
             ))}
-            {!activeSessions.data?.length && <tr><td colSpan={6}>
+            {!activeSessions.data?.length && <tr><td colSpan={7}>
               {activeSessions.isLoading ? "Загружаем активные занятия…" : "Активных занятий пока нет."}
             </td></tr>}
           </tbody>

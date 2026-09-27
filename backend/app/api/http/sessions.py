@@ -8,6 +8,7 @@ import logging
 import time
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -23,7 +24,7 @@ from app.db.base import get_session
 from app.db.models import Group, Score, Session, Trainee
 from app.domain.events import Exercise, SessionMode, SessionReport
 from app.domain.roles import Role
-from app.domain.statuses import SERVICE_STATUS_LABELS, StationSnapshot, current
+from app.domain.statuses import SERVICE_STATUS_LABELS, DdsQueueCard, StationSnapshot, current
 from app.domain.timers import TimerCode
 from app.scoring.export import to_csv, to_pdf
 from app.scoring.report import build as build_report
@@ -32,6 +33,7 @@ from app.session.checkpoint import load_state
 from app.session.finish import override_score
 from app.session.score import scoring_scenario
 from app.session.hub import hub
+from app.session.state import SessionState
 from app.session.store import ScoreOverridden, apply_score_override
 from app.voice.recording import recording_path
 
@@ -86,6 +88,15 @@ class DdsHistoryOut(BaseModel):
     recipient_services: list[str] = []
 
 
+class Signal(BaseModel):
+    """Одна строка колонки сигналов реестра. Цвет несёт смысл только через
+    `severity` (AGENTS.md); текст обязателен и не заменяется цветом."""
+
+    kind: Literal["backlog", "refusals", "offline"]
+    severity: Literal["warn", "violated"]
+    text: str
+
+
 class ActiveSessionOut(BaseModel):
     session_id: UUID
     trainee_name: str | None
@@ -101,6 +112,7 @@ class ActiveSessionOut(BaseModel):
     dds_work_overdue_cards: int
     dds_statuses: dict[str, str]
     dds_snapshot: StationSnapshot | None = None
+    signals: list[Signal] = []
 
 
 def _out(session) -> SessionOut:
@@ -184,6 +196,44 @@ async def dds_history(
     return result
 
 
+def _signals(state: SessionState, queue: list[DdsQueueCard], now: datetime) -> list[Signal]:
+    """Сигналы реестра: очередь, повторные отказы, курсант не на связи.
+
+    Не завязаны на паузу занятия (`session.pause`, если появится) — очередь,
+    отказы и присутствие сокета не читают таймеры. Присутствие — по наличию
+    подписчика в хабе; окно нужно, чтобы короткий разрыв соединения не сразу
+    считался потерей связи курсанта.
+    """
+    settings = get_settings()
+    signals: list[Signal] = []
+    if len(queue) >= settings.signal_backlog_threshold:
+        signals.append(Signal(
+            kind="backlog", severity="warn",
+            text=f"Очередь: {len(queue)} необработанных карточек",
+        ))
+    if state.consecutive_refusals >= settings.signal_refusals_threshold:
+        signals.append(Signal(
+            kind="refusals", severity="warn",
+            text=f"Подряд отказов: {state.consecutive_refusals}",
+        ))
+    connected = (
+        hub.station_connected(state.session_id) if state.exercise is Exercise.DDS
+        else hub.trainee_connected(state.session_id)
+    )
+    if connected:
+        state.socket_last_seen_at = now
+    offline_seconds = (
+        (now - state.socket_last_seen_at).total_seconds()
+        if state.socket_last_seen_at is not None else 0
+    )
+    if offline_seconds >= settings.signal_offline_window_seconds:
+        signals.append(Signal(
+            kind="offline", severity="violated",
+            text=f"Курсант не на связи {int(offline_seconds)} с",
+        ))
+    return signals
+
+
 @router.get("/active", response_model=list[ActiveSessionOut])
 async def active(
     request: Request,
@@ -262,6 +312,7 @@ async def active(
             ),
             dds_statuses=latest_statuses,
             dds_snapshot=station,
+            signals=_signals(state, queue, now),
         ))
     return result
 
