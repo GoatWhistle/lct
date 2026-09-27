@@ -175,7 +175,8 @@ def test_bounce_is_refused_in_favour_of_112_control():
     outcome = state.desk.apply(CardBounce(missing_fields=["floor"]), state)
 
     assert outcome.error == (
-        "ДДС не проверяет заполнение карточки: замечания передаёт служба контроля 112")
+        "Карточку не возвращают в 112 при принятии и не правят на АРМ ДДС. "
+        "Если ошибка вскрылась по докладу бригады с места — сообщите о ней в 112 по телефону")
 
 
 def test_refusals_leave_desk_untouched():

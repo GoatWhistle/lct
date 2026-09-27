@@ -678,7 +678,7 @@ export function Dds() {
           onClick={() => { channel.current?.send({ type: "zone.decision", in_zone: true }); }}>Наша</button>
           <button type="button" disabled={zone !== null || !isConnected || ended}
             onClick={() => { channel.current?.send({ type: "zone.decision", in_zone: false }); }}>Не наша</button></div>
-        <p className="dds-hint">ДДС не исправляет и не возвращает заполненную карточку: её качество контролируют оператор и служба контроля 112.</p>
+        <p className="dds-hint">Карточку не правят на АРМ ДДС и не возвращают в 112 при принятии. Если бригада с места доложит о расхождении с карточкой — сообщите об ошибке в 112 по телефону.</p>
         <button type="button" className="dds-finish" disabled={!cardId || !isConnected || ended || advancePending}
           onClick={() => {
             if (reply.dirty && !send({ type: "card.reply", card_id: cardId, text: reply.text })) return;
