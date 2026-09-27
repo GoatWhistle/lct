@@ -219,6 +219,7 @@ async def score_session(
     if live_card is not None:
         decision_limit_ms = live_card.timers.limits[TimerCode.DDS_ACK]
         services = list(snapshot.call_card_services)
+        reaction_ms = snapshot.criteria.dds_report_reaction_limit_seconds * 1000
         result.findings.extend(evaluate_dispatcher(
             entries=live_card.status_log,
             services=services,
@@ -228,10 +229,12 @@ async def score_session(
             reply_text=live_card.reply_text,
             expected_decision=scenario.dds_decision.expected,
             expected_decision_reason=scenario.dds_decision.reason,
+            phone_reports=live_card.phone_reports,
+            report_reaction_ms=reaction_ms,
         ))
         result.metrics.extend(dispatcher_metrics(
             live_card, decision_limit_ms, scenario.dds_decision.expected,
-            scenario.dds_decision.reason, services=services,
+            scenario.dds_decision.reason, services=services, report_reaction_ms=reaction_ms,
         ))
     # Карточки ДДС уже взвешены каждая своим сценарием плюс настройкой
     # занятия. Веса первого сценария поверх них испортили бы остальные.

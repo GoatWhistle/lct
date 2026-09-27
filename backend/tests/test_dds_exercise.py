@@ -396,6 +396,7 @@ def test_instructor_criteria_change_timer_and_success_threshold(client, monkeypa
         client,
         criteria={
             "decision_time_limit_seconds": 45,
+            "dds_report_reaction_limit_seconds": 20,
             "allowed_errors": 50,
             "require_correct_grammar": False,
             "score_weights": {"dds_ack": 3.5},
@@ -454,6 +455,7 @@ def test_instructor_criteria_change_timer_and_success_threshold(client, monkeypa
             "decision_time_limit_seconds": 45,
             "card_fill_time_limit_seconds": 180,
             "dds_card_work_time_limit_seconds": 180,
+            "dds_report_reaction_limit_seconds": 20,
             "allowed_errors": 50,
             "require_correct_grammar": False,
             "score_weights": {"dds_ack": 3.5},
@@ -797,6 +799,8 @@ def test_complete_dds_workflow_with_training_calls_and_status_updates(client):
         ]
         assert all(report.crew == crew for report in state.desk.active.phone_reports)
         assert not score["findings"]
+        reaction = [m for m in score["metrics"] if m["key"] == "dds_report_reaction"]
+        assert reaction and all(m["passed"] for m in reaction), "каждый доклад отмечен вовремя"
     finally:
         control.__exit__(None, None, None)
 

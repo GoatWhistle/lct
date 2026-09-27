@@ -86,6 +86,7 @@ export function Instructor() {
   const [decisionTimeLimit, setDecisionTimeLimit] = useState(30);
   const [cardFillTimeLimit, setCardFillTimeLimit] = useState(180);
   const [ddsCardWorkTimeLimit, setDdsCardWorkTimeLimit] = useState(180);
+  const [ddsReportReactionLimit, setDdsReportReactionLimit] = useState(45);
   const [allowedErrors, setAllowedErrors] = useState(0);
   const [requireCorrectGrammar, setRequireCorrectGrammar] = useState(true);
   const [lessonScoreWeights, setLessonScoreWeights] = useState<Record<string, number>>({});
@@ -300,6 +301,7 @@ export function Instructor() {
         decision_time_limit_seconds: decisionTimeLimit,
         card_fill_time_limit_seconds: cardFillTimeLimit,
         dds_card_work_time_limit_seconds: ddsCardWorkTimeLimit,
+        dds_report_reaction_limit_seconds: ddsReportReactionLimit,
         allowed_errors: allowedErrors,
         require_correct_grammar: requireCorrectGrammar,
         score_weights: lessonScoreWeights,
@@ -307,7 +309,7 @@ export function Instructor() {
     });
     if (sent) toStart.current = null;
   }, [sessionId, control, scenarioId, extraScenarioIds, mode, trainee, traineeId, trainees.data,
-    exercise, decisionTimeLimit, cardFillTimeLimit, ddsCardWorkTimeLimit, allowedErrors, requireCorrectGrammar, wholeTicket, selectedTicketScenarios,
+    exercise, decisionTimeLimit, cardFillTimeLimit, ddsCardWorkTimeLimit, ddsReportReactionLimit, allowedErrors, requireCorrectGrammar, wholeTicket, selectedTicketScenarios,
     ddsArrivalIntervalSeconds, ddsMaxWaiting, lessonScoreWeights, scenarios.data,
     randomScenario, visibleScenarios]);
 
@@ -648,6 +650,13 @@ export function Instructor() {
                       value={ddsCardWorkTimeLimit} min={30} max={1800} fallback={180}
                       onCommit={setDdsCardWorkTimeLimit} />
                     <small className="ref">По умолчанию 180 секунд; не заменяет 30-секундное первичное решение.</small>
+                  </label>}
+                  {(exercise === "dds" || exercise === "card_dds") && <label className="lesson-criterion">
+                    Реакция на доклад бригады, секунд
+                    <LessonNumberInput label="Лимит реакции на доклад бригады, секунд"
+                      value={ddsReportReactionLimit} min={5} max={600} fallback={45}
+                      onCommit={setDdsReportReactionLimit} />
+                    <small className="ref">По умолчанию 45 секунд: статус по докладу бригады — не позже лимита.</small>
                   </label>}
                   <label className="lesson-criterion">
                     Допустимо нарушенных метрик

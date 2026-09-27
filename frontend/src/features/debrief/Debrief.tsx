@@ -75,7 +75,8 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
         {report.passed ? "Зачёт" : "Не зачтено"}: на разборе {report.failed_metrics} пунктов; допустимо пропустить {report.criteria.allowed_errors}. {report.exercise === "dds" && <>На первичное решение ДДС отводится
           {` ${report.criteria.decision_time_limit_seconds} с`}</>}
         {report.exercise === "dds" && <>; норматив отработки карточки ДДС —
-          {` ${report.criteria.dds_card_work_time_limit_seconds ?? 180} с`}</>}
+          {` ${report.criteria.dds_card_work_time_limit_seconds ?? 180} с`}; статус по докладу бригады —
+          {` не позже ${report.criteria.dds_report_reaction_limit_seconds ?? 45} с`}</>}
         {report.exercise === "card" && <>Норматив заполнения КИО —
           {` ${report.criteria.card_fill_time_limit_seconds ?? 180} с`}</>}
         {report.exercise && report.exercise !== "dds" && <>

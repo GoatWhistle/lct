@@ -1,10 +1,10 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from app.domain.statuses import ServiceStatus, StatusEntry
+from app.domain.statuses import PhoneReportRecord, ServiceStatus, StatusEntry
 from app.domain.taxonomy import ErrorCode
 from app.scenarios.loader import load_file
 from app.scoring.dispatcher import dispatcher_metrics, evaluate_dispatcher
@@ -294,3 +294,95 @@ def test_reasoned_refusal_after_acceptance_is_a_valid_terminal_path():
         deadline_ms=30_000, elapsed_ms=0,
     )
     assert ErrorCode.D6 not in [finding.code for finding in findings]
+
+
+# ── Реакция на доклад бригады (lct-37) ──
+
+T0 = datetime(2026, 9, 27, 10, 0, tzinfo=timezone.utc)
+COMMENT = "Основание: доклад старшего.\nСведения: передано дежурному."
+
+
+def at_second(seconds: int) -> datetime:
+    return T0 + timedelta(seconds=seconds)
+
+
+def mark(status: ServiceStatus, seconds: int) -> StatusEntry:
+    return StatusEntry(service=SERVICES[0], status=status, at=at_second(seconds), comment=COMMENT)
+
+
+def crew_report(phase: str, seconds: int) -> PhoneReportRecord:
+    return PhoneReportRecord(service=SERVICES[0], crew="Бригада 12", phase=phase,
+                             text="доклад", at=at_second(seconds))
+
+
+def reaction(status_log, reports, limit_ms=45_000):
+    card = live_card(status_log=status_log, crew_assignments={SERVICES[0]: "Бригада 12"},
+                     dispatched_at=T0)
+    card.phone_reports = reports
+    findings = evaluate_dispatcher(
+        entries=status_log, services=SERVICES, crew_assignments=card.crew_assignments,
+        deadline_ms=30_000, elapsed_ms=5_000, phone_reports=reports,
+        report_reaction_ms=limit_ms,
+    )
+    metric = next((m for m in dispatcher_metrics(card, 30_000, services=SERVICES,
+                                                 report_reaction_ms=limit_ms)
+                   if m.key == "dds_report_reaction"), None)
+    return [f for f in findings if f.metric_key == "dds_report_reaction"], metric
+
+
+def full_run(arrived_at: int) -> list[StatusEntry]:
+    return [mark(ServiceStatus.ACCEPTED, 5), mark(ServiceStatus.RESPONDING, 20),
+            mark(ServiceStatus.ARRIVED, arrived_at), mark(ServiceStatus.WORKING, arrived_at + 10),
+            mark(ServiceStatus.COMPLETED, arrived_at + 20)]
+
+
+def test_status_soon_after_crew_report_passes():
+    findings, metric = reaction(full_run(arrived_at=110), [crew_report("arrived", 100)])
+
+    assert findings == []
+    assert metric.passed and metric.fact == "о прибытии: 10 с"
+
+
+def test_status_later_than_limit_after_crew_report_is_d6_with_fact_and_norm():
+    findings, metric = reaction(full_run(arrived_at=170), [crew_report("arrived", 100)])
+
+    assert [f.code for f in findings] == [ErrorCode.D6]
+    assert "«Прибытие» отмечен через 70 с" in findings[0].fact
+    assert "о прибытии" in findings[0].fact, "факт ссылается на доклад"
+    assert findings[0].norm == "отметить статус по докладу не позже 45 с"
+    assert not metric.passed and metric.norm == "статус по каждому докладу не позже 45 с"
+
+
+def test_missing_status_after_crew_report_is_d6():
+    status_log = [mark(ServiceStatus.ACCEPTED, 5), mark(ServiceStatus.RESPONDING, 20)]
+
+    findings, metric = reaction(status_log, [crew_report("arrived", 100)])
+
+    assert [f.code for f in findings] == [ErrorCode.D6]
+    assert "не отмечен" in findings[0].fact and "Бригада 12" in findings[0].fact
+    assert not metric.passed and metric.fact == "о прибытии: статус не отмечен"
+
+
+def test_status_set_before_the_report_and_custom_limit():
+    findings, metric = reaction(full_run(arrived_at=90), [crew_report("arrived", 100)])
+    assert findings == [] and metric.passed, "статус раньше доклада — не нарушение"
+
+    strict, _ = reaction(full_run(arrived_at=130), [crew_report("arrived", 100)], limit_ms=20_000)
+    assert "не позже 20 с" in strict[0].norm
+
+
+def test_no_crew_reports_means_no_reaction_metric():
+    findings, metric = reaction(full_run(arrived_at=110), [])
+
+    assert findings == [] and metric is None
+
+
+def test_unfinished_work_after_completion_report_names_the_report():
+    status_log = full_run(arrived_at=110)[:-1]
+    findings = evaluate_dispatcher(
+        entries=status_log, services=SERVICES, crew_assignments={SERVICES[0]: "Бригада 12"},
+        deadline_ms=30_000, elapsed_ms=5_000, phone_reports=[crew_report("completed", 150)],
+    )
+
+    unfinished = next(f for f in findings if f.summary.endswith("не доведён до конца"))
+    assert "бригада доложила о завершении работ" in unfinished.fact

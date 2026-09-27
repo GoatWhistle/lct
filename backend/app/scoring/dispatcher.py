@@ -16,6 +16,7 @@ from app.domain.statuses import (
     PRIMARY,
     REFUSAL_COMMENT_REQUIRED,
     SERVICE_STATUS_LABELS,
+    PhoneReportRecord,
     ServiceStatus,
     StatusEntry,
     current,
@@ -26,6 +27,47 @@ from app.domain.timers import GOST_REF
 
 #: Статусы, означающие, что реагирование действительно шло.
 PROGRESS = (ServiceStatus.RESPONDING, ServiceStatus.ARRIVED, ServiceStatus.WORKING)
+
+#: Статус, который диспетчер отмечает по докладу бригады этой фазы.
+REPORT_STATUS = {
+    "dispatched": ServiceStatus.RESPONDING,
+    "arrived": ServiceStatus.ARRIVED,
+    "working": ServiceStatus.WORKING,
+    "completed": ServiceStatus.COMPLETED,
+}
+REPORT_LABELS = {
+    "dispatched": "о выезде",
+    "arrived": "о прибытии",
+    "working": "о начале работ",
+    "completed": "о завершении работ",
+}
+#: Лимит реакции на доклад по умолчанию; занятие задаёт свой в критериях.
+REPORT_REACTION_MS = 45_000
+
+
+def report_reactions(
+    marks: list[StatusEntry], reports: list[PhoneReportRecord],
+) -> list[tuple[PhoneReportRecord, int | None]]:
+    """Задержка статуса после каждого доклада бригады, мс; None — статус не отмечен.
+
+    Отсчёт — от серверного времени доклада. Статус, отмеченный раньше доклада,
+    задержки не имеет: диспетчер узнал о ходе работ по другому каналу.
+    """
+    result: list[tuple[PhoneReportRecord, int | None]] = []
+    for report in reports:
+        status = REPORT_STATUS.get(report.phase)
+        if status is None:
+            continue
+        times = [mark.at for mark in marks if mark.status is status]
+        if any(at <= report.at for at in times):
+            result.append((report, 0))
+            continue
+        after = min(times, default=None)
+        result.append((
+            report,
+            int((after - report.at).total_seconds() * 1000) if after is not None else None,
+        ))
+    return result
 
 
 def _finding(service: str, code: ErrorCode, summary: str, fact: str,
@@ -93,6 +135,8 @@ def evaluate_dispatcher(
     reply_text: str = "",
     expected_decision: str = "accept",
     expected_decision_reason: str | None = None,
+    phone_reports: list[PhoneReportRecord] | None = None,
+    report_reaction_ms: int = REPORT_REACTION_MS,
 ) -> list[Finding]:
     """Отметки по работе диспетчера. Пустой список — работа без нарушений.
 
@@ -264,21 +308,50 @@ def evaluate_dispatcher(
         # D6 — ход работ неполон к моменту закрытия карточки/занятия. В памятке
         # это приводит к повторным звонкам и скрывает от других служб факт реакции.
         # REFUSED — отдельный допустимый терминальный статус с обязательной причиной.
+        reports = [report for report in phone_reports or () if report.service == service]
         missing_progress = [status for status in PROGRESS if status not in {m.status for m in marks}]
         if (latest not in {ServiceStatus.DECLINED, ServiceStatus.REFUSED}
                 and (missing_progress or latest is not ServiceStatus.COMPLETED)):
             missing = ", ".join(SERVICE_STATUS_LABELS[status] for status in missing_progress)
+            reported_done = any(report.phase == "completed" for report in reports)
             findings.append(
                 _finding(
                     service, ErrorCode.D6,
                     f"{service}: ход реагирования не доведён до конца",
-                    fact=(f"не отмечены: {missing}" if missing else "карточка не закрыта"),
+                    fact=(f"не отмечены: {missing}" if missing else "карточка не закрыта")
+                    + ("; бригада доложила о завершении работ" if reported_done else ""),
                     norm=(
                         "отметить по факту начало реагирования, прибытие, проведение работ "
                         "и завершение; если работы не проводились — оформить отказ с причиной"
                     ),
                 )
             )
+
+        # D6 — статус по докладу бригады отмечен позже лимита или не отмечен.
+        # Код новый не вводится: это тот же неполный ход работ из памятки,
+        # только с измеримым временем реакции на доклад.
+        terminal = latest in {ServiceStatus.DECLINED, ServiceStatus.REFUSED}
+        limit_s = report_reaction_ms // 1000
+        for report, delay_ms in report_reactions(marks, reports):
+            label = SERVICE_STATUS_LABELS[REPORT_STATUS[report.phase]]
+            source = f"доклад бригады «{report.crew}» {REPORT_LABELS[report.phase]}"
+            if delay_ms is None and not terminal:
+                finding = _finding(
+                    service, ErrorCode.D6,
+                    f"{service}: по докладу бригады статус «{label}» не отмечен",
+                    fact=f"{source} получен, статус «{label}» не отмечен",
+                    norm=f"отметить статус по докладу не позже {limit_s} с",
+                )
+            elif delay_ms is not None and delay_ms > report_reaction_ms:
+                finding = _finding(
+                    service, ErrorCode.D6,
+                    f"{service}: статус «{label}» отмечен позже норматива после доклада",
+                    fact=f"статус «{label}» отмечен через {round(delay_ms / 1000)} с; {source}",
+                    norm=f"отметить статус по докладу не позже {limit_s} с",
+                )
+            else:
+                continue
+            findings.append(finding.model_copy(update={"metric_key": "dds_report_reaction"}))
 
     return findings
 
@@ -290,6 +363,7 @@ def dispatcher_metrics(
     expected_decision_reason: str | None = None,
     *,
     services: list[str] | None = None,
+    report_reaction_ms: int = REPORT_REACTION_MS,
 ) -> list[Metric]:
     """Числовая часть оценки ДДС; каждый проверяемый шаг имеет факт и норму.
 
@@ -355,4 +429,17 @@ def dispatcher_metrics(
             notes_complete,
             "; ".join(notes) if notes else "комментарии к статусам не внесены",
             "к каждой ручной отметке добавить основание и содержание полученных сведений")
+        # Метрика есть только там, где бригада докладывала: без докладов
+        # реагировать не на что, и отсутствие звонков не штраф.
+        reports = [report for report in getattr(state, "phone_reports", ()) if report.service == service]
+        reactions = report_reactions(marks, reports)
+        if reactions:
+            add("dds_report_reaction", "реакция на доклады бригады",
+                all(delay is not None and delay <= report_reaction_ms for _, delay in reactions),
+                "; ".join(
+                    f"{REPORT_LABELS[report.phase]}: "
+                    + (f"{round(delay / 1000)} с" if delay is not None else "статус не отмечен")
+                    for report, delay in reactions
+                ),
+                f"статус по каждому докладу не позже {report_reaction_ms // 1000} с")
     return metrics

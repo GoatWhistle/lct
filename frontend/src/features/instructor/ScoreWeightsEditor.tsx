@@ -32,6 +32,7 @@ const DDS_METRICS: MetricOption[] = [
   { key: "dds_completion", label: "Завершение работ", hint: "Фиксация завершения или отказа от работ." },
   { key: "dds_reply", label: "Основание и сведения", hint: "Комментарии к статусам и содержание полученных сведений." },
   { key: "dds_work_time", label: "Время отработки карточки", hint: "Соблюдение лимита полного цикла карточки." },
+  { key: "dds_report_reaction", label: "Реакция на доклад бригады", hint: "Статус по докладу бригады не позже лимита занятия." },
 ];
 
 const CARD_METRICS = OPERATOR_METRICS.filter(({ key }) => [
