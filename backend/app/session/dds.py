@@ -172,6 +172,19 @@ def build_card(
             },
         )
     else:
+        description_facts = scenario.facts[:3]
+        if scenario.dds_card_error is not None:
+            # Иначе верный адрес из вводной попадёт в описание ошибочной КИО
+            # и курсант увидит расхождение до доклада бригады.
+            description_facts = [
+                fact for fact in scenario.facts
+                if "address" not in fact.id.lower()
+                and not address_matches(truth.address, fact.value)
+            ][:3]
+        description = "; ".join(fact.value for fact in description_facts)
+        if not description:
+            description = ("Происшествие по выданной карточке"
+                           if scenario.dds_card_error is not None else scenario.first_line)
         kio = KIO(
             registered_at=now_utc(),
             caller_number=caller_phone,
@@ -190,8 +203,7 @@ def build_card(
             signs=list(scenario.signs),
             notify=scenario.notify_services(),
             victims_count=truth.victims,
-            description="; ".join(fact.value for fact in scenario.facts[:3])
-            or scenario.first_line,
+            description=description,
         )
     if service:
         kio = apply_patch(kio, {"dds": service})
