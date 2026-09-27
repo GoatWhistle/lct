@@ -461,3 +461,33 @@ def test_failed_presence_commit_closes_station_with_fencing_code(client, monkeyp
         assert not hub.station_connected(session_id)
     finally:
         control.__exit__(None, None, None)
+
+
+def test_takeover_retries_failed_presence_checkpoint():
+    class FlakyStore(MemorySessionStore):
+        def __init__(self):
+            self.commits = 0
+
+        async def commit(self, _state, _records=()):
+            self.commits += 1
+            if self.commits == 1:
+                raise OSError("temporary database outage")
+
+    store = FlakyStore()
+    local_hub = SessionHub(store)
+    state = SessionState(
+        session_id=uuid4(), scenario_id="test", scenario_title="Тест", level="L1",
+        mode=SessionMode.TRAINING, exercise=Exercise.DDS,
+        socket_last_seen_at=datetime.now(UTC) - timedelta(minutes=10),
+        socket_connected_at_checkpoint=True,
+    )
+
+    async def recover():
+        assert not await local_hub._adopt(state)
+        assert local_hub.get(state.session_id) is None
+        await local_hub.maintain_lease()
+        assert local_hub.get(state.session_id) is state
+        assert store.commits == 2
+        await local_hub.shutdown()
+
+    asyncio.run(recover())
