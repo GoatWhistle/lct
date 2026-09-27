@@ -56,6 +56,14 @@ _vanished: set[str] = set()
 AUTH_GENERATION_SYNC_SECONDS = 1.0
 AUTH_GENERATION_MAX_AGE_SECONDS = 2.0
 _generations_synced_at: float | None = None
+# One lock per login this node has not synced yet, so a concurrent HTTP
+# request and WS handshake for the same just-migrated login collapse into a
+# single SELECT instead of one each (lct-42).
+_lookup_locks: dict[str, asyncio.Lock] = {}
+
+
+class _AuthStateUnavailable(Exception):
+    """The one-shot lookup for a login unknown to this node could not reach PostgreSQL."""
 
 
 async def _close_revoked(ws: WebSocket) -> None:
@@ -134,6 +142,36 @@ async def sync_generations() -> None:
     _generations_synced_at = time.monotonic()
 
 
+async def _resolve_unknown_login(login: str) -> int | None:
+    """Look up a login absent from this node's cache without waiting a tick.
+
+    A revoked login stays cached in `_generations` (see `_vanished` above),
+    so absence from `_generations` unambiguously means "this node has not
+    synced this login yet" — an unrecognized login is checked directly
+    rather than treated as revoked. Returns the current epoch, or `None` if
+    the login is not (or no longer) in `users`. Raises
+    `_AuthStateUnavailable` if PostgreSQL cannot be reached; the caller
+    fails closed.
+    """
+    lock = _lookup_locks.setdefault(login, asyncio.Lock())
+    async with lock:
+        cached = _generations.get(login)
+        if cached is not None:
+            return cached  # a concurrent request already resolved it
+        try:
+            async with get_sessionmaker()() as db:
+                version = await db.scalar(
+                    select(User.auth_version).where(User.login == login)
+                )
+        except Exception as exc:  # noqa: BLE001 — fail closed, not FORBIDDEN
+            log.error("разовая проверка полномочий не удалась (%s)", type(exc).__name__)
+            raise _AuthStateUnavailable from exc
+        if version is None:
+            return None
+        _generations[login] = version
+        return version
+
+
 async def watch_generations() -> None:
     """Poll PostgreSQL once per node so remote logout/role changes close WS."""
     while True:
@@ -149,6 +187,21 @@ async def watch_generations() -> None:
             ):
                 _close_unverified_sockets()
         await asyncio.sleep(AUTH_GENERATION_SYNC_SECONDS)
+
+
+async def _send_auth_state_unavailable(scope, send) -> None:
+    if scope["type"] == "websocket":
+        await send({"type": "websocket.close", "code": 1013})
+    else:
+        await send({
+            "type": "http.response.start",
+            "status": 503,
+            "headers": [(b"content-type", b"application/json")],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": b'{"detail":"auth_state_unavailable"}',
+        })
 
 
 class AuthVersionMiddleware:
@@ -186,22 +239,17 @@ class AuthVersionMiddleware:
             synced_at is None
             or time.monotonic() - synced_at > AUTH_GENERATION_MAX_AGE_SECONDS
         ):
-            if scope["type"] == "websocket":
-                await send({"type": "websocket.close", "code": 1013})
-            else:
-                await send({
-                    "type": "http.response.start",
-                    "status": 503,
-                    "headers": [(b"content-type", b"application/json")],
-                })
-                await send({
-                    "type": "http.response.body",
-                    "body": b'{"detail":"auth_state_unavailable"}',
-                })
+            await _send_auth_state_unavailable(scope, send)
             return
 
         cookie_version = session.get("auth_generation")
         version = _generations.get(login)
+        if version is None:
+            try:
+                version = await _resolve_unknown_login(login)
+            except _AuthStateUnavailable:
+                await _send_auth_state_unavailable(scope, send)
+                return
         if version is None or cookie_version != version:
             if session is not None:
                 session.clear()

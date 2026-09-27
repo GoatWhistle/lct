@@ -410,6 +410,221 @@ def test_auth_middleware_fails_closed_when_generation_cache_is_stale_but_allows_
     asyncio.run(run())
 
 
+def test_middleware_resolves_and_caches_login_unknown_to_this_node(monkeypatch):
+    """Cluster handshake (lct-42): a login another node just authenticated is
+    fetched via a single SELECT rather than being treated as revoked, and the
+    result is cached so a second request for it does not query again."""
+    login = "peer-node-fresh-login"
+    calls = []
+
+    class FakeDb:
+        async def scalar(self, _query):
+            calls.append(1)
+            return 5
+
+    class FakeSession:
+        async def __aenter__(self):
+            return FakeDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class InnerApp:
+        def __init__(self):
+            self.called = 0
+
+        async def __call__(self, _scope, _receive, _send):
+            self.called += 1
+
+    async def run():
+        auth.prime_generations({})
+
+        def make_scope():
+            return {
+                "type": "http", "path": "/api/admin/users",
+                "session": {
+                    "principal": {"login": login},
+                    "auth_instance": auth._INSTANCE,
+                    "auth_generation": 5,
+                },
+            }
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(_message):
+            return None
+
+        first = InnerApp()
+        await auth.AuthVersionMiddleware(first)(make_scope(), receive, send)
+        assert first.called == 1, "a fresh, valid epoch must reach the route"
+        assert auth._generations[login] == 5
+        assert calls == [1]
+
+        second = InnerApp()
+        await auth.AuthVersionMiddleware(second)(make_scope(), receive, send)
+        assert second.called == 1
+        assert calls == [1], "cached epoch must not trigger a second SELECT"
+
+    settings = auth.get_settings().model_copy(update={"demo_no_db": False})
+    monkeypatch.setattr(auth, "get_settings", lambda: settings)
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: FakeSession())
+    try:
+        asyncio.run(run())
+    finally:
+        auth._generations.pop(login, None)
+        auth._lookup_locks.pop(login, None)
+
+
+def test_middleware_rejects_login_missing_from_users_via_one_shot_query(monkeypatch):
+    login = "peer-node-deleted-login"
+
+    class FakeDb:
+        async def scalar(self, _query):
+            return None
+
+    class FakeSession:
+        async def __aenter__(self):
+            return FakeDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class InnerApp:
+        def __init__(self):
+            self.called = False
+
+        async def __call__(self, _scope, _receive, _send):
+            self.called = True
+
+    async def run():
+        auth.prime_generations({})
+        cookie_session = {
+            "principal": {"login": login},
+            "auth_instance": auth._INSTANCE,
+            "auth_generation": 3,
+        }
+        scope = {"type": "http", "path": "/api/admin/users", "session": cookie_session}
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(_message):
+            return None
+
+        protected = InnerApp()
+        await auth.AuthVersionMiddleware(protected)(scope, receive, send)
+        assert protected.called, "route still runs but the session was cleared below"
+        assert cookie_session == {}
+        assert login not in auth._generations
+
+    settings = auth.get_settings().model_copy(update={"demo_no_db": False})
+    monkeypatch.setattr(auth, "get_settings", lambda: settings)
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: FakeSession())
+    try:
+        asyncio.run(run())
+    finally:
+        auth._lookup_locks.pop(login, None)
+
+
+def test_unknown_login_lookup_deduplicates_concurrent_requests_into_one_select(monkeypatch):
+    login = "peer-node-concurrent-login"
+    calls = []
+
+    class FakeDb:
+        async def scalar(self, _query):
+            calls.append(1)
+            await asyncio.sleep(0.01)  # widen the window for a racing second caller
+            return 9
+
+    class FakeSession:
+        async def __aenter__(self):
+            return FakeDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    async def run():
+        auth.prime_generations({})
+        results = await asyncio.gather(
+            auth._resolve_unknown_login(login),
+            auth._resolve_unknown_login(login),
+            auth._resolve_unknown_login(login),
+        )
+        assert results == [9, 9, 9]
+        assert calls == [1], "concurrent lookups for one login must issue a single SELECT"
+
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: FakeSession())
+    try:
+        asyncio.run(run())
+    finally:
+        auth._generations.pop(login, None)
+        auth._lookup_locks.pop(login, None)
+
+
+def test_unknown_login_lookup_fails_closed_when_database_is_unreachable(monkeypatch):
+    login = "peer-node-db-outage-login"
+
+    class BrokenSession:
+        async def __aenter__(self):
+            raise OSError("database unavailable")
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class InnerApp:
+        def __init__(self):
+            self.called = False
+
+        async def __call__(self, _scope, _receive, _send):
+            self.called = True
+
+    async def run():
+        auth.prime_generations({})
+        cookie_session = {
+            "principal": {"login": login},
+            "auth_instance": auth._INSTANCE,
+            "auth_generation": 0,
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        http_messages = []
+
+        async def http_send(message):
+            http_messages.append(message)
+
+        http_app = InnerApp()
+        await auth.AuthVersionMiddleware(http_app)(
+            {"type": "http", "path": "/api/admin/users", "session": dict(cookie_session)},
+            receive, http_send,
+        )
+        assert not http_app.called
+        assert http_messages[0]["status"] == 503
+
+        ws_messages = []
+
+        async def ws_send(message):
+            ws_messages.append(message)
+
+        ws_app = InnerApp()
+        await auth.AuthVersionMiddleware(ws_app)(
+            {"type": "websocket", "path": "/ws/control/x", "session": dict(cookie_session)},
+            receive, ws_send,
+        )
+        assert not ws_app.called
+        assert ws_messages[0] == {"type": "websocket.close", "code": 1013}
+
+    settings = auth.get_settings().model_copy(update={"demo_no_db": False})
+    monkeypatch.setattr(auth, "get_settings", lambda: settings)
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: BrokenSession())
+    try:
+        asyncio.run(run())
+    finally:
+        auth._lookup_locks.pop(login, None)
+
+
 def test_auth_middleware_uses_fresh_generation_cache_without_per_request_database_query(monkeypatch):
     from app.config import get_settings
 
