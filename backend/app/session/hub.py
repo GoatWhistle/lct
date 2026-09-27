@@ -24,6 +24,7 @@ from app.domain.events import (
 )
 from app.session.state import SessionState
 from app.session.store import MemorySessionStore, Record, SessionLeaseLost, SessionStore
+from app.session.timers import now_utc
 
 #: Очередь одного подписчика. Медленный наблюдатель не тормозит занятие:
 #: очередь ограничена, переполнение роняет соединение, а не сессию.
@@ -53,6 +54,8 @@ class SessionHub:
         self._observers: dict[UUID, set[asyncio.Queue]] = {}
         self._trainees: dict[UUID, set[asyncio.Queue]] = {}
         self._stations: dict[UUID, set[asyncio.Queue]] = {}
+        self._trainee_calls: dict[UUID, set[asyncio.Queue]] = {}
+        self._trainee_stations: dict[UUID, set[asyncio.Queue]] = {}
         self._tickers: dict[UUID, asyncio.Task] = {}
         # Задачи, порождённые внутри операции, наследуют контекст; после
         # закрытия операции их события идут напрямую (`_Operation.open`).
@@ -135,9 +138,10 @@ class SessionHub:
         if not self.store.persistent:
             return 0
         restored = await self.store.restore_active()
+        adopted = 0
         for state in restored:
-            self._adopt(state)
-        return len(restored)
+            adopted += await self._adopt(state)
+        return adopted
 
     async def maintain_lease(self) -> None:
         """Один оборот супервизора: продлить свои lease, подхватить просроченные чужие.
@@ -163,17 +167,28 @@ class SessionHub:
             current = self._sessions.get(state.session_id)
             if current is not None and not current.lease_fenced:
                 continue
-            self._adopt(state)
+            await self._adopt(state)
 
     async def supervise_lease(self, interval: float) -> None:
         while True:
             await asyncio.sleep(interval)
             await self.maintain_lease()
 
-    def _adopt(self, state: SessionState) -> None:
+    async def _adopt(self, state: SessionState) -> bool:
         self.stop_ticker(state.session_id)
+        if state.socket_connected_at_checkpoint:
+            # Разрыв произошёл при потере узла; старое время подключения не
+            # доказывает, что курсант отсутствовал всё это время.
+            state.socket_last_seen_at = now_utc()
+            state.socket_connected_at_checkpoint = False
+            try:
+                await self.store.commit(state)
+            except Exception:
+                log.exception("не удалось сохранить присутствие после takeover %s", state.session_id)
+                return False
         self.register(state)
         self.start_ticker(state.session_id)
+        return True
 
     async def save_all(self) -> None:
         """Снимок живых занятий при остановке узла: следующий владелец продолжит с него."""
@@ -285,6 +300,44 @@ class SessionHub:
     def station(self, session_id: UUID):
         return self._subscribe(self._stations, session_id)
 
+    async def _record_presence(self, session_id: UUID, *, station: bool) -> None:
+        state = self.get(session_id)
+        if state is None or state.ended or state.dds_phase != station:
+            return
+        async with self.operation(session_id):
+            state.socket_last_seen_at = now_utc()
+            present = self._trainee_stations if station else self._trainee_calls
+            state.socket_connected_at_checkpoint = bool(present.get(session_id))
+
+    @contextlib.asynccontextmanager
+    async def trainee_socket(
+        self, session_id: UUID, *, station: bool, trainee: bool,
+    ) -> AsyncIterator[asyncio.Queue]:
+        """Учесть только сокет курсанта; вещание преподавателю остаётся общим."""
+        registry = self._stations if station else self._trainees
+        presence = self._trainee_stations if station else self._trainee_calls
+        with self._subscribe(registry, session_id) as queue:
+            if trainee:
+                presence.setdefault(session_id, set()).add(queue)
+            try:
+                if trainee:
+                    try:
+                        await self._record_presence(session_id, station=station)
+                    except Exception:
+                        if not self.is_lease_fenced(session_id):
+                            raise
+                yield queue
+            finally:
+                if trainee:
+                    presence[session_id].discard(queue)
+                    if not presence[session_id]:
+                        presence.pop(session_id)
+                    try:
+                        await self._record_presence(session_id, station=station)
+                    except Exception:
+                        if not self.is_lease_fenced(session_id):
+                            raise
+
     # ── вещание ──
 
     @staticmethod
@@ -315,10 +368,10 @@ class SessionHub:
         return len(self._observers.get(session_id, set()))
 
     def station_connected(self, session_id: UUID) -> bool:
-        return bool(self._stations.get(session_id))
+        return bool(self._trainee_stations.get(session_id))
 
     def trainee_connected(self, session_id: UUID) -> bool:
-        return bool(self._trainees.get(session_id))
+        return bool(self._trainee_calls.get(session_id))
 
     # ── такт таймеров ──
 

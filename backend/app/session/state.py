@@ -127,11 +127,12 @@ class PersistedSession(BaseModel):
     #: Подряд идущих первичных отказов без принятой карточки между ними —
     #: сигнал реестра преподавателя, не влияет на балл.
     consecutive_refusals: int = 0
-    #: Когда реестр преподавателя последний раз видел подключённый сокет
-    #: курсанта (станция ДДС или звонок 112) — для сигнала "не на связи".
-    #: Персистится: без этого рестарт/failover обнуляет отсчёт окна
-    #: присутствия и сигнал никогда не срабатывает для восстановленных сессий.
+    #: Последнее подключение/отключение сокета курсанта или начало фазы ДДС.
+    #: Сохраняется вместе с занятием, чтобы чтение реестра не меняло состояние.
     socket_last_seen_at: datetime | None = None
+    #: На момент последнего checkpoint курсант был подключён на текущем АРМ.
+    #: После аварии узла момент потери связи неизвестен: окно начинается при takeover.
+    socket_connected_at_checkpoint: bool = False
 
     @field_validator("processed_station_commands")
     @classmethod
@@ -214,6 +215,9 @@ class SessionState(PersistedSession):
         self.dispatched_at = now_utc()
         if self.exercise is Exercise.CALL:
             self._receive_call_card()
+        if self.handoff_to_dds:
+            self.socket_last_seen_at = self.dispatched_at
+            self.socket_connected_at_checkpoint = False
         return self.dispatched_card
 
     def _receive_call_card(self) -> None:

@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from app.api.ws.session import pump, run_command, session_socket
+from app.api.ws.session import close_fenced, pump, run_command, session_socket
 from app.domain.events import (
     BgStart,
     CallEnded,
@@ -390,9 +390,14 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
     )
     if entered is None:
         return
-    _who, state = entered
+    who, state = entered
 
-    with hub.trainee(session_id) as queue:
+    async with hub.trainee_socket(
+        session_id, station=False, trainee=who.role is Role.TRAINEE,
+    ) as queue:
+        if hub.is_lease_fenced(session_id):
+            await close_fenced(ws)
+            return
         if state.exercise is Exercise.CARD:
             from app.api.ws.control import card_briefing
 

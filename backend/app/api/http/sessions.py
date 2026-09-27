@@ -113,6 +113,7 @@ class ActiveSessionOut(BaseModel):
     dds_statuses: dict[str, str]
     dds_snapshot: StationSnapshot | None = None
     signals: list[Signal] = []
+    presence_known: bool = True
 
 
 def _out(session) -> SessionOut:
@@ -206,11 +207,8 @@ def _signals(
     подписчика в хабе этого узла; окно нужно, чтобы короткий разрыв
     соединения не сразу считался потерей связи курсанта.
 
-    `live=False` — снимок собран из checkpoint (сессию не держит хаб этого
-    процесса: рестарт до переподключения сокета или чужой узел в кластере).
-    Такой объект живёт один запрос и выбрасывается: писать в него
-    `socket_last_seen_at` бессмысленно — на следующем опросе присутствие
-    неизвестно снова. Честнее не утверждать «на связи», чем соврать.
+    `live=False` — снимок чужого узла: его сокеты здесь не видны, поэтому
+    присутствие неизвестно. Чтение реестра не меняет состояние занятия.
     """
     settings = get_settings()
     signals: list[Signal] = []
@@ -226,16 +224,14 @@ def _signals(
         ))
     if live:
         connected = (
-            hub.station_connected(state.session_id) if state.exercise is Exercise.DDS
+            hub.station_connected(state.session_id) if state.dds_phase
             else hub.trainee_connected(state.session_id)
         )
-        if connected:
-            state.socket_last_seen_at = now
         offline_seconds = (
-            (now - state.socket_last_seen_at).total_seconds()
-            if state.socket_last_seen_at is not None else 0
+            (now - (state.socket_last_seen_at or state.started_at)).total_seconds()
+            if (state.socket_last_seen_at or state.started_at) is not None else 0
         )
-        if offline_seconds >= settings.signal_offline_window_seconds:
+        if not connected and offline_seconds >= settings.signal_offline_window_seconds:
             signals.append(Signal(
                 kind="offline", severity="violated",
                 text=f"Курсант не на связи {int(offline_seconds)} с",
@@ -256,9 +252,8 @@ async def active(
         state.session_id: state
         for state in hub.active_sessions(who.login)
     }
-    #: Снимки без живой записи в хабе этого узла — рестарт до переподключения
-    #: сокета либо чужой узел в кластере. Присутствие сокета для них здесь
-    #: не проверяется: объект живёт один запрос, а не хаб (см. `_signals`).
+    #: Снимки без живой записи в хабе этого узла — чужой узел или сессия,
+    #: ожидающая восстановления. Её сокеты нельзя проверить этим процессом.
     checkpoint_only: set[UUID] = set()
     if db is not None:
         rows = (
@@ -293,7 +288,7 @@ async def active(
     for state in states.values():
         elapsed = (max(0, int((now - state.started_at).total_seconds()))
                    if state.started_at else 0)
-        station = state.station_snapshot() if state.exercise is Exercise.DDS else None
+        station = state.station_snapshot() if state.dds_phase else None
         queue = station.queue_cards if station else []
         card = state.desk.active
         status_log = card.status_log if card is not None else []
@@ -327,6 +322,7 @@ async def active(
             dds_statuses=latest_statuses,
             dds_snapshot=station,
             signals=_signals(state, queue, now, live=state.session_id not in checkpoint_only),
+            presence_known=state.session_id not in checkpoint_only,
         ))
     return result
 

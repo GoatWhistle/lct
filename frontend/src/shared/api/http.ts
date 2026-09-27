@@ -116,6 +116,7 @@ export interface ActiveSessionInfo {
   dds_statuses: Record<string, string>;
   dds_snapshot: StationSnapshot | null;
   signals: Signal[];
+  presence_known: boolean;
 }
 
 export const useActiveSessions = () =>

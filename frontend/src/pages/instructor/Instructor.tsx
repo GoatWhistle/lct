@@ -390,10 +390,11 @@ export function Instructor() {
                     ? `Просрочено: первичная реакция ${item.dds_overdue_cards}; отработка карточки ${item.dds_work_overdue_cards}`
                     : "Нормативы не нарушены"}
                 </td>
-                <td className={`state-${worstSignalSeverity(item.signals) ?? "ok"}`}>
+                <td className={worstSignalSeverity(item.signals) ? `state-${worstSignalSeverity(item.signals)}` : item.presence_known ? "state-ok" : undefined}>
                   {item.signals.length
                     ? item.signals.map((signal) => <span key={signal.kind}>{signal.text}<br /></span>)
-                    : "Сигналов нет"}
+                    : item.presence_known ? "Сигналов нет" : null}
+                  {!item.presence_known && <span>Связь курсанта не проверена</span>}
                 </td>
                 <td><button type="button" onClick={() => openActiveSession(item)}>
                   {sessionId === item.session_id ? "Открыто" : "Наблюдать"}

@@ -163,6 +163,7 @@ def full_state() -> SessionState:
         text_revealed_facts={"f_address": "улица Ленина, 14"},
         consecutive_refusals=2,
         socket_last_seen_at=AT,
+        socket_connected_at_checkpoint=True,
     )
 
 
