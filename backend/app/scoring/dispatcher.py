@@ -22,7 +22,7 @@ from app.domain.statuses import (
 )
 from app.domain.taxonomy import Competency, ErrorCode, Finding, FindingSource
 from app.domain.events import Metric
-from app.domain.timers import GOST_REF
+from app.domain.timers import GOST_REF, TimerCode
 
 #: Статусы, означающие, что реагирование действительно шло.
 PROGRESS = (ServiceStatus.RESPONDING, ServiceStatus.ARRIVED, ServiceStatus.WORKING)
@@ -282,7 +282,7 @@ def evaluate_dispatcher(
 
 
 def dispatcher_metrics(
-    state,
+    card,
     deadline_ms: int,
     expected_decision: str = "accept",
     expected_decision_reason: str | None = None,
@@ -295,8 +295,11 @@ def dispatcher_metrics(
     источник информации, но не обязательный шлюз статуса.
     """
     metrics: list[Metric] = []
-    for service in (services if services is not None else state.managed_services()):
-        marks = [mark for mark in state.status_log if mark.service == service]
+    # Через таймер, а не `primary.at - dispatched_at`: календарная разница
+    # включила бы паузу преподавателя в норматив (lct-39).
+    elapsed = card.timers.measured_ms(TimerCode.DDS_ACK)
+    for service in (services if services is not None else card.managed_services()):
+        marks = [mark for mark in card.status_log if mark.service == service]
         statuses = {mark.status for mark in marks}
 
         def add(key: str, title: str, passed: bool, fact: str, norm: str, weight: float = 1.0):
@@ -307,8 +310,6 @@ def dispatcher_metrics(
             ))
 
         primary = next((mark for mark in marks if mark.status in PRIMARY), None)
-        elapsed = (int((primary.at - state.dispatched_at).total_seconds() * 1000)
-                   if primary and state.dispatched_at else None)
         add("dds_primary", "решение по карточке", primary is not None,
             primary.status.value if primary else "решение отсутствует", "Принята или Не принята", 2.0)
         add("dds_ack", f"первичная отметка за {deadline_ms // 1000} с",
@@ -326,7 +327,7 @@ def dispatcher_metrics(
             expected_decision_reason or f"по эталону ожидается «{expected_label}»", 2.0)
         if primary.status is ServiceStatus.DECLINED or expected_decision == "decline":
             continue
-        crew = state.crew_assignments.get(service)
+        crew = card.crew_assignments.get(service)
         add("dds_crew", "назначение бригады", bool(crew),
             crew or "бригада не выбрана",
             "необходимую бригаду выбирает ДДС вручную", 2.0)

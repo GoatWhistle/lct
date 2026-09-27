@@ -31,6 +31,7 @@ from app.domain.events import (
     PatchSource,
     ScoreReady,
     SessionMode,
+    SessionPaused,
     StationState,
     TimerTick,
     TextTurnAccepted,
@@ -398,6 +399,10 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
     _who, state = entered
 
     with hub.trainee(session_id) as queue:
+        if state.paused:
+            # Переподключение не ждёт следующего `session.pause`: баннер должен
+            # быть на экране сразу, раз сервер уже отклоняет команды (lct-39).
+            hub.to_trainee(session_id, SessionPaused(paused=True))
         if state.exercise is Exercise.CARD:
             from app.api.ws.control import card_briefing
 
@@ -440,6 +445,10 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
                 # Бинарные кадры — аудио, текстовые — события. Направление определяется
                 # каналом, обёртки JSON вокруг звука нет (docs/arch/CONTRACT.md).
                 if message.get("bytes") is not None:
+                    if state.paused:
+                        # JSON-команды отказывает `_handle`; бинарные кадры сюда
+                        # не заходят, поэтому пауза глушит звук здесь же (lct-39).
+                        continue
                     if state.exercise is Exercise.CALL:
                         _on_audio(session_id, state, message["bytes"])
                     else:

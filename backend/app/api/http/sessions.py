@@ -256,7 +256,9 @@ async def active(
             ),
             dds_work_overdue_cards=sum(
                 (timer := card.timers.timers.get(TimerCode.DDS_WORK)) is not None
-                and timer.started_at is not None
+                # Пауза держит `started_at=None`, хотя таймер уже шёл: судить
+                # по нему одному спрятало бы уже случившееся нарушение (lct-39).
+                and (timer.started_at is not None or timer.paused)
                 and not timer.stopped
                 and timer.current_ms(time.monotonic()) > card.timers.limits[TimerCode.DDS_WORK]
                 for card in state.desk.cards.values()
