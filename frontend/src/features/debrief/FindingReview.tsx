@@ -3,7 +3,7 @@
 // Балл пересчитывает сервер теми же метриками и весами (lct-35): здесь только
 // решение и его причина. Причина обязательна — она остаётся в отчёте и в CSV/PDF.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import type { ErrorCode, FindingDecision, SessionReport } from "@/shared/types/generated";
 
@@ -34,7 +34,13 @@ export function FindingReview({ report, onChange }: {
     : cards.length ? [...CALL_CODES, ...DDS_CODES] : CALL_CODES;
   const [reasons, setReasons] = useState<Record<number, string>>({});
   const [code, setCode] = useState<ErrorCode>(codes[0]);
-  const [card, setCard] = useState(cards.length ? "1" : "");
+  // В ДДС все метрики принадлежат карточкам очереди. В связке 112 → ДДС
+  // E-коды относятся к занятию, а D-код без карточки — к живой карточке звонка.
+  const [card, setCard] = useState(report.exercise === "dds" && cards.length ? "1" : "");
+  const cardChoice = cards.length > 0 && (report.exercise === "dds" || code.startsWith("D"));
+  // Один ключ на отметку, пока она не сохранена: повтор после сбоя сети
+  // не добавит её второй раз.
+  const pendingId = useRef<string | null>(null);
   const [fact, setFact] = useState("");
   const [norm, setNorm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -71,10 +77,14 @@ export function FindingReview({ report, onChange }: {
       setError("Для отметки нужны факт и норма.");
       return;
     }
+    pendingId.current ??= crypto.randomUUID();
+    const clientId = pendingId.current;
     void run(async () => {
       const updated = await send(base, {
-        code, fact: fact.trim(), norm: norm.trim(), card: card ? Number(card) : null,
+        code, fact: fact.trim(), norm: norm.trim(), card: cardChoice && card ? Number(card) : null,
+        client_id: clientId,
       });
+      pendingId.current = null;
       setFact("");
       setNorm("");
       return updated;
@@ -97,9 +107,11 @@ export function FindingReview({ report, onChange }: {
               <td>
                 {finding.summary}
                 <div className="ref">{finding.fact}{finding.norm && ` · ${finding.norm}`}</div>
-                {finding.review && <div className={finding.review.decision === "dismissed" ? "ref" : "state-violated"}>
-                  {finding.review.decision === "dismissed" ? "Снята" : "Подтверждена"}: {finding.review.reason}
-                </div>}
+                {(finding.reviews ?? []).map((review, reviewIndex, all) => <div key={reviewIndex}
+                  className={reviewIndex < all.length - 1 || review.decision === "dismissed" ? "ref" : "state-violated"}>
+                  {review.decision === "dismissed" ? "Снята" : "Подтверждена"} ({review.author},{" "}
+                  {new Date(review.at).toLocaleString("ru-RU")}): {review.reason}
+                </div>)}
                 <div className="finding-review-actions">
                   <input aria-label={`Причина решения по отметке ${index + 1}`} maxLength={1000}
                     placeholder="Причина решения" value={reasons[index] ?? ""}
@@ -117,23 +129,27 @@ export function FindingReview({ report, onChange }: {
       <h3>Добавить отметку</h3>
       <div className="finding-review-form">
         <label>Код
-          <select value={code} onChange={(event) => setCode(event.target.value as ErrorCode)}>
+          <select value={code} onChange={(event) => {
+            pendingId.current = null;
+            setCode(event.target.value as ErrorCode);
+          }}>
             {codes.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
-        {cards.length > 0 && <label>Карточка
-          <select value={card} onChange={(event) => setCard(event.target.value)}>
+        {cardChoice && <label>Карточка
+          <select value={card} onChange={(event) => { pendingId.current = null; setCard(event.target.value); }}>
+            {report.exercise !== "dds" && <option value="">занятие (без карточки)</option>}
             {cards.map((item, index) => <option key={item.card_id} value={String(index + 1)}>
               {index + 1}: {item.title || item.scenario_id}
             </option>)}
           </select>
         </label>}
         <label>Факт
-          <input maxLength={1000} value={fact} onChange={(event) => setFact(event.target.value)}
+          <input maxLength={1000} value={fact} onChange={(event) => { pendingId.current = null; setFact(event.target.value); }}
             placeholder="Что сделал курсант" />
         </label>
         <label>Норма
-          <input maxLength={1000} value={norm} onChange={(event) => setNorm(event.target.value)}
+          <input maxLength={1000} value={norm} onChange={(event) => { pendingId.current = null; setNorm(event.target.value); }}
             placeholder="Как требовалось" />
         </label>
         <button type="button" disabled={busy || !fact.trim() || !norm.trim()} onClick={addFinding}>

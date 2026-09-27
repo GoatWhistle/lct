@@ -177,6 +177,7 @@ export interface DdsCardReport {
   card_id: string;
   scenario_id: string;
   score_auto: number;
+  score_reviewed?: number | null;
   reply_text: string;
   metrics: Array<Metric>;
   findings: Array<Finding>;
@@ -271,7 +272,8 @@ export interface Finding {
   card?: number | null;
   service?: string | null;
   author?: string | null;
-  review?: FindingReview | null;
+  client_id?: string | null;
+  reviews?: Array<FindingReview>;
 }
 
 /** Решение преподавателя по отметке на разборе. */
