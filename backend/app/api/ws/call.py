@@ -191,6 +191,11 @@ async def _handle(session_id: UUID, state, event) -> None:
             code=ErrorKind.UNSUPPORTED_EVENT, message="Занятие уже завершено",
         ))
         return
+    if state.paused:
+        hub.to_trainee(session_id, ErrorEvent(
+            code=ErrorKind.UNSUPPORTED_EVENT, message="Пауза, ждите преподавателя",
+        ))
+        return
     if (event.type == "text.turn" and state.exercise is not Exercise.CARD) or state.exercise is Exercise.DDS or (
         state.exercise is Exercise.CARD and event.type not in {"kio.patch", "card.submit", "text.turn"}
     ) or (state.exercise is Exercise.CALL and event.type == "card.submit"):

@@ -83,8 +83,25 @@ class ScoreOverridden:
     comment: str
 
 
+@dataclass(frozen=True)
+class LessonPaused:
+    at: datetime
+    author: str
+    role: str
+
+
+@dataclass(frozen=True)
+class LessonResumed:
+    at: datetime
+    author: str
+    role: str
+    #: Длительность этой конкретной паузы — видно в аудите без пересчёта.
+    paused_ms: int
+
+
 Record = (UtteranceAppended | HintRecorded | NoteAdded | SelfAssessed | LessonStarted
-          | LessonEnded | ScoreCalculated | ScoreArchived | ScoreOverridden)
+          | LessonEnded | ScoreCalculated | ScoreArchived | ScoreOverridden
+          | LessonPaused | LessonResumed)
 
 
 def apply_score_override(report: dict, override: ScoreOverridden) -> dict:

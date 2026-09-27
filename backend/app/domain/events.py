@@ -274,6 +274,13 @@ class ErrorEvent(BaseModel):
     message: str
 
 
+class SessionPaused(BaseModel):
+    """Пульт остановил или возобновил время занятия (lct-39)."""
+
+    type: Literal["session.paused"] = "session.paused"
+    paused: bool
+
+
 ServerToTrainee = Annotated[
     CallIncoming
     | CardBriefing
@@ -293,6 +300,7 @@ ServerToTrainee = Annotated[
     | TimerTick
     | CallEnded
     | ScoreReady
+    | SessionPaused
     | ErrorEvent,
     Field(discriminator="type"),
 ]
@@ -404,6 +412,8 @@ class SessionSnapshot(BaseModel):
     timers: list[TimerSnapshot]
     hints_used: int = 0
     ended: bool = False
+    #: Пульт остановил время занятия (lct-39).
+    paused: bool = False
 
 
 class TranscriptAppend(BaseModel):
@@ -458,6 +468,7 @@ ServerToObserver = Annotated[
     | ScoreReady
     | InstructorNoteShown
     | ReferenceStarted
+    | SessionPaused
     | ErrorEvent,
     Field(discriminator="type"),
 ]
@@ -518,13 +529,25 @@ class SessionStop(BaseModel):
     type: Literal["session.stop"] = "session.stop"
 
 
+class SessionPause(BaseModel):
+    """Остановить время занятия; карточку курсанта команда не меняет (lct-39)."""
+
+    type: Literal["session.pause"] = "session.pause"
+
+
+class SessionResume(BaseModel):
+    type: Literal["session.resume"] = "session.resume"
+
+
 InstructorToServer = Annotated[
     ScenarioStart
     | DirectorInject
     | ReferencePlay
     | InstructorNoteAdd
     | ScoreOverride
-    | SessionStop,
+    | SessionStop
+    | SessionPause
+    | SessionResume,
     Field(discriminator="type"),
 ]
 
@@ -665,7 +688,7 @@ class CrewArrived(BaseModel):
 
 ServerToStation = Annotated[
     CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded
-    | ScoreReady | CommandAck | ErrorEvent,
+    | ScoreReady | CommandAck | SessionPaused | ErrorEvent,
     Field(discriminator="type"),
 ]
 
@@ -783,6 +806,8 @@ class SessionReport(BaseModel):
     score_final: float
     overridden_by: str | None = None
     override_comment: str | None = None
+    #: Суммарная длительность пауз преподавателя — время объяснимо (lct-39).
+    total_paused_ms: int = 0
 
 
 class Principal(BaseModel):

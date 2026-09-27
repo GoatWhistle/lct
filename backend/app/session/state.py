@@ -105,6 +105,12 @@ class PersistedSession(BaseModel):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     end_reason: CallEndReason | None = None
+    #: Пульт остановил время занятия; таймеры и очередь ДДС заморожены (lct-39).
+    paused: bool = False
+    #: Момент постановки на паузу — им же считается длительность простоя при снятии.
+    paused_at: datetime | None = None
+    #: Суммарная длительность пауз — для разбора, чтобы время было объяснимо.
+    total_paused_ms: int = 0
     #: Карточка оператора 112, замороженная при передаче в ДДС.
     dispatched_card: KIO | None = None
     dispatched_at: datetime | None = None
@@ -180,6 +186,33 @@ class SessionState(PersistedSession):
     def on_event(self, event_type: str) -> None:
         """Единственная точка, где событие двигает таймеры."""
         self.timers.on_event(event_type)
+
+    def pause(self) -> None:
+        """Заморозить таймеры занятия и карточек пульта; очередь не выдаёт следующую."""
+        if self.paused:
+            return
+        now = time.monotonic()
+        self.timers.pause(now)
+        for card in self.desk.cards.values():
+            card.timers.pause(now)
+        self.paused = True
+        self.paused_at = now_utc()
+
+    def resume(self) -> None:
+        """Снять паузу: таймеры продолжают с прежней отметки, очередь сдвигается на простой."""
+        if not self.paused:
+            return
+        now = time.monotonic()
+        self.timers.resume(now)
+        for card in self.desk.cards.values():
+            card.timers.resume(now)
+        if self.paused_at is not None:
+            idle = now_utc() - self.paused_at
+            self.total_paused_ms += max(0, int(idle.total_seconds() * 1000))
+            if self.desk.next_arrival_at is not None:
+                self.desk.next_arrival_at += idle
+        self.paused = False
+        self.paused_at = None
 
     def append(self, speaker: Speaker, text: str, mood: Mood | None = None) -> TranscriptEntry:
         entry = TranscriptEntry(
@@ -319,14 +352,15 @@ class SessionState(PersistedSession):
         services = self._managed_services_for(recipients)
         log = list(card.status_log) if card is not None else []
         statuses = {service: current(log, service) for service in services}
+        now_mono = time.monotonic()
         overdue = False
         if card is not None:
-            elapsed = card.timers.measured_ms(TimerCode.DDS_ACK)
+            # Через таймер, а не через `dispatched_at`: часы разошлись бы с
+            # паузой, которая держит `current_ms` на месте (lct-39).
+            ack_timer = card.timers.timers.get(TimerCode.DDS_ACK)
             limit = card.timers.limits[TimerCode.DDS_ACK]
-            overdue = elapsed is None and (
-                (now_utc() - card.dispatched_at).total_seconds() * 1000 > limit
-            )
-        now_mono = time.monotonic()
+            elapsed_ms = ack_timer.current_ms(now_mono) if ack_timer else 0
+            overdue = not (ack_timer.stopped if ack_timer else False) and elapsed_ms > limit
         queue_cards: list[DdsQueueCard] = []
         for item in (desk.ordered() if self.dds_phase else []):
             recipients_for_card = list(item.dispatched_card.notify)
@@ -397,6 +431,7 @@ class SessionState(PersistedSession):
                 if desk.next_arrival_at is not None else None
             ),
             max_waiting_cards=desk.max_waiting,
+            paused=self.paused,
         )
 
     def card_received_event(self):
@@ -445,4 +480,5 @@ class SessionState(PersistedSession):
             timers=self.shown_timers().snapshot(),
             hints_used=len(self.hints_shown),
             ended=self.ended,
+            paused=self.paused,
         )

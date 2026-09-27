@@ -111,4 +111,5 @@ def build(session_id: UUID, state, scenario: Scenario) -> SessionReport:
         override_comment=score.get("override_comment"),
         ai_coaching=(AICoaching.model_validate(score["ai_coaching"])
                      if score.get("ai_coaching") else None),
+        total_paused_ms=state.total_paused_ms,
     )

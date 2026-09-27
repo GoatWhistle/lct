@@ -233,6 +233,7 @@ export function Dds() {
   const [checkText, setCheckText] = useState("");
   const [error, setError] = useState("");
   const [ended, setEnded] = useState(false);
+  const [paused, setPaused] = useState(false);
   // Разбор просим только после `score.ready`; новая карточка снимает флаг.
   const [scoreReady, setScoreReady] = useState(false);
   const { report, loading: reportLoading, error: reportError, refetch: refetchReport } =
@@ -252,6 +253,7 @@ export function Dds() {
         if (event.type === "station.state") {
           const snapshot = event.snapshot as DdsSnapshot;
           setStation(snapshot);
+          setPaused(snapshot.paused ?? false);
           setZone(snapshot.zone_decision ?? null);
           if (snapshot.card_id == null && (snapshot.pending_cards_count ?? 0) > 0) {
             activeCardId.current = null;
@@ -298,6 +300,7 @@ export function Dds() {
         } else if (event.type === "timer.tick") setTimers(event.timers);
         else if (event.type === "error") { setError(event.message); setDialing(false); setAdvancePending(false); }
         else if (event.type === "session.ended") { setEnded(true); setDialing(false); setAdvancePending(false); setPane(null); setView("registry"); }
+        else if (event.type === "session.paused") setPaused(event.paused);
         else if (event.type === "score.ready") setScoreReady(true);
         else if (event.type === "phone.report") {
           setLastReport(event);
@@ -368,6 +371,7 @@ export function Dds() {
       АРМ {role}: {isConnected ? "на связи" : status}
     </span>
     {error && <div className="dds-alert" role="alert">Действие не принято: {error}</div>}
+    {paused && !ended && <div className="dds-alert dds-paused">Пауза, ждите преподавателя</div>}
     {ended && <div className="dds-alert dds-done">Занятие завершено. Оценка появится после расчёта.</div>}
     {(ended || scoreReady) && <section className="dds-panel" aria-live="polite">
       <div className="dds-panel-title"><h2>Итог упражнения</h2></div>

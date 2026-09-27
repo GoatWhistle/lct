@@ -50,6 +50,7 @@ export function useCall(sessionId: string | null) {
   const [scoreReady, setScoreReady] = useState(false);
   const { report, error: reportError } = useSessionReport(sessionId, scoreReady);
   const [error, setError] = useState<string | null>(null);
+  const [paused, setPaused] = useState(false);
 
   const channel = useRef<ReturnType<typeof callChannel> | null>(null);
   const capture = useRef<Capture | null>(null);
@@ -153,6 +154,9 @@ export function useCall(sessionId: string | null) {
           case "score.ready":
             setScoreReady(true);
             break;
+          case "session.paused":
+            setPaused(event.paused);
+            break;
           case "error":
             setError(event.message);
             break;
@@ -253,7 +257,7 @@ export function useCall(sessionId: string | null) {
 
   return {
     resolve,
-    status, phase, incoming, briefing, cardSubmitted, lines, timers, callerSpeaking, micOn, error, card,
+    status, phase, incoming, briefing, cardSubmitted, lines, timers, callerSpeaking, micOn, error, paused, card,
     checklist, selfAssessed, scoreReady, report, reportError,
     answer, hangup, hint, patchKio, dispatch, submitCard, submitSelfAssessment, sendText,
   };

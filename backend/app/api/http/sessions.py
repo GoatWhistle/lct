@@ -101,6 +101,7 @@ class ActiveSessionOut(BaseModel):
     dds_work_overdue_cards: int
     dds_statuses: dict[str, str]
     dds_snapshot: StationSnapshot | None = None
+    paused: bool = False
 
 
 def _out(session) -> SessionOut:
@@ -262,6 +263,7 @@ async def active(
             ),
             dds_statuses=latest_statuses,
             dds_snapshot=station,
+            paused=state.paused,
         ))
     return result
 

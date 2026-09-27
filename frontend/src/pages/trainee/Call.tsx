@@ -126,6 +126,7 @@ export function Call() {
               placeholder="Ваша реплика…" onChange={(event) => setTextTurn(event.target.value)} />
             <button type="submit" disabled={call.status !== "open" || !textTurn.trim() || call.cardSubmitted}>Отправить</button>
           </form>
+          {call.paused && <p role="status" className="state-warn">Пауза, ждите преподавателя</p>}
           {call.error && <p role="alert" className="state-violated">{call.error}</p>}
         </section>
         <div className="arm-card-wrap">
@@ -190,6 +191,7 @@ export function Call() {
               : "Ожидайте входящего вызова"}</span>
       </div>
 
+      {call.paused && <p className="state-warn arm-message" role="status">Пауза, ждите преподавателя</p>}
       {call.error && <p className="violated arm-message" role="alert">{call.error}</p>}
 
       <div className="arm-card-wrap">

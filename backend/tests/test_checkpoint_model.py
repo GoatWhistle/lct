@@ -57,6 +57,7 @@ def timers() -> SessionTimers:
         TimerCode.DDS_ACK: Timer(code=TimerCode.DDS_ACK, started_at=MONO - 12.0, attempt=2),
         TimerCode.ANSWER: Timer(code=TimerCode.ANSWER, started_at=MONO - 7.0,
                                 elapsed_ms=7_000, attempt=3, stopped=True),
+        TimerCode.CARD_FILL: Timer(code=TimerCode.CARD_FILL, elapsed_ms=5_000, paused=True),
     })
 
 
@@ -161,6 +162,9 @@ def full_state() -> SessionState:
         resolve_comment="передано в другой регион",
         processed_station_commands=[str(uuid4())],
         text_revealed_facts={"f_address": "улица Ленина, 14"},
+        paused=True,
+        paused_at=AT,
+        total_paused_ms=15_000,
     )
 
 

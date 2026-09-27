@@ -695,7 +695,15 @@ export function Instructor() {
           {sessionId && session.title && (
             <p>
               {session.ended ? "занятие завершено" : (
-                <button type="button" onClick={control.stop}>Завершить занятие</button>
+                <>
+                  <button type="button" onClick={control.stop}>Завершить занятие</button>{" "}
+                  {session.paused ? (
+                    <button type="button" onClick={control.resume}>Возобновить</button>
+                  ) : (
+                    <button type="button" onClick={control.pause}>Пауза</button>
+                  )}
+                  {session.paused && <small className="ref" role="status">Занятие на паузе — время не идёт</small>}
+                </>
               )}
             </p>
           )}

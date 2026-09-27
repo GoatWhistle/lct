@@ -29,6 +29,7 @@ export interface ObservedSession {
   hintsUsed: number;
   notes: Map<string, string>;
   ended: boolean;
+  paused: boolean;
   report: SessionReport | null;
   error: string | null;
 }
@@ -45,6 +46,7 @@ export function useObserve(sessionId: string | null): ObservedSession {
   const [hintsUsed, setHintsUsed] = useState(0);
   const [notes, setNotes] = useState<Map<string, string>>(new Map());
   const [ended, setEnded] = useState(false);
+  const [paused, setPaused] = useState(false);
   // Сессия, для которой отчёт уже стоит просить. Привязка к id, а не флаг:
   // при переключении истории старый флаг не должен дёрнуть запрос новой сессии.
   const [reportFor, setReportFor] = useState<string | null>(null);
@@ -65,6 +67,7 @@ export function useObserve(sessionId: string | null): ObservedSession {
     setHintsUsed(0);
     setNotes(new Map());
     setEnded(false);
+    setPaused(false);
     setError(null);
     if (!sessionId) return;
     let active = true;
@@ -88,6 +91,7 @@ export function useObserve(sessionId: string | null): ObservedSession {
             setTimers(event.timers);
             setHintsUsed(event.hints_used ?? 0);
             setEnded(event.ended ?? false);
+            setPaused(event.paused ?? false);
             if (event.ended) loadReport();
             break;
           case "kio.state":
@@ -112,6 +116,9 @@ export function useObserve(sessionId: string | null): ObservedSession {
             setEnded(true);
             loadReport();
             break;
+          case "session.paused":
+            setPaused(event.paused);
+            break;
           case "error":
             setError(event.message);
             if (event.code === "session_not_found") loadReport();
@@ -127,5 +134,5 @@ export function useObserve(sessionId: string | null): ObservedSession {
     return () => { active = false; channel.close(); };
   }, [sessionId, queries]);
 
-  return { status, title, mode, trainee, card, requiredFields, transcript, timers, hintsUsed, notes, ended, report, error };
+  return { status, title, mode, trainee, card, requiredFields, transcript, timers, hintsUsed, notes, ended, paused, report, error };
 }

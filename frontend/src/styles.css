@@ -349,6 +349,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 .dds-status-action button { padding: 4px 8px; }
 .dds-alert { padding: 10px 12px; margin: 0 0 12px; color: var(--violated); background: #fde8e8; border: 1px solid var(--violated); }
 .dds-done { color: var(--ok); background: #e7f4e9; border-color: var(--ok); }
+.dds-paused { color: var(--warn); background: #fdf3d8; border-color: var(--warn); }
 .dds-phone > label { display: block; margin: 14px 12px 5px; font-size: 13px; font-weight: 600; }
 .dds-phone > select { display: block; width: calc(100% - 24px); margin: 0 12px; padding: 7px; box-sizing: border-box; }
 .dds-dial { display: block; margin: 12px; width: calc(100% - 24px); text-align: center; background: #23577e; border-color: #23577e; color: white; font-weight: 600; }

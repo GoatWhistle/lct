@@ -585,6 +585,17 @@ export interface SessionEnded {
 /** Режим сессии. Меняет доступность подсказок и протоколирование, но не поведение звонящего (docs/product/MODES.md). */
 export type SessionMode = "training" | "exam" | "self";
 
+/** Остановить время занятия; карточку курсанта команда не меняет (lct-39). */
+export interface SessionPause {
+  type: "session.pause";
+}
+
+/** Пульт остановил или возобновил время занятия (lct-39). */
+export interface SessionPaused {
+  type: "session.paused";
+  paused: boolean;
+}
+
 /** Единица истории: из отчётов складываются профиль, дельта попыток, аналитика. */
 export interface SessionReport {
   session_id: string;
@@ -611,6 +622,11 @@ export interface SessionReport {
   score_final: number;
   overridden_by?: string | null;
   override_comment?: string | null;
+  total_paused_ms?: number;
+}
+
+export interface SessionResume {
+  type: "session.resume";
 }
 
 /** Обязательно при подключении: монитор в классе включают посреди занятия. */
@@ -631,6 +647,7 @@ export interface SessionSnapshot {
   timers: Array<TimerSnapshot>;
   hints_used?: number;
   ended?: boolean;
+  paused?: boolean;
 }
 
 export interface SessionStop {
@@ -667,6 +684,7 @@ export interface StationSnapshot {
   pending_cards_count?: number;
   next_arrival_in_seconds?: number | null;
   max_waiting_cards?: number;
+  paused?: boolean;
 }
 
 /** Состояние АРМ ДДС после каждой отметки: что стоит и что доступно дальше. */
@@ -775,15 +793,15 @@ export interface ZoneDecision {
 
 // Союзы по каналам — смотри docs/arch/CONTRACT.md#каналы
 
-export type ServerToTrainee = CallIncoming | CardBriefing | TextTurnAccepted | CallStarted | SttPartial | SttFinal | CallerUtterance | TtsBegin | TtsEnd | TtsCancel | BgStart | BgStop | EraData | KioPatchOut | HintShown | TimerTick | CallEnded | ScoreReady | ErrorEvent;
+export type ServerToTrainee = CallIncoming | CardBriefing | TextTurnAccepted | CallStarted | SttPartial | SttFinal | CallerUtterance | TtsBegin | TtsEnd | TtsCancel | BgStart | BgStop | EraData | KioPatchOut | HintShown | TimerTick | CallEnded | ScoreReady | SessionPaused | ErrorEvent;
 
 export type TraineeToServer = CallAnswer | CardSubmit | TextTurn | KioPatchIn | HintRequest | SelfAssessmentSubmit | DdsDispatch | CallResolve | CallHangup | CallbackDial;
 
-export type ServerToObserver = SessionSnapshot | TranscriptAppend | KioState | TimerTick | ModeSet | HintShown | BgStart | BgStop | CallerUtterance | SessionEnded | ScoreReady | InstructorNoteShown | ReferenceStarted | ErrorEvent;
+export type ServerToObserver = SessionSnapshot | TranscriptAppend | KioState | TimerTick | ModeSet | HintShown | BgStart | BgStop | CallerUtterance | SessionEnded | ScoreReady | InstructorNoteShown | ReferenceStarted | SessionPaused | ErrorEvent;
 
-export type InstructorToServer = ScenarioStart | DirectorInject | ReferencePlay | InstructorNoteAdd | ScoreOverride | SessionStop;
+export type InstructorToServer = ScenarioStart | DirectorInject | ReferencePlay | InstructorNoteAdd | ScoreOverride | SessionStop | SessionPause | SessionResume;
 
-export type ServerToStation = CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded | ScoreReady | CommandAck | ErrorEvent;
+export type ServerToStation = CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded | ScoreReady | CommandAck | SessionPaused | ErrorEvent;
 
 export type StationToServer = CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | PhoneBrief | PhoneCheck | PhoneHangup | StationFinish | CardReply | CardNext | CardOpen | ZoneDecision | CrewDispatched | CrewArrived;
 
@@ -835,6 +853,9 @@ export type EventName =
   | "score.ready"
   | "self_assessment.submit"
   | "session.ended"
+  | "session.pause"
+  | "session.paused"
+  | "session.resume"
   | "session.snapshot"
   | "session.stop"
   | "station.finish"
