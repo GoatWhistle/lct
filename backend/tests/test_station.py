@@ -123,7 +123,7 @@ def test_dds_cannot_return_card_for_112_quality_control(client):
                 station.send_json({"type": "card.bounce", "missing_fields": ["floor", "victims_count"],
                                    "comment": "куда ехать без этажа"})
                 error = read_until(station, "error")
-                assert "служба контроля 112" in error["message"]
+                assert "сообщите о ней в 112 по телефону" in error["message"]
                 assert state.bounced_fields == []
                 trainee.send_json({"type": "call.hangup"})
                 wait_for(lambda: state.score is not None)
