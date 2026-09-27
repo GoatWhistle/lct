@@ -1,9 +1,10 @@
 import pytest
 
 from app.domain.events import Metric
+from app.domain.taxonomy import Competency, ErrorCode, FindingSource
 from app.scoring.competency import radar
 from app.scoring.gost import GostResult
-from app.scoring.timing import time_credit
+from app.scoring.timing import CARD_FILL_TIME, DDS_WORK_TIME, time_credit, time_metric
 
 
 @pytest.mark.parametrize(
@@ -23,3 +24,57 @@ def test_fractional_timing_credit_affects_total_and_competency_scores():
     result = GostResult(metrics=[metric])
     assert result.score == 75.0
     assert radar([metric])[0].value == 0.75
+
+
+@pytest.mark.parametrize(
+    ("elapsed_ms", "completed", "fact", "passed"),
+    [
+        (200_000, True, "200 с (+20 с сверх норматива)", False),
+        (61_000, True, "61 с (на 119 с быстрее норматива)", True),
+        (180_000, True, "180 с (точно в норматив)", True),
+        (None, True, "время не зафиксировано", False),
+        (30_000, False, "карточка не сдана; 30 с (на 150 с быстрее норматива)", False),
+    ],
+)
+def test_card_fill_time_metric_texts(elapsed_ms, completed, fact, passed):
+    metric, finding = time_metric(CARD_FILL_TIME, elapsed_ms, 180_000, completed=completed)
+
+    assert metric.key == "card_fill_time"
+    assert metric.title == "Время заполнения карточки"
+    assert metric.fact == fact
+    assert metric.norm == "сдать карточку за 180 с"
+    assert metric.ref == "ТЗ задачи № 9; сессия вопросов и ответов 16.09.2026"
+    assert metric.passed is passed
+    assert metric.credit == (time_credit(elapsed_ms, 180_000) if completed else 0.0)
+    if passed:
+        assert finding is None
+    else:
+        assert finding.code is ErrorCode.E3
+        assert finding.source is FindingSource.TIMERS
+        assert finding.competency is Competency.NORMS
+        assert finding.summary == "Время заполнения карточки: норматив не выполнен"
+        assert (finding.fact, finding.norm) == (fact, "сдать карточку за 180 с")
+
+
+@pytest.mark.parametrize(
+    ("elapsed_ms", "completed", "fact", "passed"),
+    [
+        (605_000, True, "605 с (+425 с сверх норматива)", False),
+        (25_000, True, "25 с (на 155 с быстрее норматива)", True),
+        (180_000, True, "180 с (точно в норматив)", True),
+        (None, False, "карточка не завершена; время обработки не зафиксировано", False),
+        (25_000, False, "карточка не завершена; 25 с (на 155 с быстрее норматива)", False),
+    ],
+)
+def test_dds_work_time_metric_texts(elapsed_ms, completed, fact, passed):
+    metric, finding = time_metric(DDS_WORK_TIME, elapsed_ms, 180_000, completed=completed)
+
+    assert metric.key == "dds_work_time"
+    assert metric.title == "Отработка карточки ДДС"
+    assert metric.fact == fact
+    assert metric.norm == "завершить за 180 с"
+    assert metric.passed is passed
+    assert (finding is None) is passed
+    if finding is not None:
+        assert finding.summary == "ДДС: норматив времени отработки карточки не выполнен"
+        assert (finding.fact, finding.norm) == (fact, "завершить за 180 с")
