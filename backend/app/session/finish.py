@@ -26,10 +26,13 @@ from app.session.hub import hub
 from app.session.score import ScoringSnapshot, score_session, scoring_scenario
 from app.session.state import DdsCardRecord, DdsLiveCard, now_utc
 from app.session.store import (
+    FindingAdded,
+    FindingReviewed,
     LessonEnded,
     ScoreArchived,
     ScoreCalculated,
     ScoreOverridden,
+    apply_finding_change,
     apply_score_override,
 )
 
@@ -100,9 +103,11 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
         card_id=card.card_id,
         scenario_id=card.scenario.id,
         reply_text=card.reply_text,
-        metrics=[metric.model_copy(update={"title": f"Карточка {number}: {metric.title}"})
+        metrics=[metric.model_copy(update={"title": f"Карточка {number}: {metric.title}",
+                                           "card": number})
                  for metric in weighted.metrics],
-        findings=[finding.model_copy(update={"summary": f"Карточка {number}: {finding.summary}"})
+        findings=[finding.model_copy(update={"summary": f"Карточка {number}: {finding.summary}",
+                                             "card": number})
                   for finding in weighted.findings],
         actions=actions,
         duration_ms=max(0, int((now_utc() - card.dispatched_at).total_seconds() * 1000)),
@@ -233,4 +238,15 @@ def override_score(state, override: ScoreOverridden) -> None:
     """
     hub.record(state.session_id, override)
     state.score = apply_score_override(state.score, override)
+    hub.to_observers(state.session_id, ScoreReady(session_id=state.session_id))
+
+
+def change_findings(state, change: FindingReviewed | FindingAdded) -> None:
+    """Решение преподавателя по отметке — тем же путём, что правка итога.
+
+    Вызывается внутри `hub.operation`: отметки, пересчитанный балл, архивный
+    разбор и строка аудита уходят одним commit.
+    """
+    state.score = apply_finding_change(state.score, change)
+    hub.record(state.session_id, change)
     hub.to_observers(state.session_id, ScoreReady(session_id=state.session_id))

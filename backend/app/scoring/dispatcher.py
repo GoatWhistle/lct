@@ -28,8 +28,10 @@ from app.domain.timers import GOST_REF
 PROGRESS = (ServiceStatus.RESPONDING, ServiceStatus.ARRIVED, ServiceStatus.WORKING)
 
 
-def _finding(code: ErrorCode, summary: str, fact: str, norm: str | None = None) -> Finding:
+def _finding(service: str, code: ErrorCode, summary: str, fact: str,
+             norm: str | None = None) -> Finding:
     return Finding(
+        service=service,
         code=code,
         source=FindingSource.DISPATCHER,
         summary=summary,
@@ -117,7 +119,7 @@ def evaluate_dispatcher(
         ]
         if missing_comment_statuses:
             findings.append(_finding(
-                ErrorCode.D5,
+                service, ErrorCode.D5,
                 f"{service}: к статусу не добавлены основание и сведения",
                 fact="не заполнены комментарии: " + ", ".join(missing_comment_statuses),
                 norm="к каждой ручной отметке добавить основание и содержание полученных сведений",
@@ -132,7 +134,7 @@ def evaluate_dispatcher(
         ]
         if incomplete_comment_statuses:
             findings.append(_finding(
-                ErrorCode.D5,
+                service, ErrorCode.D5,
                 f"{service}: комментарии к статусам не разделяют основание и сведения",
                 fact="неполные комментарии: " + ", ".join(incomplete_comment_statuses),
                 norm="в каждом комментарии заполнить отдельные поля «Основание» и «Сведения»",
@@ -152,7 +154,7 @@ def evaluate_dispatcher(
         ]
         if missing_recipients:
             findings.append(_finding(
-                ErrorCode.D5,
+                service, ErrorCode.D5,
                 f"{service}: отдельный комментарий не указывает получателя сведений",
                 fact="; ".join(missing_recipients)[:500],
                 norm=(
@@ -166,7 +168,7 @@ def evaluate_dispatcher(
         if primary is None:
             findings.append(
                 _finding(
-                    ErrorCode.D1,
+                    service, ErrorCode.D1,
                     f"{service}: статус реагирования не проставлен",
                     fact=(
                         f"прошло {elapsed_ms // 1000} с"
@@ -181,7 +183,7 @@ def evaluate_dispatcher(
         if elapsed_ms is None or elapsed_ms > deadline_ms:
             findings.append(
                 _finding(
-                    ErrorCode.D1,
+                    service, ErrorCode.D1,
                     f"{service}: первичный статус проставлен с нарушением срока",
                     fact=(
                         f"прошло {elapsed_ms // 1000} с"
@@ -197,7 +199,7 @@ def evaluate_dispatcher(
             if mark.status in REFUSAL_COMMENT_REQUIRED and not mark.comment.strip():
                 findings.append(
                     _finding(
-                        ErrorCode.D4,
+                        service, ErrorCode.D4,
                         f"{service}: «{SERVICE_STATUS_LABELS[mark.status]}» без комментария",
                         fact="причина отказа не указана",
                         norm="комментарий к отказу обязателен",
@@ -209,7 +211,7 @@ def evaluate_dispatcher(
         if latest is ServiceStatus.DECLINED and expected_decision == "accept":
             findings.append(
                 _finding(
-                    ErrorCode.D3,
+                    service, ErrorCode.D3,
                     f"{service}: отказ от происшествия, которое в её компетенции",
                     fact="служба есть в списке оповещения по ЕКП",
                     norm="принять согласно эталону сценария",
@@ -218,7 +220,7 @@ def evaluate_dispatcher(
         elif latest is ServiceStatus.ACCEPTED and expected_decision == "decline":
             findings.append(
                 _finding(
-                    ErrorCode.D2,
+                    service, ErrorCode.D2,
                     f"{service}: принято вопреки эталону сценария",
                     fact="карточка принята службой",
                     norm=expected_decision_reason or "отказать с указанной причиной",
@@ -232,7 +234,7 @@ def evaluate_dispatcher(
             if service not in crew_assignments:
                 findings.append(
                     _finding(
-                        ErrorCode.D2,
+                        service, ErrorCode.D2,
                         f"{service}: «Принята» без назначения бригады и хода реагирования",
                         fact="бригада не выбрана, после приёма статусов не было",
                         norm="необходимую бригаду выбирает ДДС; ход отмечается по факту",
@@ -241,7 +243,7 @@ def evaluate_dispatcher(
             else:
                 findings.append(
                     _finding(
-                        ErrorCode.D2,
+                        service, ErrorCode.D2,
                         f"{service}: «Принята», но о реагировании ничего не отмечено",
                         fact="после приёма статусов не было",
                         norm="статус должен соответствовать фактическому состоянию заявки",
@@ -252,7 +254,7 @@ def evaluate_dispatcher(
         ) and service not in crew_assignments:
             findings.append(
                 _finding(
-                    ErrorCode.D2,
+                    service, ErrorCode.D2,
                     f"{service}: ход реагирования без назначения бригады",
                     fact="статусы хода работ проставлены, бригада не выбрана",
                     norm="необходимую бригаду выбирает ДДС; ход отмечается по факту",
@@ -268,7 +270,7 @@ def evaluate_dispatcher(
             missing = ", ".join(SERVICE_STATUS_LABELS[status] for status in missing_progress)
             findings.append(
                 _finding(
-                    ErrorCode.D6,
+                    service, ErrorCode.D6,
                     f"{service}: ход реагирования не доведён до конца",
                     fact=(f"не отмечены: {missing}" if missing else "карточка не закрыта"),
                     norm=(
@@ -301,7 +303,7 @@ def dispatcher_metrics(
 
         def add(key: str, title: str, passed: bool, fact: str, norm: str, weight: float = 1.0):
             metrics.append(Metric(
-                key=key, title=f"{service}: {title}", fact=fact, norm=norm,
+                key=key, title=f"{service}: {title}", fact=fact, norm=norm, service=service,
                 ref=GOST_REF if key == "dds_ack" else "памятка «Работа на АРМ-112», статусы реагирования",
                 passed=passed, weight=weight,
             ))

@@ -177,6 +177,7 @@ export interface DdsCardReport {
   card_id: string;
   scenario_id: string;
   score_auto: number;
+  score_reviewed?: number | null;
   reply_text: string;
   metrics: Array<Metric>;
   findings: Array<Finding>;
@@ -267,6 +268,23 @@ export interface Finding {
   competency?: Competency | null;
   transcript_ref?: string | null;
   at?: string | null;
+  metric_key?: string | null;
+  card?: number | null;
+  service?: string | null;
+  author?: string | null;
+  client_id?: string | null;
+  reviews?: Array<FindingReview>;
+}
+
+/** Решение преподавателя по отметке на разборе. */
+export type FindingDecision = "confirmed" | "dismissed";
+
+/** Кто, когда и почему подтвердил или снял отметку. Сама отметка остаётся. */
+export interface FindingReview {
+  decision: FindingDecision;
+  reason: string;
+  author: string;
+  at: string;
 }
 
 /** Источник объяснимой отметки; `judge` оставлен для старых отчётов. */
@@ -409,6 +427,10 @@ export interface Metric {
   passed: boolean;
   weight?: number;
   credit?: number | null;
+  card?: number | null;
+  service?: string | null;
+  passed_auto?: boolean | null;
+  credit_auto?: number | null;
 }
 
 export interface ModeSet {
@@ -610,6 +632,7 @@ export interface SessionReport {
   self_assessment_diff?: SelfAssessmentDiff | null;
   notes?: Array<InstructorNoteShown>;
   score_auto: number;
+  score_reviewed?: number | null;
   score_final: number;
   overridden_by?: string | null;
   override_comment?: string | null;

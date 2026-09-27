@@ -384,7 +384,8 @@ export function Dds() {
         {Boolean(report.card_results?.length) && <>
           <h3>Результаты по карточкам</h3>
           {report.card_results?.map((item, index) => <details className="dds-details" key={item.card_id}>
-            <summary>Карточка {index + 1} · {item.scenario_id} · {item.score_auto.toFixed(0)} / 100</summary>
+            <summary>Карточка {index + 1} · {item.scenario_id} · {(item.score_reviewed ?? item.score_auto).toFixed(0)} / 100
+              {item.score_reviewed != null && ` после разбора (автооценка ${item.score_auto.toFixed(0)})`}</summary>
             <p><b>Ответ диспетчера:</b> {item.reply_text || "не внесён"}</p>
             {item.metrics.filter((metric) => !metric.passed || (metric.credit != null && metric.credit < 1)).map((metric) =>
               <p key={metric.key} className={metric.passed ? "ref" : "state-violated"}>

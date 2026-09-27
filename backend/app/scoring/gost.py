@@ -73,6 +73,7 @@ class _Builder:
                 norm=norm,
                 ref=ref,
                 competency=competency,
+                metric_key=key,
             )
         )
 
@@ -174,6 +175,7 @@ def evaluate(
                     norm=f"эталонный вопрос: «{question}»" if question else "обязательный факт сценария",
                     ref="чек-лист сценария",
                     competency=Competency.INTERVIEW,
+                    metric_key="checklist_completeness",
                 )
             )
 

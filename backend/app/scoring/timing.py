@@ -95,4 +95,5 @@ def time_metric(
         norm=norm_text,
         ref=TIME_REF,
         competency=Competency.NORMS,
+        metric_key=norm.key,
     )

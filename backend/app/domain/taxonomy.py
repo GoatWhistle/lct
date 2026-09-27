@@ -7,8 +7,10 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
+from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class ErrorCode(StrEnum):
@@ -152,6 +154,22 @@ COMPETENCY_LABELS: dict[Competency, str] = {
 }
 
 
+class FindingDecision(StrEnum):
+    """Решение преподавателя по отметке на разборе."""
+
+    CONFIRMED = "confirmed"
+    DISMISSED = "dismissed"
+
+
+class FindingReview(BaseModel):
+    """Кто, когда и почему подтвердил или снял отметку. Сама отметка остаётся."""
+
+    decision: FindingDecision
+    reason: str
+    author: str
+    at: datetime
+
+
 class Finding(BaseModel):
     """Отметка в разборе. `fact` и `norm` — то самое обоснование."""
 
@@ -164,3 +182,32 @@ class Finding(BaseModel):
     competency: Competency | None = None
     transcript_ref: str | None = None
     at: datetime | None = None
+    #: Метрика, чей провал объясняет отметка. Без неё связь с метриками идёт
+    #: по методике METRIC_MAP в пределах той же карточки и службы.
+    metric_key: str | None = None
+    #: Номер карточки очереди ДДС (с 1) и служба, к которым относится отметка.
+    card: int | None = None
+    service: str | None = None
+    #: Автор ручной отметки преподавателя (`source=instructor`).
+    author: str | None = None
+    #: Ключ идемпотентности ручной отметки: повтор запроса не добавляет её снова.
+    client_id: UUID | None = None
+    #: Все решения по отметке по порядку; действует последнее. Прежние не
+    #: затираются: «кто, когда, почему» нужно по каждой правке, а не по итогу.
+    reviews: list[FindingReview] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _single_review(cls, data: Any) -> Any:
+        # Разборы, сохранённые до истории решений, хранили одно поле `review`.
+        if isinstance(data, dict) and "review" in data:
+            data = dict(data)
+            single = data.pop("review")
+            if single and not data.get("reviews"):
+                data["reviews"] = [single]
+        return data
+
+    @property
+    def review(self) -> FindingReview | None:
+        """Действующее решение — последнее."""
+        return self.reviews[-1] if self.reviews else None
