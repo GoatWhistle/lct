@@ -20,7 +20,8 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
   const improvementPoints = report.metrics.filter((metric) => !metric.passed).slice(0, 3);
   const metricTitles = new Map(report.metrics.map((metric) => [metric.key, metric.title]));
   const coaching = report.ai_coaching?.status === "ready" ? report.ai_coaching.recommendations ?? [] : [];
-  const pausedSeconds = Math.round((report.total_paused_ms ?? 0) / 1000);
+  // Вверх: короткая пауза не должна выглядеть как «0 с», а без пауз строки нет.
+  const pausedSeconds = Math.ceil((report.total_paused_ms ?? 0) / 1000);
 
   return (
     <section className={big ? "debrief debrief-big" : "debrief"}>
@@ -44,7 +45,7 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
           <small>{report.attempt ? `Попытка ${report.attempt}` : "Завершённое упражнение"}</small>
         </article>
       </div>
-      <p className="ref">Паузы занятия: {Math.floor(pausedSeconds / 60)} мин {pausedSeconds % 60} с. Время пауз исключено из нормативов.</p>
+      {pausedSeconds > 0 && <p className="ref">Паузы занятия: {Math.floor(pausedSeconds / 60)} мин {pausedSeconds % 60} с. Время пауз исключено из нормативов.</p>}
       <details className="debrief-tech-details">
         <summary>Служебные сведения</summary>
         <p>Идентификатор сценария: {report.scenario_id} · номер занятия: {report.session_id}</p>

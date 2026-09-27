@@ -331,7 +331,8 @@ export function Dds() {
   const phoneCall = station?.phone_pending ?? null;
   const phoneLines = (station?.phone_lines ?? []).filter((line) => line.crew === selectedCrew);
   const isConnected = status === "open";
-  const pausedSeconds = Math.round((report?.total_paused_ms ?? 0) / 1000);
+  // Вверх: короткая пауза не должна выглядеть как «0 с», а без пауз строки нет.
+  const pausedSeconds = Math.ceil((report?.total_paused_ms ?? 0) / 1000);
   const cardId = card ? String(readPath(card.server, "card_id") ?? "") : "";
   const cardIndex = station?.card_index ?? 1;
   const cardTotal = station?.card_total ?? 1;
@@ -379,7 +380,7 @@ export function Dds() {
       {report ? <div style={{ padding: 12 }}>
         <p><strong>Итоговая оценка: {report.score_final.toFixed(0)} из 100</strong>
           {report.score_final !== report.score_auto && ` · автооценка ${report.score_auto.toFixed(0)}`}</p>
-        <p className="ref">Паузы занятия: {Math.floor(pausedSeconds / 60)} мин {pausedSeconds % 60} с. Время пауз исключено из нормативов.</p>
+        {pausedSeconds > 0 && <p className="ref">Паузы занятия: {Math.floor(pausedSeconds / 60)} мин {pausedSeconds % 60} с. Время пауз исключено из нормативов.</p>}
         <p className="ref">Скачать отчёт: <a href={`/api/sessions/${sessionId}/report.csv`}>CSV</a>
           {" · "}<a href={`/api/sessions/${sessionId}/report.pdf`}>PDF</a></p>
         {Boolean(report.card_results?.length) && <>
