@@ -19,7 +19,7 @@ def _cell(value: object) -> str:
     if value is None:
         return ""
     result = str(value)
-    probe = result.lstrip(" \t\r\n\ufeff\u200b")
+    probe = result.lstrip(" \t\r\n﻿​")
     if probe.startswith(("=", "+", "-", "@")) or result.startswith(("\t", "\r", "\n")):
         return "'" + result
     return result
@@ -32,12 +32,12 @@ def _finding_origin(item: Finding) -> str:
 
 
 def _finding_decision(item: Finding) -> str:
-    """Решение по отметке рядом с ней: снятая отметка видна вместе с причиной."""
-    if item.review is None:
-        return ""
-    verdict = ("снята" if item.review.decision is FindingDecision.DISMISSED
-               else "подтверждена")
-    return f"; {verdict} преподавателем {item.review.author}: {item.review.reason}"
+    """Решения по отметке рядом с ней, все по порядку: действует последнее."""
+    return "".join(
+        f"; {'снята' if review.decision is FindingDecision.DISMISSED else 'подтверждена'} "
+        f"преподавателем {review.author}: {review.reason}"
+        for review in item.reviews
+    )
 
 
 def to_csv(report: SessionReport) -> bytes:
@@ -96,7 +96,7 @@ def to_csv(report: SessionReport) -> bytes:
             row("Сверка самооценки", "", label, ", ".join(values))
     for number, item in enumerate(report.notes, 1):
         row("Пометки преподавателя", number, item.transcript_ref, item.text, item.author)
-    return ("\ufeff" + output.getvalue()).encode("utf-8")
+    return ("﻿" + output.getvalue()).encode("utf-8")
 
 
 def _font_paths() -> tuple[Path, Path | None]:
@@ -179,6 +179,9 @@ def to_pdf(report: SessionReport) -> bytes:
         ("Итоговая оценка", report.score_final),
     ):
         story.append(Paragraph(f"<b>{escape(label)}:</b> {escape(str(value))}", base))
+    # Когда итог правили вручную, без этой строки не понять, какой балл дал разбор.
+    if report.score_reviewed is not None:
+        story.append(Paragraph(f"<b>После разбора отметок:</b> {report.score_reviewed}", base))
     if report.overridden_by:
         story.append(Paragraph(f"<b>Оценка изменена:</b> {escape(report.overridden_by)}", base))
     if report.override_comment:
