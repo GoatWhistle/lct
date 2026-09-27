@@ -346,6 +346,8 @@ export interface KIO {
   evacuation_needed?: boolean;
   /** Список оповещения */
   notify?: Array<string>;
+  /** Дополнительно оповестить */
+  notify_extra?: Array<string>;
   /** Устаревшее: одна служба. Заменено списком оповещения */
   dds?: DDSCode | null;
   dispatch_order_at?: string | null;

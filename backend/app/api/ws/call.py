@@ -270,7 +270,16 @@ async def _handle(session_id: UUID, state, event) -> None:
 
         case "kio.patch":
             old_code, old_notify = state.kio.incident_code, list(state.kio.notify)
-            state.patch_kio(event.fields)
+            try:
+                state.patch_kio(event.fields)
+            except ValidationError as exc:
+                # Недопустимое значение — отказ курсанту, а не сбой операции:
+                # сбой закрыл бы занятие на этом узле.
+                hub.to_trainee(session_id, ErrorEvent(
+                    code=ErrorKind.UNSUPPORTED_EVENT,
+                    message=f"Поле карточки не принято: {exc.errors()[0].get('msg', '')}"[:200],
+                ))
+                return
             hub.to_trainee(session_id, KioPatchOut(
                 fields=event.fields, source=PatchSource.OPERATOR,
             ))

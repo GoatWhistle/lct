@@ -48,3 +48,14 @@ async def signs(prefix: list[str] = Query(default=[]), group: int | None = None)
             else None
         ),
     }
+
+
+@router.get("/services")
+async def services() -> dict:
+    """Каталог служб для ручного добавления в карточку — как окно «Добавьте службы».
+
+    Каталог — справочник боевого АРМ, а не содержимое вызова: отдавать его
+    курсанту так же безопасно, как группы происшествий.
+    """
+    data = ekp.catalog()
+    return {"source": data.source, "services": [item.model_dump() for item in data.services]}

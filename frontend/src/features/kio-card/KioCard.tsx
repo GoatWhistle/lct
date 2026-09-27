@@ -1,7 +1,9 @@
 // Карточка КИО. Один и тот же компонент рисуется у курсанта, на пульте,
 // на внешнем мониторе и на АРМ ДДС — там в режиме `readOnly`.
 
-import { useIncidentGroups, useSigns } from "@/shared/api/http";
+import { useState } from "react";
+
+import { useIncidentGroups, useServiceCatalog, useSigns } from "@/shared/api/http";
 import { type CardState, display } from "./merge";
 import { type Field, type FieldGroup, visibleGroups } from "./fields";
 
@@ -141,6 +143,9 @@ function Input({
       </select>
     );
   }
+  if (field.kind === "services") {
+    return <ServicesPicker value={(value as string[]) ?? []} onChange={(next) => emit(next)} />;
+  }
   if (field.kind === "signs") {
     return <SignsPicker value={(value as string[]) ?? []} group={incidentGroup} onChange={(next) => emit(next)} />;
   }
@@ -167,6 +172,36 @@ function Input({
   }
   return (
     <input type="text" aria-label={field.label} value={(value as string) ?? ""} onChange={(e) => emit(e.target.value)} />
+  );
+}
+
+/** Ручное добавление служб из каталога — окно «Добавьте службы» боевого АРМ.
+ * Список оповещения по признакам остаётся как есть: здесь только добавки. */
+function ServicesPicker({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
+  const catalog = useServiceCatalog();
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
+  const found = needle
+    ? (catalog.data?.services ?? [])
+      .filter((item) => !value.includes(item.name) && item.name.toLowerCase().includes(needle))
+      .slice(0, 8)
+    : [];
+  return (
+    <div className="kio-services">
+      {value.length > 0 && <div className="signs-selected" aria-label="Добавленные службы">
+        {value.map((name) => <span key={name}>
+          {name} <button type="button" aria-label={`Убрать ${name}`}
+            onClick={() => onChange(value.filter((item) => item !== name))}>×</button>
+        </span>)}
+      </div>}
+      <input type="search" aria-label="Поиск службы в каталоге" placeholder="Поиск службы…"
+        value={query} onChange={(event) => setQuery(event.target.value)} />
+      {found.length > 0 && <ul className="kio-services-found">
+        {found.map((item) => <li key={item.id}>
+          <button type="button" onClick={() => { onChange([...value, item.name]); setQuery(""); }}>{item.name}</button>
+        </li>)}
+      </ul>}
+    </div>
   );
 }
 

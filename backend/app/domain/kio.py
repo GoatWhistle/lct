@@ -10,7 +10,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domain.classifiers import DDSCode, IncidentType
 
@@ -118,6 +118,11 @@ class KIO(BaseModel):
     # ДДС. `notify` считается из признаков и правится только системой:
     # в боевом АРМ оператор может добавить службу вручную, но не удалить.
     notify: list[str] = Field(default_factory=list, description="Список оповещения")
+    #: Службы, добавленные оператором вручную из каталога. Автоматический список
+    #: не заменяют и в оценку по эталону не входят.
+    notify_extra: list[str] = Field(
+        default_factory=list, max_length=20, description="Дополнительно оповестить"
+    )
     dds: DDSCode | None = Field(
         default=None, description="Устаревшее: одна служба. Заменено списком оповещения"
     )
@@ -129,6 +134,19 @@ class KIO(BaseModel):
     police: PoliceDetails | None = None
     medical: MedicalDetails | None = None
     utility: UtilityDetails | None = None
+
+    @field_validator("notify_extra")
+    @classmethod
+    def known_catalog_services(cls, names: list[str]) -> list[str]:
+        """Только службы каталога, без повторов: свободный текст в адресатах
+        карточки на АРМ ДДС выглядел бы как настоящая служба."""
+        from app.domain import ekp
+
+        known = ekp.catalog_names()
+        unknown = [name for name in names if name not in known]
+        if unknown:
+            raise ValueError(f"нет в каталоге служб: {', '.join(unknown[:3])}")
+        return list(dict.fromkeys(names))
 
 
 #: Поля, которые курсант не редактирует: их проставляет система.
@@ -147,7 +165,7 @@ EDITABLE_KIO_FIELDS: frozenset[str] = frozenset({
     "okato", "address", "street", "building", "entrance", "floor",
     "intercom_code", "description", "incident_group", "signs",
     "incident_type", "victims_count", "is_emergency", "life_threat",
-    "evacuation_needed", "dds",
+    "evacuation_needed", "dds", "notify_extra",
     "fire.fire_nature", "fire.object_kind", "fire.floors", "fire.gasified",
     "fire.people_inside", "fire.smoke_spread",
     "police.offence_kind", "police.suspects", "police.suspect_fled",

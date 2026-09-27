@@ -230,6 +230,17 @@ export const useIncidentGroups = () => useQuery({
   queryFn: () => request<IncidentGroupsPage>("/api/ekp/groups"),
 });
 
+export interface ServiceCatalogPage {
+  source: string;
+  services: { id: string; name: string; organization: string | null; service_level: string | null; source_reference: string }[];
+}
+
+/** Каталог окна «Добавьте службы»: 209 служб, включая районные ДДС. */
+export const useServiceCatalog = () => useQuery({
+  queryKey: ["ekp-services"], staleTime: Infinity,
+  queryFn: () => request<ServiceCatalogPage>("/api/ekp/services"),
+});
+
 export function useSigns(prefix: string[], group: number | null = null) {
   const params = new URLSearchParams();
   if (group !== null) params.set("group", String(group));

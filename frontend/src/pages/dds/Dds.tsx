@@ -548,6 +548,7 @@ export function Dds() {
           <div><b>{field(card, "description")}</b></div>
           <div>Класс: <b>{field(card, "incident_type")}</b></div>
           <div>Получатели карточки: <b>{station?.recipient_services?.join(", ") || field(card, "notify")}</b></div>
+          {field(card, "notify_extra") !== "—" && <div>Добавлены оператором: <b>{field(card, "notify_extra")}</b></div>}
           <div>Ваша ДДС: <b>{station?.managed_service || "служба не назначена"}</b></div></div>
       </div>
       <div className="dds-case-stage">

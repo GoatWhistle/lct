@@ -6,7 +6,7 @@
 
 import type { DDSCode, IncidentType } from "@/shared/types/generated";
 
-export type FieldKind = "text" | "textarea" | "number" | "bool" | "select" | "signs" | "group" | "list";
+export type FieldKind = "text" | "textarea" | "number" | "bool" | "select" | "signs" | "group" | "list" | "services";
 
 export interface Field {
   /** Путь в карточке: «floor», «fire.floors» — так же, как в `kio.patch`. */
@@ -107,6 +107,8 @@ export const GROUPS: FieldGroup[] = [
     fields: [
       // Список оповещения оператор не выбирает: он производен от признаков.
       { path: "notify", label: "Список оповещения", kind: "list", readOnly: true },
+      // Как «Службы: +» в боевом АРМ: добавить можно, убрать автоматическую — нет.
+      { path: "notify_extra", label: "Дополнительно оповестить", kind: "services" },
       { path: "dds", label: "Служба (устаревшее)", kind: "select", options: DDS },
       { path: "dispatch_order_at", label: "Приказ на выезд", kind: "text", readOnly: true },
       { path: "arrival_at", label: "Прибытие", kind: "text", readOnly: true },
