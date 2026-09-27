@@ -188,6 +188,9 @@ def build_card(
         )
     if service:
         kio = apply_patch(kio, {"dds": service})
+    if scenario.dds_card_error is not None:
+        # Ошибка относится к выданному снимку; эталон сценария остаётся верным.
+        kio = kio.model_copy(update={"address": scenario.dds_card_error.card_value})
     kio.response_status = ResponseStatus.TRANSFERRED
     timers = SessionTimers(limits=dict(limits))
     timers.on_event("dds.dispatch")
@@ -298,7 +301,14 @@ def _report_text(phase: str, crew: str, address: str) -> str:
 def _finish_phone_call(card: DdsLiveCard) -> list[Any]:
     call = card.phone_pending
     assert call is not None
-    text = _report_text(call.phase, call.crew, card.dispatched_card.address or "из карточки")
+    error = card.scenario.dds_card_error
+    if call.phase == "arrived" and error is not None and error.field == "address":
+        actual = card.scenario.ground_truth.address
+        text = (f"{call.crew}: прибыли по адресу {actual}. "
+                f"В карточке указан {card.dispatched_card.address}; "
+                "адрес не совпадает. Сообщите об ошибке в 112.")
+    else:
+        text = _report_text(call.phase, call.crew, card.dispatched_card.address or "из карточки")
     line = _line(card, "crew", text)
     report = PhoneReportRecord(service=call.service, crew=call.crew,
                                phase=call.phase, text=text, at=now_utc())
@@ -560,6 +570,16 @@ class DdsDesk(BaseModel):
                     return DeskOutcome()
                 card.reply_text = command.text
                 card.reply_log.append((now_utc(), command.text))
+            case "card.error_report_112":
+                if command.card_id != card.card_id:
+                    return _refused("Сообщение относится не к текущей карточке")
+                if card.scenario.dds_card_error is None or not any(
+                    report.phase == "arrived" for report in card.phone_reports
+                ):
+                    return _refused("Сначала получите доклад бригады с места об ошибке карточки")
+                if any(action == "card.error_report_112" for action, _at, _detail in card.dds_log):
+                    return DeskOutcome()
+                card.dds_log.append(("card.error_report_112", now_utc(), command.text.strip()))
             case "card.open":
                 if not dds_lesson or not self.open(command.card_id):
                     return _refused("Карточка отсутствует в текущей очереди")

@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from app.api.auth import Principal
 from app.api.http import sessions
 from app.config import get_settings
-from app.domain.events import SessionReport
+from app.domain.events import DdsCardReport, SessionReport
 from app.domain.roles import Role
 from app.main import app
 from app.scoring.export import _cell, certificate_pdf, to_csv, to_pdf
@@ -81,6 +81,31 @@ def test_csv_shows_enabled_report_reaction_limit():
     rows = list(csv.reader(io.StringIO(to_csv(report).decode("utf-8-sig"))))
 
     assert ["Критерии", "", "Лимит реакции на доклад бригады, с", "20", ""] in rows
+
+
+def test_card_error_message_to_112_is_in_csv_and_pdf(tmp_path):
+    report = sample_report()
+    message = "В карточке дом 16; по докладу бригады фактически дом 14."
+    report.card_results = [DdsCardReport(
+        card_id=uuid4(), scenario_id="dds-card-address-error", score_auto=100,
+        reply_text="", metrics=[], findings=[], actions=[{
+            "type": "card.error_report_112", "text": message,
+            "at": "2026-09-21T12:05:00+00:00",
+        }],
+    )]
+
+    rows = list(csv.reader(io.StringIO(to_csv(report).decode("utf-8-sig"))))
+    assert any(row[0] == "Сообщение в 112" and row[3] == message for row in rows)
+
+    import shutil
+    import subprocess
+
+    if shutil.which("pdftotext"):
+        path = tmp_path / "dds-error.pdf"
+        path.write_bytes(to_pdf(report))
+        extracted = subprocess.check_output(["pdftotext", str(path), "-"], text=True)
+        assert "Сообщения в 112 об ошибках карточек" in extracted
+        assert message in extracted
 
 
 def test_pdf_supports_cyrillic_and_spans_pages(tmp_path):

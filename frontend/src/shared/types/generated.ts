@@ -101,6 +101,13 @@ export interface CardBriefing {
   handoff_to_dds?: boolean;
 }
 
+/** Сообщение диспетчера в 112 после доклада бригады с места. */
+export interface CardErrorReport112 {
+  type: "card.error_report_112";
+  card_id: string;
+  text: string;
+}
+
 export interface CardNext {
   type: "card.next";
   card_id: string;
@@ -703,6 +710,8 @@ export interface StationSnapshot {
   phone_reports?: Array<PhoneReportRecord>;
   phone_lines?: Array<PhoneLineRecord>;
   phone_pending?: PhoneCallPending | null;
+  card_error_discovered?: boolean;
+  report_112_text?: string | null;
   card_id?: string | null;
   card_index?: number;
   card_total?: number;
@@ -831,7 +840,7 @@ export type InstructorToServer = ScenarioStart | DirectorInject | ReferencePlay 
 
 export type ServerToStation = CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded | ScoreReady | CommandAck | SessionPaused | ErrorEvent;
 
-export type StationToServer = CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | PhoneBrief | PhoneCheck | PhoneHangup | StationFinish | CardReply | CardNext | CardOpen | ZoneDecision | CrewDispatched | CrewArrived;
+export type StationToServer = CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | PhoneBrief | PhoneCheck | PhoneHangup | StationFinish | CardReply | CardErrorReport112 | CardNext | CardOpen | ZoneDecision | CrewDispatched | CrewArrived;
 
 export type EventName =
   "bg.start"
@@ -847,6 +856,7 @@ export type EventName =
   | "card.ack"
   | "card.bounce"
   | "card.briefing"
+  | "card.error_report_112"
   | "card.next"
   | "card.open"
   | "card.received"

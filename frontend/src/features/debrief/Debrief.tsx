@@ -103,6 +103,8 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
             {card.address ? ` · ${card.address}` : ""}</summary>
           {card.managed_service && <p><strong>Ответственная служба:</strong> {card.managed_service}</p>}
           <p><strong>Ответ диспетчера:</strong> {card.reply_text || "не внесён"}</p>
+          {(card.actions ?? []).filter((action) => action.type === "card.error_report_112").map((action, actionIndex) =>
+            <p key={`report-112-${actionIndex}`}><strong>Сообщение об ошибке в 112:</strong> {String(action.text ?? "")}</p>)}
           {card.metrics.some((metric) => !metric.passed || (metric.credit != null && metric.credit < 1)) && <ul>
             {card.metrics.filter((metric) => !metric.passed || (metric.credit != null && metric.credit < 1)).map((metric) =>
               <li key={metric.key} className={metric.passed ? "ref" : "state-violated"}>

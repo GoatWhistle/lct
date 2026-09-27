@@ -236,6 +236,7 @@ export function Dds() {
   const [dialing, setDialing] = useState(false);
   const [brief, setBrief] = useState({ address: "", incident: "", request: "" });
   const [checkText, setCheckText] = useState("");
+  const [report112Text, setReport112Text] = useState("");
   const [error, setError] = useState("");
   const [ended, setEnded] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -286,6 +287,7 @@ export function Dds() {
             setDialing(false);
             setBrief({ address: "", incident: "", request: "" });
             setCheckText("");
+            setReport112Text("");
             setZone(null);
             setScoreReady(false);
             setView(openCardAfterSwitch.current ? "card" : "registry");
@@ -661,6 +663,20 @@ export function Dds() {
         {reports.length > 0 && <details className="dds-details"><summary>История докладов ({reports.length})</summary>
           <ol className="dds-reports">{reports.map((report, index) => <li key={`${report.at}-${index}`}><b>{REPORT_LABELS[report.phase]}</b> · {time(report.at)}<br />{report.text}</li>)}</ol>
         </details>}
+        {station?.card_error_discovered && <div className="dds-phone-form">
+          <h3>Сообщение об ошибке карточки в 112</h3>
+          {station.report_112_text ? <p>Сообщено в 112: {station.report_112_text}</p> : <>
+            <p>После доклада бригады сообщите оператору 112, что указано в карточке и что установлено на месте.</p>
+            <label htmlFor="dds-report-112">Содержание сообщения</label>
+            <textarea id="dds-report-112" rows={3} value={report112Text}
+              disabled={!isConnected || ended || paused}
+              onChange={(event) => setReport112Text(event.target.value)} />
+            <button type="button" disabled={!cardId || !isConnected || ended || paused || report112Text.trim().length < 10}
+              onClick={() => send({ type: "card.error_report_112", card_id: cardId, text: report112Text })}>
+              Зафиксировать сообщение в 112
+            </button>
+          </>}
+        </div>}
       </section>}
       {pane === "reply" && <section className="dds-panel dds-reply">
         <div className="dds-panel-title"><h2>Рабочая заметка диспетчера</h2>

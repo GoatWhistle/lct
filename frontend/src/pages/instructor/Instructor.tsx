@@ -391,6 +391,9 @@ export function Instructor() {
                         <small>{report.text}</small>
                       </p>)}
                     </div> : null}
+                    {item.dds_snapshot.report_112_text && <p className="active-session-log">
+                      <strong>Сообщено в 112 об ошибке карточки:</strong> {item.dds_snapshot.report_112_text}
+                    </p>}
                   </details>}</td>
                 <td>{item.exercise === "dds" ? `Открытых карточек: ${item.dds_open_cards}` : "—"}</td>
                 <td className={item.dds_overdue_cards ? "state-violated" : "state-ok"}>
