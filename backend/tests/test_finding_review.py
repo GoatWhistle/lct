@@ -73,8 +73,8 @@ def test_dismissed_finding_stops_penalizing_its_metric_but_stays_in_report():
     progress = updated["metrics"][1]
     assert (progress["passed"], progress["passed_auto"]) == (True, False)
     finding = updated["findings"][0]
-    assert finding["review"]["decision"] == "dismissed"
-    assert finding["review"]["reason"] == "доклад пришёл по рации"
+    assert finding["reviews"][-1]["decision"] == "dismissed"
+    assert finding["reviews"][-1]["reason"] == "доклад пришёл по рации"
     archived = updated["full_report"]
     assert (archived["score_final"], archived["failed_metrics"], archived["passed"]) == (100.0, 0, True)
 
@@ -204,8 +204,8 @@ def test_owner_dismisses_and_adds_finding_through_http(lesson):
     )
     assert dismissed.status_code == 200, dismissed.text
     body = dismissed.json()
-    assert body["findings"][target]["review"]["decision"] == "dismissed"
-    assert body["findings"][target]["review"]["author"] == "dev"
+    assert body["findings"][target]["reviews"][-1]["decision"] == "dismissed"
+    assert body["findings"][target]["reviews"][-1]["author"] == "dev"
     assert body["score_auto"] == before["score_auto"]
     assert body["score_reviewed"] >= before["score_auto"]
 
@@ -221,7 +221,7 @@ def test_owner_dismisses_and_adds_finding_through_http(lesson):
 
     records = [record for _, batch in store.commits for record in batch]
     assert [type(record) for record in records[-2:]] == [FindingReviewed, FindingAdded]
-    assert store.scores[session_id]["findings"][target]["review"]["decision"] == "dismissed"
+    assert store.scores[session_id]["findings"][target]["reviews"][-1]["decision"] == "dismissed"
 
     rows = to_csv(sessions.SessionReport.model_validate(added.json())).decode("utf-8-sig")
     assert "карточку выдали с опозданием" in rows
@@ -302,6 +302,343 @@ def test_finding_review_is_audited_in_postgres(postgres_access):
     score, audit = asyncio.run(scenario())
     assert score.score_auto == 50.0
     assert score.score_final == 100.0
-    assert score.report["findings"][0]["review"]["decision"] == "dismissed"
+    assert score.report["findings"][0]["reviews"][-1]["decision"] == "dismissed"
     assert audit is not None and audit.actor == "teacher"
     assert "dismissed" in audit.detail and "50.0 → 100.0" in audit.detail
+
+
+# ── История решений, коды, карточки, веса ──
+
+def test_repeated_decision_keeps_history_and_last_one_applies():
+    report = report_with([dds_metric("dds_progress", False)], [dds_finding(ErrorCode.D6)])
+
+    dismissed = review_finding(report, 0, review(FindingDecision.DISMISSED))
+    confirmed = review_finding(dismissed, 0, FindingReview(
+        decision=FindingDecision.CONFIRMED, reason="перепроверил запись", author="head", at=AT,
+    ))
+
+    reviews = confirmed["findings"][0]["reviews"]
+    assert [(item["decision"], item["author"], item["reason"]) for item in reviews] == [
+        ("dismissed", "teacher", "доклад пришёл по рации"),
+        ("confirmed", "head", "перепроверил запись"),
+    ]
+    assert confirmed["score_reviewed"] == 0.0, "действует последнее решение"
+
+
+def test_report_saved_with_single_review_reads_as_history():
+    legacy = dds_finding(ErrorCode.D6).model_dump(mode="json")
+    legacy["review"] = review(FindingDecision.DISMISSED).model_dump(mode="json")
+
+    finding = Finding.model_validate(legacy)
+
+    assert [item.decision for item in finding.reviews] == [FindingDecision.DISMISSED]
+    assert finding.review.decision is FindingDecision.DISMISSED
+
+
+def test_call_code_in_handoff_penalizes_call_metric_not_instructor_metric():
+    """Связка 112 → ДДС: E1 без карточки проваливает метрику 112, а не добавляет свою."""
+    call = Metric(key="checklist_completeness", title="Полнота опроса", fact="все", norm="все",
+                  passed=True, weight=1.0)
+    report = report_with([call, dds_metric("dds_progress", True)], [])
+    manual = Finding(code=ErrorCode.E1, source=FindingSource.INSTRUCTOR, summary="E1",
+                     fact="не уточнён подъезд", norm="уточнить подъезд", author="teacher", at=AT)
+
+    updated = add_finding(report, manual)
+
+    assert [metric["passed"] for metric in updated["metrics"]] == [False, True]
+    assert INSTRUCTOR_METRIC not in {metric["key"] for metric in updated["metrics"]}
+    assert updated["score_reviewed"] == 50.0
+
+
+def test_codes_and_card_scores_follow_the_review():
+    card = {"card_id": str(uuid4()), "scenario_id": "s", "score_auto": 50.0, "reply_text": "",
+            "metrics": [dds_metric("dds_primary", True).model_dump(mode="json"),
+                        dds_metric("dds_progress", False).model_dump(mode="json")],
+            "findings": [dds_finding(ErrorCode.D6).model_dump(mode="json")]}
+    report = {**report_with([dds_metric("dds_primary", True), dds_metric("dds_progress", False)],
+                            [dds_finding(ErrorCode.D6)]),
+              "summary": {"hints": 2, "codes": {"D6": 1}}, "card_results": [card]}
+    report["full_report"]["card_results"] = [card]
+
+    dismissed = review_finding(report, 0, review(FindingDecision.DISMISSED))
+
+    assert dismissed["summary"] == {"hints": 2, "codes": {}}, "снятая отметка не ошибка группы"
+    for cards in (dismissed["card_results"], dismissed["full_report"]["card_results"]):
+        assert cards[0]["score_auto"] == 50.0
+        assert cards[0]["score_reviewed"] == 100.0
+        assert cards[0]["metrics"][1]["passed"] is True
+        assert cards[0]["findings"][0]["reviews"][-1]["decision"] == "dismissed"
+
+    manual = Finding(code=ErrorCode.D4, source=FindingSource.INSTRUCTOR, summary="D4",
+                     fact="отказ без причины", norm="причина обязательна", card=1,
+                     author="teacher", at=AT)
+    added = add_finding(dismissed, manual)
+    assert added["summary"]["codes"] == {"D4": 1}
+    assert added["card_results"][0]["score_reviewed"] == pytest.approx(66.7)
+
+
+def test_instructor_metric_weight_comes_from_lesson_weights():
+    report = report_with([dds_metric("dds_primary", True)], [])
+    report["full_report"]["criteria"]["score_weights"] = {INSTRUCTOR_METRIC: 3.0}
+    manual = Finding(code=ErrorCode.D4, source=FindingSource.INSTRUCTOR, summary="D4",
+                     fact="отказ без причины", norm="причина обязательна", card=1,
+                     author="teacher", at=AT)
+
+    updated = add_finding(report, manual)
+
+    assert updated["metrics"][-1]["weight"] == 3.0
+    assert updated["score_reviewed"] == 25.0
+
+
+def test_lesson_criteria_accept_instructor_metric_weight():
+    from app.domain.events import LessonCriteria
+
+    assert LessonCriteria(score_weights={INSTRUCTOR_METRIC: 2.0}).score_weights == {
+        INSTRUCTOR_METRIC: 2.0}
+
+
+def test_repeated_manual_finding_with_same_key_is_added_once():
+    report = report_with([dds_metric("dds_primary", True)], [])
+    manual = Finding(code=ErrorCode.D4, source=FindingSource.INSTRUCTOR, summary="D4",
+                     fact="отказ без причины", norm="причина обязательна", card=1,
+                     author="teacher", at=AT, client_id=uuid4())
+
+    once = add_finding(report, manual)
+    twice = add_finding(once, manual)
+
+    assert len(twice["findings"]) == 1
+    assert twice["score_reviewed"] == once["score_reviewed"] == 50.0
+
+
+def test_pdf_shows_score_after_review(monkeypatch):
+    from reportlab import platypus
+
+    from app.scoring.export import to_pdf
+    from tests.test_report_export import sample_report
+
+    texts: list[str] = []
+
+    class Recorded(platypus.Paragraph):
+        def __init__(self, text, *args, **kwargs):
+            texts.append(text)
+            super().__init__(text, *args, **kwargs)
+
+    # Абзацы перехватываются до вёрстки: извлечь текст из PDF нечем без poppler.
+    monkeypatch.setattr(platypus, "Paragraph", Recorded)
+    assert to_pdf(sample_report().model_copy(update={"score_reviewed": 91.5})).startswith(b"%PDF-")
+
+    assert "<b>После разбора отметок:</b> 91.5" in texts
+
+
+# ── HTTP: связка 112 → ДДС, идемпотентность, занятие из истории ──
+
+def test_call_code_with_queue_card_is_refused_in_handoff(lesson):
+    browser, state, store = lesson
+    commits = len(store.commits)
+    state.score["full_report"]["exercise"] = "call"
+
+    refused = browser.post(f"/api/sessions/{state.session_id}/findings",
+                           json={"code": "E1", "fact": "факт", "norm": "норма", "card": 1})
+
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == "call_code_without_card"
+    assert len(store.commits) == commits
+
+
+def test_repeated_add_request_does_not_add_second_finding(lesson):
+    browser, state, store = lesson
+    body = {"code": "D5", "fact": "нет адресата", "norm": "назвать адресата", "card": 1,
+            "client_id": str(uuid4())}
+
+    first = browser.post(f"/api/sessions/{state.session_id}/findings", json=body)
+    commits = len(store.commits)
+    second = browser.post(f"/api/sessions/{state.session_id}/findings", json=body)
+
+    assert first.status_code == second.status_code == 200
+    assert len(second.json()["findings"]) == len(first.json()["findings"])
+    assert second.json()["score_reviewed"] == first.json()["score_reviewed"]
+    assert not [record for _, batch in store.commits[commits:] for record in batch], (
+        "повтор ничего не пишет")
+
+
+def test_archived_lesson_is_reviewed_through_http(monkeypatch):
+    """Занятия нет в памяти узла: решение идёт через commit_archived, ответ — по строке после записи."""
+    from types import SimpleNamespace
+
+    from app.session.pg_store import PostgresSessionStore
+    from tests.test_report_export import sample_report
+
+    archived = sample_report().model_dump(mode="json")
+    archived["findings"] = [dds_finding(ErrorCode.D6).model_dump(mode="json")]
+    archived["metrics"] = [dds_metric("dds_progress", False).model_dump(mode="json")]
+    archived.update(score_final=0.0, overridden_by=None, override_comment=None, score_auto=0.0)
+    session_id = archived["session_id"]
+    session_row = SimpleNamespace(id=session_id, trainee_id=uuid4(), owner_login="dev")
+    score_row = SimpleNamespace(
+        session_id=session_id, score_auto=0.0, score_final=0.0,
+        report={"score_auto": 0.0, "summary": {"codes": {"D6": 1}},
+                "findings": archived["findings"], "metrics": archived["metrics"],
+                "full_report": archived},
+    )
+
+    class FakeDb:
+        def __init__(self):
+            self.added = []
+            self.commits = 0
+
+        async def get(self, _model, _key):
+            return session_row
+
+        async def scalar(self, _statement):
+            return score_row
+
+        def add(self, row):
+            self.added.append(row)
+
+        async def flush(self):
+            pass
+
+        async def rollback(self):
+            pass
+
+        async def commit(self):
+            self.commits += 1
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    db = FakeDb()
+
+    async def fake_session():
+        yield db
+
+    monkeypatch.setattr(hub, "store", PostgresSessionStore(lambda: db))
+    monkeypatch.setattr(hub, "get", lambda _session_id: None)
+    monkeypatch.setitem(app.dependency_overrides, sessions.optional_session, fake_session)
+    with TestClient(app) as browser:
+        browser.post("/api/auth/dev-token")
+        hub.store = PostgresSessionStore(lambda: db)
+        response = browser.post(f"/api/sessions/{session_id}/findings/0/review",
+                                json={"decision": "dismissed", "reason": "доклад по рации"})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["score_reviewed"] == 100.0 and body["score_final"] == 100.0
+    assert body["findings"][0]["reviews"][-1]["reason"] == "доклад по рации"
+    assert db.commits == 1, "решение и аудит — один commit"
+    assert score_row.score_final == 100.0
+    assert score_row.report["summary"]["codes"] == {}
+    audit = db.added[0]
+    assert audit.action == "finding.review" and audit.actor == "dev"
+    assert "D6 dismissed" in audit.detail and "доклад по рации" in audit.detail
+
+
+def test_finding_review_is_not_saved_when_audit_fails(postgres_access):
+    """Fail-closed: строка аудита не записалась — решения и нового балла тоже нет."""
+    from sqlalchemy import select
+
+    from app.db.base import get_sessionmaker
+    from app.db.models import AuditLog, Score
+    from app.domain.events import Exercise, SessionMode
+    from app.session.pg_store import PostgresSessionStore
+    from app.session.state import SessionState
+    from app.session.store import LessonRequest, ScoreCalculated
+
+    store = PostgresSessionStore(get_sessionmaker())
+    session_id = uuid4()
+    report = report_with([dds_metric("dds_progress", False)], [dds_finding(ErrorCode.D6)])
+    # actor в audit_log — String(80): длинный логин роняет INSERT аудита
+    # на стороне PostgreSQL, а Score меняется в той же транзакции.
+    broken = FindingReview(decision=FindingDecision.DISMISSED, reason="доклад по рации",
+                           author="x" * 200, at=AT)
+
+    async def scenario():
+        def build(_identity):
+            return SessionState(session_id=session_id, scenario_id="fire-apartment-l2",
+                                scenario_title="Пожар", level="L2", mode=SessionMode.TRAINING,
+                                exercise=Exercise.DDS)
+
+        await store.open(LessonRequest(
+            session_id=session_id, scenario_id="fire-apartment-l2", mode="training",
+            trainee_name=None, trainee_id=None, owner_login="teacher", backend_node_id=None,
+        ), build)
+        await store.commit_archived(session_id, [ScoreCalculated(50.0, report)])
+        with pytest.raises(Exception):
+            await store.commit_archived(session_id, [FindingReviewed(
+                index=0, role="instructor", review=broken,
+            )])
+        async with get_sessionmaker()() as db:
+            score = await db.scalar(select(Score).where(Score.session_id == session_id))
+            audit = await db.scalar(select(AuditLog).where(
+                AuditLog.object_id == str(session_id), AuditLog.action == "finding.review",
+            ))
+            return score, audit
+
+    score, audit = asyncio.run(scenario())
+    assert audit is None
+    assert score.score_final == 50.0
+    assert score.report["findings"][0].get("reviews", []) == []
+    assert "score_reviewed" not in score.report
+
+
+def test_archived_lesson_review_through_http_in_postgres(postgres_access, monkeypatch):
+    """Тот же маршрут на настоящей PostgreSQL: ответ перечитан после commit под блокировкой."""
+    from sqlalchemy import select
+
+    from app.db.base import get_sessionmaker
+    from app.db.models import AuditLog
+    from app.domain.events import Exercise, SessionMode
+    from app.session.pg_store import PostgresSessionStore
+    from app.session.state import SessionState
+    from app.session.store import LessonRequest, ScoreCalculated
+    from tests.test_report_export import sample_report
+
+    session_id = uuid4()
+    archived = sample_report().model_dump(mode="json")
+    archived.update(session_id=str(session_id), score_final=0.0, score_auto=0.0,
+                    overridden_by=None, override_comment=None,
+                    findings=[dds_finding(ErrorCode.D6).model_dump(mode="json")],
+                    metrics=[dds_metric("dds_progress", False).model_dump(mode="json")])
+    report = {"score_auto": 0.0, "summary": {"codes": {"D6": 1}},
+              "findings": archived["findings"], "metrics": archived["metrics"],
+              "full_report": archived}
+    store = PostgresSessionStore(get_sessionmaker())
+
+    async def prepare():
+        def build(_identity):
+            return SessionState(session_id=session_id, scenario_id="fire-apartment-l2",
+                                scenario_title="Пожар", level="L2", mode=SessionMode.TRAINING,
+                                exercise=Exercise.DDS)
+
+        await store.open(LessonRequest(
+            session_id=session_id, scenario_id="fire-apartment-l2", mode="training",
+            trainee_name=None, trainee_id=None, owner_login="dev", backend_node_id=None,
+        ), build)
+        await store.commit_archived(session_id, [ScoreCalculated(0.0, report)])
+
+    async def audit():
+        async with get_sessionmaker()() as db:
+            return await db.scalar(select(AuditLog).where(
+                AuditLog.object_id == str(session_id), AuditLog.action == "finding.review"))
+
+    monkeypatch.setattr(hub, "get", lambda _session_id: None)
+    # Пул соединений привязан к циклу событий: подготовка и проверка идут
+    # в цикле того же TestClient, что и запрос.
+    with TestClient(app) as browser:
+        browser.post("/api/auth/dev-token")
+        previous, hub.store = hub.store, store
+        try:
+            browser.portal.call(prepare)
+            response = browser.post(f"/api/sessions/{session_id}/findings/0/review",
+                                    json={"decision": "dismissed", "reason": "доклад по рации"})
+            row = browser.portal.call(audit)
+        finally:
+            hub.store = previous
+
+    assert response.status_code == 200, response.text
+    assert response.json()["score_final"] == 100.0
+    assert response.json()["findings"][0]["reviews"][-1]["reason"] == "доклад по рации"
+    assert row is not None and "доклад по рации" in row.detail
