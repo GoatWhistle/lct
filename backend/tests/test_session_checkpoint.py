@@ -88,6 +88,7 @@ def test_active_dds_session_round_trips_without_losing_work():
 
 def test_report_reaction_keeps_times_and_limit_after_restore():
     before = dds_state()
+    before.criteria.dds_report_reaction_enabled = True
     before.criteria.dds_report_reaction_limit_seconds = 20
     card = before.desk.active
     service = before.card_services(card)[0]
@@ -102,6 +103,7 @@ def test_report_reaction_keeps_times_and_limit_after_restore():
     restored = load_state(dump_state(before), now_utc())
 
     assert restored.criteria.dds_report_reaction_limit_seconds == 20
+    assert restored.criteria.dds_report_reaction_enabled
     assert restored.desk.active.phone_reports == card.phone_reports
 
     def reaction(state):
@@ -116,6 +118,31 @@ def test_report_reaction_keeps_times_and_limit_after_restore():
     assert "70 с (+50 с сверх норматива)" in metric.fact
     assert [item.code for item in findings] == [ErrorCode.D6]
     assert reaction(restored) == reaction(before), "оценка после восстановления та же"
+
+
+def test_report_reaction_default_off_keeps_status_completeness_d6():
+    state = dds_state()
+    card = state.desk.active
+    service = state.card_services(card)[0]
+    card.set_service_status(service, ServiceStatus.RESPONDING,
+                            "Основание: доклад.\nСведения: бригада выехала.")
+    without_report = state.model_copy(deep=True)
+    card.phone_reports.append(PhoneReportRecord(
+        service=service, crew=card.crew_selected, phase="dispatched",
+        text="Бригада выехала", at=card.status_log[-1].at - timedelta(seconds=70),
+    ))
+
+    result = score_dds_card(state, card)
+    baseline = score_dds_card(without_report, without_report.desk.active)
+
+    assert state.criteria.dds_report_reaction_enabled is False
+    assert result.score_auto == baseline.score_auto
+    assert [(item.code, item.metric_key, item.fact) for item in result.findings] == [
+        (item.code, item.metric_key, item.fact) for item in baseline.findings
+    ]
+    assert not any(item.key == "dds_report_reaction" for item in result.metrics)
+    assert not any(item.metric_key == "dds_report_reaction" for item in result.findings)
+    assert any(item.code is ErrorCode.D6 for item in result.findings)
 
 
 def completed_card() -> DdsCardRecord:

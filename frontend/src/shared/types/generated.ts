@@ -400,6 +400,7 @@ export interface LessonCriteria {
   decision_time_limit_seconds?: number;
   card_fill_time_limit_seconds?: number;
   dds_card_work_time_limit_seconds?: number;
+  dds_report_reaction_enabled?: boolean;
   dds_report_reaction_limit_seconds?: number;
   allowed_errors?: number;
   require_correct_grammar?: boolean;

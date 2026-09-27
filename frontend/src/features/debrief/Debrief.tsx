@@ -83,7 +83,9 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
           {` ${report.criteria.card_fill_time_limit_seconds ?? 180} с`}</>}
         {/* 112 → ДДС приходит как exercise "card": работу ДДС выдают карточки пульта. */}
         {(report.exercise === "dds" || Boolean(report.card_results?.length)) && <>; статус по докладу бригады —
-          {` не позже ${report.criteria.dds_report_reaction_limit_seconds ?? 45} с`}</>}
+          {report.criteria.dds_report_reaction_enabled
+            ? ` не позже ${report.criteria.dds_report_reaction_limit_seconds ?? 45} с`
+            : " не применяется"}</>}
         {report.exercise && report.exercise !== "dds" && <>
           ; грамматика описания КИО {report.criteria.require_correct_grammar ? "входит" : "не входит"} в оценку
         </>}.

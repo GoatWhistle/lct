@@ -93,6 +93,7 @@ export function Instructor() {
   const [decisionTimeLimit, setDecisionTimeLimit] = useState(30);
   const [cardFillTimeLimit, setCardFillTimeLimit] = useState(180);
   const [ddsCardWorkTimeLimit, setDdsCardWorkTimeLimit] = useState(180);
+  const [ddsReportReactionEnabled, setDdsReportReactionEnabled] = useState(false);
   const [ddsReportReactionLimit, setDdsReportReactionLimit] = useState(45);
   const [allowedErrors, setAllowedErrors] = useState(0);
   const [requireCorrectGrammar, setRequireCorrectGrammar] = useState(true);
@@ -292,6 +293,7 @@ export function Instructor() {
       && !(exercise === "dds" && wholeTicket)
       ? visibleScenarios.filter((item) => item.outcome === "card").map((item) => item.id)
       : undefined;
+    const reportReactionEnabled = (exercise === "dds" || exercise === "card_dds") && ddsReportReactionEnabled;
     const sent = control.start(sessionId, {
       scenarioId: primaryScenarioId,
       mode,
@@ -308,15 +310,18 @@ export function Instructor() {
         decision_time_limit_seconds: decisionTimeLimit,
         card_fill_time_limit_seconds: cardFillTimeLimit,
         dds_card_work_time_limit_seconds: ddsCardWorkTimeLimit,
+        dds_report_reaction_enabled: reportReactionEnabled,
         dds_report_reaction_limit_seconds: ddsReportReactionLimit,
         allowed_errors: allowedErrors,
         require_correct_grammar: requireCorrectGrammar,
-        score_weights: lessonScoreWeights,
+        score_weights: reportReactionEnabled
+          ? lessonScoreWeights
+          : Object.fromEntries(Object.entries(lessonScoreWeights).filter(([key]) => key !== "dds_report_reaction")),
       },
     });
     if (sent) toStart.current = null;
   }, [sessionId, control, scenarioId, extraScenarioIds, mode, trainee, traineeId, trainees.data,
-    exercise, decisionTimeLimit, cardFillTimeLimit, ddsCardWorkTimeLimit, ddsReportReactionLimit, allowedErrors, requireCorrectGrammar, wholeTicket, selectedTicketScenarios,
+    exercise, decisionTimeLimit, cardFillTimeLimit, ddsCardWorkTimeLimit, ddsReportReactionEnabled, ddsReportReactionLimit, allowedErrors, requireCorrectGrammar, wholeTicket, selectedTicketScenarios,
     ddsArrivalIntervalSeconds, ddsMaxWaiting, lessonScoreWeights, scenarios.data,
     randomScenario, visibleScenarios]);
 
@@ -664,13 +669,20 @@ export function Instructor() {
                       onCommit={setDdsCardWorkTimeLimit} />
                     <small className="ref">По умолчанию 180 секунд; не заменяет 30-секундное первичное решение.</small>
                   </label>}
-                  {(exercise === "dds" || exercise === "card_dds") && <label className="lesson-criterion">
-                    Реакция на доклад бригады, секунд
-                    <LessonNumberInput label="Лимит реакции на доклад бригады, секунд"
-                      value={ddsReportReactionLimit} min={5} max={600} fallback={45}
-                      onCommit={setDdsReportReactionLimit} />
-                    <small className="ref">По умолчанию 45 секунд: статус по докладу бригады — не позже лимита.</small>
-                  </label>}
+                  {(exercise === "dds" || exercise === "card_dds") && <>
+                    <label className="mode-choice">
+                      <input type="checkbox" checked={ddsReportReactionEnabled}
+                        onChange={(event) => setDdsReportReactionEnabled(event.target.checked)} />
+                      Оценивать срок отметки статуса после доклада бригады
+                    </label>
+                    {ddsReportReactionEnabled && <label className="lesson-criterion">
+                      Лимит реакции на доклад бригады, секунд
+                      <LessonNumberInput label="Лимит реакции на доклад бригады, секунд"
+                        value={ddsReportReactionLimit} min={5} max={600} fallback={45}
+                        onCommit={setDdsReportReactionLimit} />
+                      <small className="ref">Учебный лимит при включённом критерии; исходное значение — 45 секунд.</small>
+                    </label>}
+                  </>}
                   <label className="lesson-criterion">
                     Допустимо нарушенных метрик
                     <LessonNumberInput label="Допустимое число ошибок" value={allowedErrors}
@@ -682,6 +694,7 @@ export function Instructor() {
                     Грамматика карточки оператора 112 входит в оценку
                   </label>}
                   <ScoreWeightsEditor exercise={exercise === "card_dds" ? "card_dds" : exercise}
+                    reportReactionEnabled={(exercise === "dds" || exercise === "card_dds") && ddsReportReactionEnabled}
                     values={lessonScoreWeights} onChange={setLessonScoreWeights} />
                   <small className="ref">Нормативы ГОСТ для приёма вызова не изменяются.</small>
                   </details>
