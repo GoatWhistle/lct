@@ -7,8 +7,10 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
+from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class ErrorCode(StrEnum):
@@ -188,4 +190,24 @@ class Finding(BaseModel):
     service: str | None = None
     #: Автор ручной отметки преподавателя (`source=instructor`).
     author: str | None = None
-    review: FindingReview | None = None
+    #: Ключ идемпотентности ручной отметки: повтор запроса не добавляет её снова.
+    client_id: UUID | None = None
+    #: Все решения по отметке по порядку; действует последнее. Прежние не
+    #: затираются: «кто, когда, почему» нужно по каждой правке, а не по итогу.
+    reviews: list[FindingReview] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _single_review(cls, data: Any) -> Any:
+        # Разборы, сохранённые до истории решений, хранили одно поле `review`.
+        if isinstance(data, dict) and "review" in data:
+            data = dict(data)
+            single = data.pop("review")
+            if single and not data.get("reviews"):
+                data["reviews"] = [single]
+        return data
+
+    @property
+    def review(self) -> FindingReview | None:
+        """Действующее решение — последнее."""
+        return self.reviews[-1] if self.reviews else None

@@ -47,6 +47,7 @@ from app.session.store import (
     apply_finding_change,
     apply_score_override,
 )
+from app.scoring.review import has_finding
 
 log = logging.getLogger(__name__)
 LEASE_SECONDS = 15
@@ -249,18 +250,28 @@ class PostgresSessionStore:
                 )
                 if score is None:
                     raise LookupError(f"нет оценки занятия {session_id}")
+                # Повтор ручной отметки под блокировкой: ни изменения, ни второй строки аудита.
+                if (isinstance(record, FindingAdded)
+                        and has_finding(score.report or {}, record.finding.client_id)):
+                    return
                 before = score.score_final
+                findings = (score.report or {}).get("findings", [])
                 score.report = apply_finding_change(dict(score.report or {}), record)
                 score.score_final = score.report.get("score_final", score.score_final)
                 if isinstance(record, FindingReviewed):
+                    code = (findings[record.index].get("code", "?")
+                            if 0 <= record.index < len(findings) else "?")
                     actor, action = record.review.author, "finding.review"
-                    what = (f"#{record.index} {record.review.decision.value}; "
-                            f"reason_chars={len(record.review.reason)}")
+                    what = (f"#{record.index} {code} {record.review.decision.value}; "
+                            f"причина: {record.review.reason}")
                 else:
-                    actor, action = record.finding.author or "instructor", "finding.add"
-                    what = f"{record.finding.code.value}; fact_chars={len(record.finding.fact)}"
-                # Как у правки итога: текст решения живёт в разборе, в аудите —
-                # что изменено, кем и как сдвинулся балл.
+                    finding = record.finding
+                    actor, action = finding.author or "instructor", "finding.add"
+                    where = f", карточка {finding.card}" if finding.card is not None else ""
+                    what = (f"{finding.code.value}{where}; факт: {finding.fact}; "
+                            f"норма: {finding.norm or ''}")
+                # Решение по отметке меняет чужой балл: аудит сам по себе должен
+                # ответить «кто, когда, что и почему», даже если разбор потом правили.
                 db.add(AuditLog(
                     actor=actor, role=record.role, action=action,
                     object_id=str(session_id),
