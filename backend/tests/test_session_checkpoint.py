@@ -203,8 +203,9 @@ def test_concurrent_dds_queue_round_trips_with_each_timer_and_status():
     first_card = state.desk.active
     first_id = first_card.card_id
     first_service = state.card_services(first_card)[0]
+    first_card.on_event("dds.open")  # карточка открыта: 30 с остановлены
     first_card.set_service_status(first_service, ServiceStatus.ACCEPTED, "Принято в работу")
-    first_card.on_event("card.ack")
+    first_card.on_event("dds.record")
     second_id = state.desk.ordered()[1].card_id
     assert state.desk.open(second_id)
 

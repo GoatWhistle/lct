@@ -444,11 +444,13 @@ def test_instructor_criteria_change_timer_and_success_threshold(client, monkeypa
         reply_metric = next(item for item in score["metrics"] if item["key"] == "dds_reply")
         assert reply_metric["passed"]
         assert not any(item["key"] == "dds_grammar" for item in score["metrics"])
+        # 3 минуты — до первой записи, а она сделана сразу: незавершённая
+        # работа по времени не штрафуется (ответ заказчика, П.5).
         assert (
             next(item for item in score["metrics"] if item["key"] == "dds_work_time")[
                 "passed"
             ]
-            is False
+            is True
         )
         report = client.get(f"/api/sessions/{session_id}/report").json()
         assert report["criteria"] == {
@@ -503,9 +505,8 @@ def test_dds_statuses_do_not_require_phone_reports(client):
             finding["code"] == "D2" and "бригады" in finding["summary"]
             for finding in score["findings"]
         )
-        assert any(
-            finding["code"] == "E3" and "времени отработки" in finding["summary"]
-            for finding in score["findings"]
+        assert not any(finding["code"] == "E3" for finding in score["findings"]), (
+            "первая запись сделана сразу: дальше работы по времени не нормируются"
         )
         finding_codes = {finding["code"] for finding in score["findings"]}
         penalty_codes = {
@@ -706,22 +707,26 @@ def test_complete_dds_workflow_scores_100_with_assignment_without_call(client):
         control.__exit__(None, None, None)
 
 
-def test_dds_card_over_three_minutes_has_e3_finding_and_actual_deviation(client):
+def test_late_first_record_has_e3_and_long_work_after_it_does_not(client):
+    """П.5: 3 минуты — на открытие и первую запись; дальше работы идут часы."""
     session_id, control = start(
         client, criteria={"dds_card_work_time_limit_seconds": 60}
     )
     try:
         state = hub.get(session_id)
         with client.websocket_connect(f"/ws/station/{session_id}") as station:
-            read_until(station, "card.received")
+            received = read_until(station, "card.received")
             snapshot = read_until(station, "station.state")["snapshot"]
             service = snapshot["services"][0]
+            station.send_json({"type": "card.open", "card_id": received["card"]["card_id"]})
+            read_until(station, "station.state")
+            assert state.desk.active.timers.measured_ms(TimerCode.DDS_ACK) is not None
+            state.desk.active.timers.timers[TimerCode.DDS_WORK].started_at = time.monotonic() - 61
             station.send_json(
                 {"type": "card.status", "service": service, "status": "accepted",
                  "comment": "Основание: доклад старшего.\nСведения: карточка принята."}
             )
             snapshot = read_until(station, "station.state")["snapshot"]
-            state.desk.active.timers.timers[TimerCode.DDS_WORK].started_at = time.monotonic() - 61
             crew = next(
                 option
                 for option in snapshot["crew_options"]
@@ -743,8 +748,8 @@ def test_dds_card_over_three_minutes_has_e3_finding_and_actual_deviation(client)
         )
         assert not metric["passed"]
         assert "61 с" in metric["fact"] and "+1 с" in metric["fact"]
-        finding = next(item for item in score["findings"] if item["code"] == "E3")
-        assert "времени отработки карточки" in finding["summary"]
+        findings = [item for item in score["findings"] if item["code"] == "E3"]
+        assert len(findings) == 1 and "первая запись" in findings[0]["summary"]
     finally:
         control.__exit__(None, None, None)
 
@@ -1033,7 +1038,9 @@ def test_concurrent_dds_cards_keep_independent_state_and_timers(client):
             item["key"] == "dds_grammar"
             for item in state.score["metrics"]
         )
-        assert any(item["code"] == "E3" for item in state.score["findings"])
+        assert not any(item["code"] == "E3" for item in state.score["findings"]), (
+            "обе карточки получили первую запись сразу"
+        )
         report = client.get(f"/api/sessions/{session_id}/report").json()
         assert report["scenario_id"] == "fire-apartment-l2"
         assert len(report["card_results"]) == 2

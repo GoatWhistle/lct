@@ -372,9 +372,9 @@ export function Instructor() {
                       <strong>{card.active ? "Сейчас в работе: " : "Ожидает: "}{card.title}</strong>
                       {card.address && <span>{card.address}</span>}
                       <small>{card.managed_service ? `${card.managed_service} · ` : ""}{SERVICE_STATUS_LABELS[card.service_status]} · {CARD_STATUS_LABELS[card.card_status]}</small>
-                      <small>{card.timer_stopped ? `Первичная реакция за ${Math.ceil(card.elapsed_ms / 1000)} с` :
-                        card.elapsed_ms > card.limit_ms ? `Просрочена первичная реакция · ${Math.ceil((card.elapsed_ms - card.limit_ms) / 1000)} с` :
-                          `На первичное решение осталось ${Math.ceil((card.limit_ms - card.elapsed_ms) / 1000)} с`}</small>
+                      <small>{card.timer_stopped ? `Открыта за ${Math.ceil(card.elapsed_ms / 1000)} с` :
+                        card.elapsed_ms > card.limit_ms ? `Просрочено открытие · ${Math.ceil((card.elapsed_ms - card.limit_ms) / 1000)} с` :
+                          `До открытия осталось ${Math.ceil((card.limit_ms - card.elapsed_ms) / 1000)} с`}</small>
                     </article>)}
                     {item.dds_snapshot.pending_cards_count ? <p className="ref">Ещё поступят по сценарию: {item.dds_snapshot.pending_cards_count}</p> : null}
                     {item.dds_snapshot.log.length > 0 && <div className="active-session-log">
@@ -395,7 +395,7 @@ export function Instructor() {
                 <td>{item.exercise === "dds" ? `Открытых карточек: ${item.dds_open_cards}` : "—"}</td>
                 <td className={item.dds_overdue_cards ? "state-violated" : "state-ok"}>
                   {item.dds_overdue_cards || item.dds_work_overdue_cards
-                    ? `Просрочено: первичная реакция ${item.dds_overdue_cards}; отработка карточки ${item.dds_work_overdue_cards}`
+                    ? `Просрочено: открытие ${item.dds_overdue_cards}; первая запись ${item.dds_work_overdue_cards}`
                     : "Нормативы не нарушены"}
                 </td>
                 <td className={worstSignalSeverity(item.signals) ? `state-${worstSignalSeverity(item.signals)}` : item.presence_known ? "state-ok" : undefined}>
@@ -631,9 +631,9 @@ export function Instructor() {
                     <summary>Настроить нормативы и критерии оценки</summary>
                     <p className="ref">
                       {exercise === "dds"
-                        ? `По умолчанию: решение за ${decisionTimeLimit} с, отработка карточки за ${ddsCardWorkTimeLimit} с; новые карточки поступают каждые ${ddsArrivalIntervalSeconds} с.`
+                        ? `По умолчанию: открытие карточки за ${decisionTimeLimit} с, первая запись за ${ddsCardWorkTimeLimit} с; новые карточки поступают каждые ${ddsArrivalIntervalSeconds} с.`
                         : exercise === "card_dds"
-                          ? `По умолчанию: заполнение КИО за ${cardFillTimeLimit} с, отработка карточки ДДС за ${ddsCardWorkTimeLimit} с.`
+                          ? `По умолчанию: заполнение КИО за ${cardFillTimeLimit} с, первая запись ДДС за ${ddsCardWorkTimeLimit} с.`
                           : exercise === "card"
                             ? `По умолчанию: заполнение КИО за ${cardFillTimeLimit} с.`
                             : "Для звонка действуют нормативы приёма вызова по ГОСТ."}
@@ -652,8 +652,8 @@ export function Instructor() {
                     </label>
                   </>}
                   {(exercise === "dds" || exercise === "card_dds") && <label className="lesson-criterion">
-                    Решение ДДС, секунд
-                    <LessonNumberInput label="Лимит решения ДДС, секунд" value={decisionTimeLimit}
+                    Открытие карточки ДДС, секунд
+                    <LessonNumberInput label="Лимит открытия карточки ДДС, секунд" value={decisionTimeLimit}
                       min={5} max={300} fallback={30} onCommit={setDecisionTimeLimit} />
                   </label>}
                   {(exercise === "card" || exercise === "card_dds") && <label className="lesson-criterion">
@@ -663,11 +663,11 @@ export function Instructor() {
                     <small className="ref">По умолчанию 180 секунд; в отчёте будут факт и отклонение от норматива.</small>
                   </label>}
                   {(exercise === "dds" || exercise === "card_dds") && <label className="lesson-criterion">
-                    Норматив отработки карточки ДДС, секунд
-                    <LessonNumberInput label="Норматив отработки карточки ДДС, секунд"
+                    Первая запись по карточке ДДС, секунд
+                    <LessonNumberInput label="Норматив первой записи по карточке ДДС, секунд"
                       value={ddsCardWorkTimeLimit} min={30} max={1800} fallback={180}
                       onCommit={setDdsCardWorkTimeLimit} />
-                    <small className="ref">По умолчанию 180 секунд; не заменяет 30-секундное первичное решение.</small>
+                    <small className="ref">По умолчанию 180 секунд от открытия до первого статуса с текстом; дальше работы по времени не нормируются.</small>
                   </label>}
                   {(exercise === "dds" || exercise === "card_dds") && <>
                     <label className="mode-choice">

@@ -59,10 +59,11 @@ NORMATIVES: dict[TimerCode, Normative] = {
     TimerCode.DDS_ACK: Normative(
         # 30 секунд — ПП РФ № 1931 и памятка АРМ-112, а не ГОСТ: до получения
         # датасета здесь стояло 4 секунды, взятые по догадке (docs/spec/DATASET.md).
+        # Отсчёт — от появления карточки до её открытия (ответ заказчика, П.5).
         code=TimerCode.DDS_ACK,
-        title="Подтверждение получения карточки",
+        title="Открытие карточки ДДС",
         limit_ms=30_000,
-        ref="ПП РФ № 1931",
+        ref="ПП РФ № 1931; ответ заказчика, П.5",
     ),
     TimerCode.CARD_FILL: Normative(
         code=TimerCode.CARD_FILL,
@@ -72,9 +73,9 @@ NORMATIVES: dict[TimerCode, Normative] = {
     ),
     TimerCode.DDS_WORK: Normative(
         code=TimerCode.DDS_WORK,
-        title="Отработка карточки ДДС",
+        title="Первая запись по карточке ДДС",
         limit_ms=180_000,
-        ref="ТЗ задачи № 9; сессия вопросов и ответов 16.09.2026",
+        ref="ТЗ задачи № 9; ответ заказчика, П.5",
     ),
     TimerCode.ZONE_CHECK: Normative(
         code=TimerCode.ZONE_CHECK, title="Проверка зоны ответственности", limit_ms=30_000

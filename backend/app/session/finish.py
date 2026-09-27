@@ -13,7 +13,6 @@ import time
 from uuid import UUID
 
 from app.domain.events import CallEnded, CallEndReason, Exercise, ScoreReady, SessionEnded, SessionPaused
-from app.domain.statuses import ServiceStatus, current
 from app.domain.timers import TimerCode
 from app.scoring.ai_coach import coach
 from app.scoring.dispatcher import dispatcher_metrics, evaluate_dispatcher
@@ -76,16 +75,11 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
     work_elapsed_ms = card.timers.measured_ms(TimerCode.DDS_WORK)
     if work_elapsed_ms is None and work_timer is not None and work_timer.started_at is not None:
         work_elapsed_ms = work_timer.current_ms(time.monotonic())
-    terminal = bool(services) and all(
-        current(card.status_log, service) in {
-            ServiceStatus.COMPLETED,
-            ServiceStatus.DECLINED,
-            ServiceStatus.REFUSED,
-        }
-        for service in services
-    )
+    # 3 минуты — на открытие и первую запись (статус с текстом), а не на
+    # закрытие: работы по карточке могут идти часы и дни (ответ заказчика, П.5).
+    recorded = any(mark.comment.strip() for mark in card.status_log if mark.service in services)
     work_metric, work_finding = time_metric(
-        DDS_WORK_TIME, work_elapsed_ms, work_limit_ms, completed=terminal
+        DDS_WORK_TIME, work_elapsed_ms, work_limit_ms, completed=recorded
     )
     weighted.metrics.append(work_metric)
     if work_finding is not None:

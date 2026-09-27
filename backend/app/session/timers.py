@@ -41,6 +41,8 @@ STARTS: dict[str, tuple[TimerCode, ...]] = {
     "call.incoming": (TimerCode.ANSWER,),
     "call.answer": (TimerCode.INTERVIEW,),
     "dds.dispatch": (TimerCode.DDS_ACK, TimerCode.CLOSE),
+    # Ответ заказчика (П.5): 30 с — от появления карточки в строке сообщений
+    # до её открытия, 3 мин — на открытие и первую запись.
     "dds.open": (TimerCode.DDS_WORK,),
     "card.start": (TimerCode.CARD_FILL,),
     "card.received": (TimerCode.ZONE_CHECK,),
@@ -55,10 +57,12 @@ STOPS: dict[str, tuple[TimerCode, ...]] = {
     # Справка и передача в другой регион заканчивают опрос так же, как передача
     # карточки: норматив опроса не должен тикать после решения (lct-36).
     "call.resolve": (TimerCode.INTERVIEW,),
-    "card.ack": (TimerCode.DDS_ACK,),
     "card.submit": (TimerCode.CARD_FILL,),
     "card.end": (TimerCode.CARD_FILL,),
-    "dds.complete": (TimerCode.DDS_WORK,),
+    "dds.open": (TimerCode.DDS_ACK,),
+    # Первая запись — первый ручной статус с текстом. Дальше работы могут идти
+    # часы и дни: остальные статусы по времени не нормируются (П.5).
+    "dds.record": (TimerCode.DDS_WORK,),
     "dds.finish": (TimerCode.DDS_WORK,),
     "zone.decision": (TimerCode.ZONE_CHECK,),
     "crew.arrived": (TimerCode.CLOSE,),

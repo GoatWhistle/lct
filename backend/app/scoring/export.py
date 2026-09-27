@@ -53,7 +53,7 @@ def to_csv(report: SessionReport) -> bytes:
     row("Занятие", "", "Сценарий", report.scenario_id)
     row("Занятие", "", "Режим", report.mode.value)
     row("Занятие", "", "Попытка", report.attempt)
-    row("Критерии", "", "Лимит решения ДДС, с", report.criteria.decision_time_limit_seconds)
+    row("Критерии", "", "Лимит открытия карточки ДДС, с", report.criteria.decision_time_limit_seconds)
     row("Критерии", "", "Лимит реакции на доклад бригады, с",
         report.criteria.dds_report_reaction_limit_seconds
         if report.criteria.dds_report_reaction_enabled else "не применяется")
@@ -172,7 +172,7 @@ def to_pdf(report: SessionReport) -> bytes:
         ("Сценарий", report.scenario_id),
         ("Режим", report.mode.value),
         ("Попытка", report.attempt),
-        ("Лимит решения ДДС", f"{report.criteria.decision_time_limit_seconds} с"),
+        ("Лимит открытия карточки ДДС", f"{report.criteria.decision_time_limit_seconds} с"),
         ("Лимит реакции на доклад бригады",
          f"{report.criteria.dds_report_reaction_limit_seconds} с"
          if report.criteria.dds_report_reaction_enabled else "не применяется"),

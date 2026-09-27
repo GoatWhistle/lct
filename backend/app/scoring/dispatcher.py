@@ -272,36 +272,36 @@ def evaluate_dispatcher(
                 ),
             ))
 
-        # D1 — первичного статуса нет либо он проставлен позже норматива.
+        # D1 — карточка открыта позже норматива или не открыта вовсе. 30 с идут
+        # от появления карточки в строке сообщений до её открытия (ответ
+        # заказчика, П.5); `elapsed_ms` — зафиксированное время открытия.
+        if elapsed_ms is None or elapsed_ms > deadline_ms:
+            findings.append(
+                _finding(
+                    service, ErrorCode.D1,
+                    (f"{service}: карточка открыта с нарушением срока"
+                     if elapsed_ms is not None else f"{service}: карточка не открыта"),
+                    fact=(
+                        f"открыта через {elapsed_ms // 1000} с"
+                        if elapsed_ms is not None
+                        else "карточка не открыта до конца занятия"
+                    ),
+                    norm=f"открыть карточку в течение {deadline_ms // 1000} с",
+                )
+            )
+
+        # D1 — первичного статуса нет: карточка ушла в «Не оповещено».
         primary = next((mark for mark in marks if mark.status in PRIMARY), None)
         if primary is None:
             findings.append(
                 _finding(
                     service, ErrorCode.D1,
                     f"{service}: статус реагирования не проставлен",
-                    fact=(
-                        f"прошло {elapsed_ms // 1000} с"
-                        if elapsed_ms is not None
-                        else "карточка осталась без отметки"
-                    ),
-                    norm=f"первичный статус в течение {deadline_ms // 1000} с",
+                    fact="карточка осталась без первичного статуса",
+                    norm="проставить «Принята» или «Не принята» с комментарием",
                 )
             )
             continue
-
-        if elapsed_ms is None or elapsed_ms > deadline_ms:
-            findings.append(
-                _finding(
-                    service, ErrorCode.D1,
-                    f"{service}: первичный статус проставлен с нарушением срока",
-                    fact=(
-                        f"прошло {elapsed_ms // 1000} с"
-                        if elapsed_ms is not None
-                        else "время первичной отметки не зафиксировано"
-                    ),
-                    norm=f"первичный статус в течение {deadline_ms // 1000} с",
-                )
-            )
 
         for mark in marks:
             # D4 — отказ без комментария.
@@ -435,9 +435,9 @@ def dispatcher_metrics(
         primary = next((mark for mark in marks if mark.status in PRIMARY), None)
         add("dds_primary", "решение по карточке", primary is not None,
             primary.status.value if primary else "решение отсутствует", "Принята или Не принята", 2.0)
-        add("dds_ack", f"первичная отметка за {deadline_ms // 1000} с",
+        add("dds_ack", f"открытие карточки за {deadline_ms // 1000} с",
             elapsed is not None and elapsed <= deadline_ms,
-            f"{elapsed / 1000:.1f} с" if elapsed is not None else "не отмечено",
+            f"{elapsed / 1000:.1f} с" if elapsed is not None else "карточка не открыта",
             f"≤ {deadline_ms // 1000} с")
         if primary is None:
             continue

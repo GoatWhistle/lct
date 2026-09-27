@@ -75,9 +75,9 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
         {" · "}<a href={`/api/sessions/${report.session_id}/report.pdf`}>документ (PDF)</a>
       </p>
       <p className={report.passed ? "state-ok" : "state-violated"}>
-        {report.passed ? "Зачёт" : "Не зачтено"}: на разборе {report.failed_metrics} пунктов; допустимо пропустить {report.criteria.allowed_errors}. {report.exercise === "dds" && <>На первичное решение ДДС отводится
+        {report.passed ? "Зачёт" : "Не зачтено"}: на разборе {report.failed_metrics} пунктов; допустимо пропустить {report.criteria.allowed_errors}. {report.exercise === "dds" && <>На открытие карточки ДДС отводится
           {` ${report.criteria.decision_time_limit_seconds} с`}</>}
-        {report.exercise === "dds" && <>; норматив отработки карточки ДДС —
+        {report.exercise === "dds" && <>; на первую запись по карточке —
           {` ${report.criteria.dds_card_work_time_limit_seconds ?? 180} с`}</>}
         {report.exercise === "card" && <>Норматив заполнения КИО —
           {` ${report.criteria.card_fill_time_limit_seconds ?? 180} с`}</>}

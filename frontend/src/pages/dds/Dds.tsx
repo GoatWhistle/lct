@@ -498,7 +498,7 @@ export function Dds() {
           <td data-label="Статус службы"><span className="dds-cell-value">
             <span>{item.managed_service || "ДДС"}: {SERVICE_STATUS_LABELS[item.service_status]}</span>
             <small className={!item.timer_stopped && item.elapsed_ms > item.limit_ms ? "state-violated" : ""}>
-              {item.timer_stopped ? "решение за" : "до первичного решения"} {Math.ceil(item.elapsed_ms / 1000)} с
+              {item.timer_stopped ? "открыта за" : "не открыта"} {Math.ceil(item.elapsed_ms / 1000)} с
             </small>
           </span></td>
         </tr>})}
