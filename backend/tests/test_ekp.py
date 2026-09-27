@@ -4,6 +4,8 @@
 производен и не выбирается руками, сценарий размечается признаками.
 """
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -91,6 +93,31 @@ def test_all_customer_ticket_cards_are_complete_and_classified():
         "t32-1-carjacking",
         "t32-3-street-lights",
     }
+
+
+def test_ticket_ekp_codes_and_notify_lists_match_current_baseline():
+    """Изменение правил оповещения не должно незаметно переписать 96 эталонов.
+
+    При намеренной смене версии ЕКП сначала сверяют каждый изменившийся список
+    с источником и методистом, затем обновляют контрольную сумму.
+    """
+    cards = [
+        scenario
+        for scenario in load_library(Path(__file__).resolve().parents[2] / "scenarios")
+        if scenario.ticket is not None
+    ]
+    assert len(cards) == 96
+    manifest = {
+        scenario.id: {
+            "code": scenario.ground_truth.incident_code,
+            "notify": scenario.ground_truth.notify,
+        }
+        for scenario in cards
+    }
+    encoded = json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    assert hashlib.sha256(encoded.encode()).hexdigest() == (
+        "2e3d49cc1e4a47bf8813437207a4105799c5721cc54bddc795730267ebb44df4"
+    )
 
 
 def test_ticket_two_preserves_moscow_and_does_not_invent_missing_victim_data():
