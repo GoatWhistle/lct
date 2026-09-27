@@ -97,6 +97,7 @@ export const GROUPS: FieldGroup[] = [
       { path: "incident_type", label: "Тип происшествия", kind: "select", options: INCIDENT },
       { path: "victims_count", label: "Пострадавших", kind: "number" },
       { path: "is_emergency", label: "Признак ЧС", kind: "bool" },
+      { path: "offence_signs", label: "Признаки правонарушения", kind: "bool" },
       { path: "life_threat", label: "Угроза жизни", kind: "bool" },
       { path: "evacuation_needed", label: "Нужна эвакуация", kind: "bool" },
     ],

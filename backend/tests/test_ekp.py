@@ -409,6 +409,43 @@ def test_gasified_object_brings_mosgaz():
     assert "МОСГАЗ" in card.notify
 
 
+def test_explicit_offence_signs_add_police_and_removal_recalculates_notify():
+    from app.domain.kio import apply_patch, modifiers
+
+    signs = ["на улице", "мусор", "открытое пламя"]
+    base = derive_incident(KIO(signs=signs))
+    assert base.incident_code == "1010101"
+    assert "МВД" not in base.notify
+
+    stated = apply_patch(base, {"offence_signs": True})
+    assert "offence" in modifiers(stated)
+    assert set(stated.notify) == set(base.notify) | {"МВД"}
+
+    denied = apply_patch(stated, {"offence_signs": False})
+    assert denied.notify == base.notify
+    unknown = apply_patch(stated, {"offence_signs": None})
+    assert unknown.notify == base.notify
+
+
+def test_offence_kind_also_adds_police_until_both_sources_are_removed():
+    from app.domain.kio import apply_patch, modifiers
+
+    base = derive_incident(KIO(signs=["на улице", "мусор", "открытое пламя"]))
+    stated = apply_patch(base, {"police.offence_kind": "поджог"})
+    assert "offence" in modifiers(stated)
+    assert set(stated.notify) == set(base.notify) | {"МВД"}
+
+    denied_flag = apply_patch(stated, {"offence_signs": False})
+    assert "МВД" in denied_flag.notify, "явно указанный вид правонарушения остаётся источником"
+    with_both = apply_patch(stated, {"offence_signs": True})
+    assert modifiers(with_both).count("offence") == 1
+    without_kind = apply_patch(with_both, {"police.offence_kind": "  "})
+    assert "МВД" in without_kind.notify
+    without_flag = apply_patch(without_kind, {"offence_signs": False})
+    assert without_flag.notify == base.notify
+    assert "offence" not in modifiers(without_flag)
+
+
 def test_removed_modifier_recalculates_notify_without_stale_service():
     from app.domain.kio import KIO, FireDetails, apply_patch, derive_incident
 
