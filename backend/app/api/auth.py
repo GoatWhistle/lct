@@ -51,6 +51,8 @@ _INSTANCE = hashlib.sha256(
 ).hexdigest()
 _generations: dict[str, int] = {}
 _active_sockets: dict[str, weakref.WeakKeyDictionary] = {}
+# Logins already revoked because their users row disappeared.
+_vanished: set[str] = set()
 AUTH_GENERATION_SYNC_SECONDS = 1.0
 AUTH_GENERATION_MAX_AGE_SECONDS = 2.0
 _generations_synced_at: float | None = None
@@ -121,10 +123,13 @@ async def sync_generations() -> None:
     # The local-only dev-token principal is synthetic, never stored in users;
     # a DB watcher must not revoke its in-memory generation during test/demo
     # flows that deliberately exercise account invalidation.
+    # The revoked generation stays cached: dropping it would make the next
+    # lookup fall back to 0 and re-accept cookies issued before the revocation.
     synthetic = {"dev"} if get_settings().dev_auth_bypass else set()
-    for login in _generations.keys() - current.keys() - synthetic:
+    _vanished.intersection_update(_generations.keys() - current.keys())
+    for login in _generations.keys() - current.keys() - synthetic - _vanished:
         invalidate_login(login)
-        _generations.pop(login, None)
+        _vanished.add(login)
     global _generations_synced_at
     _generations_synced_at = time.monotonic()
 
