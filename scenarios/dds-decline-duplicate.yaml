@@ -1,0 +1,54 @@
+# Эталонный отказ ДДС: дубль. Памятка АРМ-112 называет три причины «Не принята» —
+# не наша зона, не наша компетенция, дубль (docs/spec/DATASET.md). Здесь карточка
+# повторяет уже принятый вызов: реагирование идёт, вторая бригада не нужна.
+# Мотивированный отказ — без отметок; «Принята» вопреки эталону — D2.
+id: dds-decline-duplicate
+title: "Повторный вызов: пожар в подъезде уже в работе"
+type: fire
+level: L2
+topics: [fires]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [жилой дом, подъезд, открытое пламя]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview,    mood: worried }
+
+first_line: "Алло, я уже звонил. В подъезде горит, пожарные подъехали, но дыма всё больше."
+
+facts:
+  - id: f_what_burns
+    value: "повторный вызов по уже зарегистрированному пожару в подъезде; пожарная бригада на месте, заявитель видит машины у дома"
+    reveal_on: { question: q_what_burns }
+  - id: f_address
+    value: "Москва, улица Академика Королёва, 15, подъезд 2"
+    reveal_on: { question: q_address }
+  - id: f_people
+    value: "сам заявитель вышел на улицу, соседи выходят"
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Петров Андрей Викторович, телефон 915-204-18-33"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address,    fact: f_address }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people,     fact: f_people }
+  - { id: q_caller,     fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Москва, улица Академика Королёва, 15"
+  victims: 0
+
+dds_decision:
+  expected: decline
+  reason: "дубль: по этому адресу реагирование уже зарегистрировано, бригада работает на месте"
+
+tree:
+  pregenerated: false

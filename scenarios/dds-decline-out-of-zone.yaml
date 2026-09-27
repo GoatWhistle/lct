@@ -1,0 +1,55 @@
+# Эталонный отказ ДДС: не наша зона. Памятка АРМ-112 называет три причины
+# «Не принята» — не наша зона, не наша компетенция, дубль (docs/spec/DATASET.md).
+# Здесь адрес за пределами Москвы: карточка дошла до московской службы, но
+# реагирует служба области. Мотивированный отказ — без отметок; «Принята»
+# вопреки эталону — D2.
+id: dds-decline-out-of-zone
+title: "Возгорание мусора за пределами зоны ответственности"
+type: fire
+level: L2
+topics: [fires]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+signs: [на улице, мусор, открытое пламя]
+
+persona:
+  base: calm
+  arc:
+    - { stage: registration, mood: calm }
+    - { stage: interview,    mood: calm }
+
+first_line: "Здравствуйте. У нас во дворе мусорный бак горит."
+
+facts:
+  - id: f_what_burns
+    value: "горит мусорный бак во дворе, пламя открытое, рядом никого"
+    reveal_on: { question: q_what_burns }
+  - id: f_address
+    value: "Московская область, город Химки, Ленинградская улица, 24, двор"
+    reveal_on: { question: q_address }
+  - id: f_people
+    value: пострадавших нет
+    reveal_on: { question: q_people }
+  - id: f_caller
+    value: "Кузнецова Ольга Петровна, телефон 926-310-55-02"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address,    fact: f_address }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people,     fact: f_people }
+  - { id: q_caller,     fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "Московская область, город Химки, Ленинградская улица, 24"
+  victims: 0
+
+dds_decision:
+  expected: decline
+  reason: "не наша зона: адрес в Московской области, реагирует служба области"
+
+tree:
+  pregenerated: false
