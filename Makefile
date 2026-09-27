@@ -47,7 +47,7 @@ sip: ## Собрать и поднять локальный Asterisk SIP/VoIP
 offline-sip: ## Поднять SIP из уже собранного образа без сети
 	$(COMPOSE) -f docker-compose.yml -f docker-compose.sip.yml up --pull never --no-build -d sip
 
-sip-credentials: ## Показать локальные пароли софтфонов 6001–6003 и WebRTC 6101–6102
+sip-credentials: ## Показать локальные пароли софтфонов 6001–6003 и WebRTC 6101–6103
 	$(COMPOSE) -f docker-compose.yml -f docker-compose.sip.yml exec -T sip cat /var/lib/lct-sip/credentials.env
 
 sip-test: ## Проверить регистрацию, звонок, RTP и задержку (args="--rtp-host-offset 1000")

@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Debrief } from "@/features/debrief/Debrief";
+import { FindingReview } from "@/features/debrief/FindingReview";
 import { Director } from "@/features/instructor/Director";
 import { ScoreWeightsEditor } from "@/features/instructor/ScoreWeightsEditor";
 import { ScenarioEditor } from "@/features/instructor/ScenarioEditor";
@@ -92,6 +93,8 @@ export function Instructor() {
   const [decisionTimeLimit, setDecisionTimeLimit] = useState(30);
   const [cardFillTimeLimit, setCardFillTimeLimit] = useState(180);
   const [ddsCardWorkTimeLimit, setDdsCardWorkTimeLimit] = useState(180);
+  const [ddsReportReactionEnabled, setDdsReportReactionEnabled] = useState(false);
+  const [ddsReportReactionLimit, setDdsReportReactionLimit] = useState(45);
   const [allowedErrors, setAllowedErrors] = useState(0);
   const [requireCorrectGrammar, setRequireCorrectGrammar] = useState(true);
   const [lessonScoreWeights, setLessonScoreWeights] = useState<Record<string, number>>({});
@@ -290,6 +293,7 @@ export function Instructor() {
       && !(exercise === "dds" && wholeTicket)
       ? visibleScenarios.filter((item) => item.outcome === "card").map((item) => item.id)
       : undefined;
+    const reportReactionEnabled = (exercise === "dds" || exercise === "card_dds") && ddsReportReactionEnabled;
     const sent = control.start(sessionId, {
       scenarioId: primaryScenarioId,
       mode,
@@ -306,14 +310,18 @@ export function Instructor() {
         decision_time_limit_seconds: decisionTimeLimit,
         card_fill_time_limit_seconds: cardFillTimeLimit,
         dds_card_work_time_limit_seconds: ddsCardWorkTimeLimit,
+        dds_report_reaction_enabled: reportReactionEnabled,
+        dds_report_reaction_limit_seconds: ddsReportReactionLimit,
         allowed_errors: allowedErrors,
         require_correct_grammar: requireCorrectGrammar,
-        score_weights: lessonScoreWeights,
+        score_weights: reportReactionEnabled
+          ? lessonScoreWeights
+          : Object.fromEntries(Object.entries(lessonScoreWeights).filter(([key]) => key !== "dds_report_reaction")),
       },
     });
     if (sent) toStart.current = null;
   }, [sessionId, control, scenarioId, extraScenarioIds, mode, trainee, traineeId, trainees.data,
-    exercise, decisionTimeLimit, cardFillTimeLimit, ddsCardWorkTimeLimit, allowedErrors, requireCorrectGrammar, wholeTicket, selectedTicketScenarios,
+    exercise, decisionTimeLimit, cardFillTimeLimit, ddsCardWorkTimeLimit, ddsReportReactionEnabled, ddsReportReactionLimit, allowedErrors, requireCorrectGrammar, wholeTicket, selectedTicketScenarios,
     ddsArrivalIntervalSeconds, ddsMaxWaiting, lessonScoreWeights, scenarios.data,
     randomScenario, visibleScenarios]);
 
@@ -364,9 +372,9 @@ export function Instructor() {
                       <strong>{card.active ? "Сейчас в работе: " : "Ожидает: "}{card.title}</strong>
                       {card.address && <span>{card.address}</span>}
                       <small>{card.managed_service ? `${card.managed_service} · ` : ""}{SERVICE_STATUS_LABELS[card.service_status]} · {CARD_STATUS_LABELS[card.card_status]}</small>
-                      <small>{card.timer_stopped ? `Первичная реакция за ${Math.ceil(card.elapsed_ms / 1000)} с` :
-                        card.elapsed_ms > card.limit_ms ? `Просрочена первичная реакция · ${Math.ceil((card.elapsed_ms - card.limit_ms) / 1000)} с` :
-                          `На первичное решение осталось ${Math.ceil((card.limit_ms - card.elapsed_ms) / 1000)} с`}</small>
+                      <small>{card.timer_stopped ? `Открыта за ${Math.ceil(card.elapsed_ms / 1000)} с` :
+                        card.elapsed_ms > card.limit_ms ? `Просрочено открытие · ${Math.ceil((card.elapsed_ms - card.limit_ms) / 1000)} с` :
+                          `До открытия осталось ${Math.ceil((card.limit_ms - card.elapsed_ms) / 1000)} с`}</small>
                     </article>)}
                     {item.dds_snapshot.pending_cards_count ? <p className="ref">Ещё поступят по сценарию: {item.dds_snapshot.pending_cards_count}</p> : null}
                     {item.dds_snapshot.log.length > 0 && <div className="active-session-log">
@@ -387,7 +395,7 @@ export function Instructor() {
                 <td>{item.exercise === "dds" ? `Открытых карточек: ${item.dds_open_cards}` : "—"}</td>
                 <td className={item.dds_overdue_cards ? "state-violated" : "state-ok"}>
                   {item.dds_overdue_cards || item.dds_work_overdue_cards
-                    ? `Просрочено: первичная реакция ${item.dds_overdue_cards}; отработка карточки ${item.dds_work_overdue_cards}`
+                    ? `Просрочено: открытие ${item.dds_overdue_cards}; первая запись ${item.dds_work_overdue_cards}`
                     : "Нормативы не нарушены"}
                 </td>
                 <td className={worstSignalSeverity(item.signals) ? `state-${worstSignalSeverity(item.signals)}` : item.presence_known ? "state-ok" : undefined}>
@@ -623,9 +631,9 @@ export function Instructor() {
                     <summary>Настроить нормативы и критерии оценки</summary>
                     <p className="ref">
                       {exercise === "dds"
-                        ? `По умолчанию: решение за ${decisionTimeLimit} с, отработка карточки за ${ddsCardWorkTimeLimit} с; новые карточки поступают каждые ${ddsArrivalIntervalSeconds} с.`
+                        ? `По умолчанию: открытие карточки за ${decisionTimeLimit} с, первая запись за ${ddsCardWorkTimeLimit} с; новые карточки поступают каждые ${ddsArrivalIntervalSeconds} с.`
                         : exercise === "card_dds"
-                          ? `По умолчанию: заполнение КИО за ${cardFillTimeLimit} с, отработка карточки ДДС за ${ddsCardWorkTimeLimit} с.`
+                          ? `По умолчанию: заполнение КИО за ${cardFillTimeLimit} с, первая запись ДДС за ${ddsCardWorkTimeLimit} с.`
                           : exercise === "card"
                             ? `По умолчанию: заполнение КИО за ${cardFillTimeLimit} с.`
                             : "Для звонка действуют нормативы приёма вызова по ГОСТ."}
@@ -644,8 +652,8 @@ export function Instructor() {
                     </label>
                   </>}
                   {(exercise === "dds" || exercise === "card_dds") && <label className="lesson-criterion">
-                    Решение ДДС, секунд
-                    <LessonNumberInput label="Лимит решения ДДС, секунд" value={decisionTimeLimit}
+                    Открытие карточки ДДС, секунд
+                    <LessonNumberInput label="Лимит открытия карточки ДДС, секунд" value={decisionTimeLimit}
                       min={5} max={300} fallback={30} onCommit={setDecisionTimeLimit} />
                   </label>}
                   {(exercise === "card" || exercise === "card_dds") && <label className="lesson-criterion">
@@ -655,12 +663,26 @@ export function Instructor() {
                     <small className="ref">По умолчанию 180 секунд; в отчёте будут факт и отклонение от норматива.</small>
                   </label>}
                   {(exercise === "dds" || exercise === "card_dds") && <label className="lesson-criterion">
-                    Норматив отработки карточки ДДС, секунд
-                    <LessonNumberInput label="Норматив отработки карточки ДДС, секунд"
+                    Первая запись по карточке ДДС, секунд
+                    <LessonNumberInput label="Норматив первой записи по карточке ДДС, секунд"
                       value={ddsCardWorkTimeLimit} min={30} max={1800} fallback={180}
                       onCommit={setDdsCardWorkTimeLimit} />
-                    <small className="ref">По умолчанию 180 секунд; не заменяет 30-секундное первичное решение.</small>
+                    <small className="ref">По умолчанию 180 секунд от открытия до первого статуса с текстом; дальше работы по времени не нормируются.</small>
                   </label>}
+                  {(exercise === "dds" || exercise === "card_dds") && <>
+                    <label className="mode-choice">
+                      <input type="checkbox" checked={ddsReportReactionEnabled}
+                        onChange={(event) => setDdsReportReactionEnabled(event.target.checked)} />
+                      Оценивать срок отметки статуса после доклада бригады
+                    </label>
+                    {ddsReportReactionEnabled && <label className="lesson-criterion">
+                      Лимит реакции на доклад бригады, секунд
+                      <LessonNumberInput label="Лимит реакции на доклад бригады, секунд"
+                        value={ddsReportReactionLimit} min={5} max={600} fallback={45}
+                        onCommit={setDdsReportReactionLimit} />
+                      <small className="ref">Учебный лимит при включённом критерии; исходное значение — 45 секунд.</small>
+                    </label>}
+                  </>}
                   <label className="lesson-criterion">
                     Допустимо нарушенных метрик
                     <LessonNumberInput label="Допустимое число ошибок" value={allowedErrors}
@@ -672,6 +694,7 @@ export function Instructor() {
                     Грамматика карточки оператора 112 входит в оценку
                   </label>}
                   <ScoreWeightsEditor exercise={exercise === "card_dds" ? "card_dds" : exercise}
+                    reportReactionEnabled={(exercise === "dds" || exercise === "card_dds") && ddsReportReactionEnabled}
                     values={lessonScoreWeights} onChange={setLessonScoreWeights} />
                   <small className="ref">Нормативы ГОСТ для приёма вызова не изменяются.</small>
                   </details>
@@ -708,12 +731,20 @@ export function Instructor() {
           {sessionId && session.title && (
             <p>
               {session.ended ? "занятие завершено" : (
-                <button type="button" onClick={control.stop}>Завершить занятие</button>
+                <>
+                  <button type="button" onClick={control.stop}>Завершить занятие</button>{" "}
+                  {session.paused ? (
+                    <button type="button" onClick={control.resume}>Возобновить</button>
+                  ) : (
+                    <button type="button" onClick={control.pause}>Пауза</button>
+                  )}
+                  {session.paused && <small className="ref" role="status">Занятие на паузе — время не идёт</small>}
+                </>
               )}
             </p>
           )}
           {sessionId && session.title && !session.ended && (
-            exercise === "call" && <Director onInject={control.inject} disabled={control.status !== "open"} error={session.error} />
+            exercise === "call" && <Director onInject={control.inject} disabled={control.status !== "open" || session.paused} error={session.error} />
           )}
           {links && startPendingId && (
             <p className="ref" role="status">Создаём занятие. Ссылки появятся автоматически после подключения.</p>
@@ -814,6 +845,8 @@ export function Instructor() {
       {session.report && <>
         <Debrief report={overrideReport?.session_id === session.report.session_id
           ? overrideReport : session.report} />
+        <FindingReview report={overrideReport?.session_id === session.report.session_id
+          ? overrideReport : session.report} onChange={setOverrideReport} />
         <section className="debrief debrief-score-override">
           <h2>Ручная корректировка оценки</h2>
           <p className="ref">Автоматическая оценка: {session.report.score_auto.toFixed(1)} из 100. Меняйте её только при необходимости: причина сохранится в журнале вместе с вашим логином.</p>

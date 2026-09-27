@@ -4,6 +4,8 @@
 производен и не выбирается руками, сценарий размечается признаками.
 """
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -91,6 +93,31 @@ def test_all_customer_ticket_cards_are_complete_and_classified():
         "t32-1-carjacking",
         "t32-3-street-lights",
     }
+
+
+def test_ticket_ekp_codes_and_notify_lists_match_current_baseline():
+    """Изменение правил оповещения не должно незаметно переписать 96 эталонов.
+
+    При намеренной смене версии ЕКП сначала сверяют каждый изменившийся список
+    с источником и методистом, затем обновляют контрольную сумму.
+    """
+    cards = [
+        scenario
+        for scenario in load_library(Path(__file__).resolve().parents[2] / "scenarios")
+        if scenario.ticket is not None
+    ]
+    assert len(cards) == 96
+    manifest = {
+        scenario.id: {
+            "code": scenario.ground_truth.incident_code,
+            "notify": scenario.ground_truth.notify,
+        }
+        for scenario in cards
+    }
+    encoded = json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    assert hashlib.sha256(encoded.encode()).hexdigest() == (
+        "2e3d49cc1e4a47bf8813437207a4105799c5721cc54bddc795730267ebb44df4"
+    )
 
 
 def test_ticket_two_preserves_moscow_and_does_not_invent_missing_victim_data():
@@ -380,6 +407,43 @@ def test_gasified_object_brings_mosgaz():
         )
     )
     assert "МОСГАЗ" in card.notify
+
+
+def test_explicit_offence_signs_add_police_and_removal_recalculates_notify():
+    from app.domain.kio import apply_patch, modifiers
+
+    signs = ["на улице", "мусор", "открытое пламя"]
+    base = derive_incident(KIO(signs=signs))
+    assert base.incident_code == "1010101"
+    assert "МВД" not in base.notify
+
+    stated = apply_patch(base, {"offence_signs": True})
+    assert "offence" in modifiers(stated)
+    assert set(stated.notify) == set(base.notify) | {"МВД"}
+
+    denied = apply_patch(stated, {"offence_signs": False})
+    assert denied.notify == base.notify
+    unknown = apply_patch(stated, {"offence_signs": None})
+    assert unknown.notify == base.notify
+
+
+def test_offence_kind_also_adds_police_until_both_sources_are_removed():
+    from app.domain.kio import apply_patch, modifiers
+
+    base = derive_incident(KIO(signs=["на улице", "мусор", "открытое пламя"]))
+    stated = apply_patch(base, {"police.offence_kind": "поджог"})
+    assert "offence" in modifiers(stated)
+    assert set(stated.notify) == set(base.notify) | {"МВД"}
+
+    denied_flag = apply_patch(stated, {"offence_signs": False})
+    assert "МВД" in denied_flag.notify, "явно указанный вид правонарушения остаётся источником"
+    with_both = apply_patch(stated, {"offence_signs": True})
+    assert modifiers(with_both).count("offence") == 1
+    without_kind = apply_patch(with_both, {"police.offence_kind": "  "})
+    assert "МВД" in without_kind.notify
+    without_flag = apply_patch(without_kind, {"offence_signs": False})
+    assert without_flag.notify == base.notify
+    assert "offence" not in modifiers(without_flag)
 
 
 def test_removed_modifier_recalculates_notify_without_stale_service():

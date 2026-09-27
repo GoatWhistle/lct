@@ -20,6 +20,8 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
   const improvementPoints = report.metrics.filter((metric) => !metric.passed).slice(0, 3);
   const metricTitles = new Map(report.metrics.map((metric) => [metric.key, metric.title]));
   const coaching = report.ai_coaching?.status === "ready" ? report.ai_coaching.recommendations ?? [] : [];
+  // Вверх: короткая пауза не должна выглядеть как «0 с», а без пауз строки нет.
+  const pausedSeconds = Math.ceil((report.total_paused_ms ?? 0) / 1000);
 
   return (
     <section className={big ? "debrief debrief-big" : "debrief"}>
@@ -37,12 +39,14 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
         <article className="debrief-stat">
           <span>Автоматическая оценка</span><strong>{report.score_auto.toFixed(0)}<small> из 100</small></strong>
           <small>{report.overridden_by ? "до корректировки преподавателя" : "расчёт по критериям занятия"}</small>
+          {report.score_reviewed != null && <small>после разбора отметок: {report.score_reviewed.toFixed(0)}</small>}
         </article>
         <article className="debrief-stat">
           <span>Упражнение</span><strong>{report.exercise === "dds" ? "ДДС" : report.exercise === "card" ? "КИО" : report.exercise === "call" ? "Вызов 112" : "112 → ДДС"}</strong>
           <small>{report.attempt ? `Попытка ${report.attempt}` : "Завершённое упражнение"}</small>
         </article>
       </div>
+      {pausedSeconds > 0 && <p className="ref">Паузы занятия: {Math.floor(pausedSeconds / 60)} мин {pausedSeconds % 60} с. Время пауз исключено из нормативов.</p>}
       <details className="debrief-tech-details">
         <summary>Служебные сведения</summary>
         <p>Идентификатор сценария: {report.scenario_id} · номер занятия: {report.session_id}</p>
@@ -71,12 +75,17 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
         {" · "}<a href={`/api/sessions/${report.session_id}/report.pdf`}>документ (PDF)</a>
       </p>
       <p className={report.passed ? "state-ok" : "state-violated"}>
-        {report.passed ? "Зачёт" : "Не зачтено"}: на разборе {report.failed_metrics} пунктов; допустимо пропустить {report.criteria.allowed_errors}. {report.exercise === "dds" && <>На первичное решение ДДС отводится
+        {report.passed ? "Зачёт" : "Не зачтено"}: на разборе {report.failed_metrics} пунктов; допустимо пропустить {report.criteria.allowed_errors}. {report.exercise === "dds" && <>На открытие карточки ДДС отводится
           {` ${report.criteria.decision_time_limit_seconds} с`}</>}
-        {report.exercise === "dds" && <>; норматив отработки карточки ДДС —
+        {report.exercise === "dds" && <>; на первую запись по карточке —
           {` ${report.criteria.dds_card_work_time_limit_seconds ?? 180} с`}</>}
         {report.exercise === "card" && <>Норматив заполнения КИО —
           {` ${report.criteria.card_fill_time_limit_seconds ?? 180} с`}</>}
+        {/* 112 → ДДС приходит как exercise "card": работу ДДС выдают карточки пульта. */}
+        {(report.exercise === "dds" || Boolean(report.card_results?.length)) && <>; статус по докладу бригады —
+          {report.criteria.dds_report_reaction_enabled
+            ? ` не позже ${report.criteria.dds_report_reaction_limit_seconds ?? 45} с`
+            : " не применяется"}</>}
         {report.exercise && report.exercise !== "dds" && <>
           ; грамматика описания КИО {report.criteria.require_correct_grammar ? "входит" : "не входит"} в оценку
         </>}.
@@ -89,7 +98,8 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
       {Boolean(report.card_results?.length) && <section className="debrief-card-results">
         <h3>Карточки занятия ({report.card_results!.length})</h3>
         {report.card_results!.map((card, index) => <details key={card.card_id}>
-          <summary>Карточка {index + 1}: {card.title || card.scenario_id} · {card.score_auto.toFixed(0)} / 100
+          <summary>Карточка {index + 1}: {card.title || card.scenario_id} · {(card.score_reviewed ?? card.score_auto).toFixed(0)} / 100
+            {card.score_reviewed != null && ` после разбора (автооценка ${card.score_auto.toFixed(0)})`}
             {card.address ? ` · ${card.address}` : ""}</summary>
           {card.managed_service && <p><strong>Ответственная служба:</strong> {card.managed_service}</p>}
           <p><strong>Ответ диспетчера:</strong> {card.reply_text || "не внесён"}</p>
@@ -144,6 +154,10 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
                   <td>
                     {finding.summary}
                     <div className="ref">{finding.fact}{finding.norm && ` · ${finding.norm}`}</div>
+                    {finding.source === "instructor" && <div className="ref">отметка преподавателя {finding.author ?? ""}</div>}
+                    {(finding.reviews ?? []).map((review, reviewIndex) => <div className="ref" key={reviewIndex}>
+                      {review.decision === "dismissed" ? "снята" : "подтверждена"} преподавателем {review.author}: {review.reason}
+                    </div>)}
                   </td>
                 </tr>
               ))}

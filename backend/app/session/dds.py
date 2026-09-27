@@ -241,10 +241,21 @@ def _refused(message: str) -> DeskOutcome:
 
 
 def _start_work_timer(card: DdsLiveCard) -> None:
-    """Три минуты на работу идут один раз — с открытия карточки."""
+    """Открытие карточки: останавливает 30 с и запускает 3 мин — один раз.
+
+    Автоматическая активация первой карточки очереди открытием не считается:
+    карточка стоит в строке сообщений, пока диспетчер её не откроет. Первое
+    действие по карточке без явного открытия тоже доказывает, что она открыта.
+    """
     timer = card.timers.timers.get(TimerCode.DDS_WORK)
     if timer is None or timer.started_at is None:
         card.on_event("dds.open")
+
+
+def _first_record(card: DdsLiveCard, comment: str) -> None:
+    """Первая запись — ручной статус с текстом; она закрывает 3 минуты (П.5)."""
+    if comment.strip():
+        card.on_event("dds.record")
 
 
 def _line(card: DdsLiveCard, speaker: str, text: str) -> PhoneLine | None:
@@ -436,17 +447,17 @@ class DdsDesk(BaseModel):
                     return _refused("Для подтверждения приёма добавьте комментарий с основанием")
                 if any(action == "card.ack" for action, _at, _detail in card.dds_log):
                     return DeskOutcome()
-                card.on_event("card.ack")
                 card.dds_log.append(("card.ack", now_utc(), None))
+                _start_work_timer(card)
                 services = session.card_services(card)
                 if services:
-                    _start_work_timer(card)
                     try:
                         card.set_service_status(
                             services[0], ServiceStatus.ACCEPTED, command.comment,
                             author="диспетчер",
                         )
                         session.consecutive_refusals = 0
+                        _first_record(card, command.comment)
                     except StatusError:
                         pass  # статус уже стоит: повторное нажатие ничего не меняет
             case "card.status":
@@ -460,9 +471,8 @@ class DdsDesk(BaseModel):
                 card.set_service_status(
                     command.service, command.status, command.comment, author="диспетчер"
                 )
-                # Первичный статус останавливает норматив 30 секунд.
+                _first_record(card, command.comment)
                 if command.status in PRIMARY:
-                    card.on_event("card.ack")
                     # Сигнал реестра "повторные отказы" считает подряд идущие
                     # отказы, а не сумму за занятие.
                     session.consecutive_refusals = (
@@ -470,10 +480,6 @@ class DdsDesk(BaseModel):
                         if command.status is ServiceStatus.DECLINED
                         else 0
                     )
-                if command.status in {
-                    ServiceStatus.COMPLETED, ServiceStatus.DECLINED, ServiceStatus.REFUSED,
-                }:
-                    card.on_event("dds.complete")
             case "crew.select":
                 if command.crew not in session.crew_options(card):
                     return _refused("Выберите бригаду из списка доступных")
@@ -591,8 +597,13 @@ class DdsDesk(BaseModel):
                 self.finish_work()
                 outcome.finished = True
             case "card.bounce":
+                # Возврата карточки на этапе принятия нет; об ошибке, которую
+                # вскрыл доклад бригады с места, ДДС сообщает в 112 по телефону
+                # (ответ заказчика, П.3).
                 return _refused(
-                    "ДДС не проверяет заполнение карточки: замечания передаёт служба контроля 112"
+                    "Карточку не возвращают в 112 при принятии и не правят на АРМ ДДС. "
+                    "Если ошибка вскрылась по докладу бригады с места — сообщите о ней "
+                    "в 112 по телефону"
                 )
             case "zone.decision":
                 previous = next(

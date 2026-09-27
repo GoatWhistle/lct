@@ -63,7 +63,9 @@ export function useControl(sessionId: string | null) {
   );
 
   const stop = useCallback(() => channel.current?.socket.send({ type: "session.stop" }), []);
+  const pause = useCallback(() => channel.current?.socket.send({ type: "session.pause" }), []);
+  const resume = useCallback(() => channel.current?.socket.send({ type: "session.resume" }), []);
   const playReference = useCallback(() => channel.current?.socket.send({ type: "reference.play" }), []);
 
-  return { status, openSessionId, start, note, inject, stop, playReference };
+  return { status, openSessionId, start, note, inject, stop, pause, resume, playReference };
 }

@@ -72,7 +72,7 @@ def login(base: str, login_name: str, password: str) -> str:
     return cookie
 
 
-async def send_control(ws_base: str, session_id: UUID, cookie: str, payload: dict) -> None:
+async def send_control(ws_base: str, session_id: UUID, cookie: str, payload: dict) -> float:
     async with websockets.connect(
         f"{ws_base}/ws/control/{session_id}",
         additional_headers={"Cookie": cookie},
@@ -81,7 +81,9 @@ async def send_control(ws_base: str, session_id: UUID, cookie: str, payload: dic
         ping_interval=None,
     ) as socket:
         await socket.send(json.dumps(payload, ensure_ascii=False))
+        sent_at = time.monotonic()
         await asyncio.sleep(0.15)
+        return sent_at
 
 
 async def probe_ws(ws_base: str, path: str, cookie: str) -> dict:
@@ -238,7 +240,7 @@ async def main(args: argparse.Namespace) -> int:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from app.api.auth import hash_password
+    from app.api.auth import hash_password, login_log_marker
     from app.db.models import AuditLog, Session, Trainee, User
 
     database_url = (
@@ -251,7 +253,7 @@ async def main(args: argparse.Namespace) -> int:
     factory = async_sessionmaker(engine, expire_on_commit=False)
     observer_engine = create_async_engine(database_url, poolclass=NullPool)
     run_id = uuid4().hex[:12]
-    session_id = uuid4()
+    session_id = args.session_id or uuid4()
     trainee = Trainee(name=f"Failover smoke {run_id}")
     instructor_login = f"fo-i-{run_id}"
     trainee_login = f"fo-t-{run_id}"
@@ -263,6 +265,7 @@ async def main(args: argparse.Namespace) -> int:
     fault_stopped = False
     result: dict = {"session_id": str(session_id), "checks": {}}
     backend = f"http://127.0.0.1:{args.backend_port}"
+    result["login_node"] = "backend-a"
     ws_base = args.frontend_url.replace("https://", "wss://").replace("http://", "ws://")
     instructor_cookie = trainee_cookie = None
     try:
@@ -278,21 +281,32 @@ async def main(args: argparse.Namespace) -> int:
                      trainee_id=trainee.id, blocked=False),
             ])
             await db.commit()
+        users_committed_at = time.monotonic()
 
         instructor_cookie = login(backend, instructor_login, instructor_password)
         trainee_cookie = login(backend, trainee_login, trainee_password)
         # Учётки созданы прямо в БД, вход — на узле A, а сокет занятия Nginx
-        # может отдать узлу B. B узнаёт новый логин при очередной сверке
-        # поколений (раз в секунду); до неё middleware считает cookie отозванной.
-        for port in (args.backend_port, args.backend_b_port):
-            for cookie in (instructor_cookie, trainee_cookie):
-                if not await wait_auth_fresh(f"http://127.0.0.1:{port}", cookie):
-                    raise RuntimeError(f"backend :{port} не узнал новый логин за 10 с")
-        await send_control(ws_base, session_id, instructor_cookie, {
+        # может отдать узлу B до его сверки поколений. Ждать сверку не нужно:
+        # B проверяет неизвестный логин разовым SELECT (lct-42). Ожидание здесь
+        # лишило бы доказательности проверку ниже: опрос B сам вызвал бы разовую
+        # проверку, а за секунду B узнал бы логин сверкой.
+        control_sent_at = await send_control(ws_base, session_id, instructor_cookie, {
             "type": "scenario.start", "scenario_id": args.scenario,
             "trainee": trainee.name, "trainee_id": str(trainee.id),
             "mode": "training", "exercise": "dds",
         })
+        result["users_commit_to_control_seconds"] = round(control_sent_at - users_committed_at, 4)
+        if args.expect_initial_owner == "backend-b":
+            result["checks"]["control_sent_within_first_second"] = (
+                result["users_commit_to_control_seconds"] < 1
+            )
+            # Сверка B идёт раз в секунду в случайной фазе, и время само по себе
+            # не доказывает, что B не знал логин. Доказательство — запись B о
+            # разовой проверке именно этого логина.
+            result["checks"]["backend_b_resolved_login_one_shot"] = (
+                login_log_marker(instructor_login)
+                in compose(args, "logs", "--no-color", "backend-b")
+            )
 
         async def session_row():
             async with factory() as db:
@@ -327,6 +341,12 @@ async def main(args: argparse.Namespace) -> int:
         old_epoch = row.backend_fencing_epoch
         result["initial_owner"] = row.backend_node_id
         result["initial_epoch"] = old_epoch
+        if args.expect_initial_owner and row.backend_node_id != args.expect_initial_owner:
+            raise RuntimeError(
+                f"session routed to {row.backend_node_id}, expected {args.expect_initial_owner}"
+            )
+        if args.expect_initial_owner == "backend-b":
+            result["checks"]["login_a_initial_control_b"] = True
 
         # Commit real DDS work before the fault. These actions must survive the
         # checkpoint handoff and remain part of the final scored report.
@@ -735,4 +755,6 @@ if __name__ == "__main__":
     parser.add_argument("--reconnect-attempts", type=int, default=5)
     parser.add_argument("--rest-timeout", type=float, default=60)
     parser.add_argument("--failure-mode", choices=("kill", "partition"), default="kill")
+    parser.add_argument("--expect-initial-owner", choices=("backend-a", "backend-b"))
+    parser.add_argument("--session-id", type=UUID)
     raise SystemExit(asyncio.run(main(parser.parse_args())))

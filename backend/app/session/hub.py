@@ -424,7 +424,7 @@ class SessionHub:
                 state = self.get(session_id)
                 if state is None or state.ended:
                     return
-                if state.dds_phase:
+                if state.dds_phase and not state.paused:
                     async with self.operation(session_id) as op:
                         active_before = state.desk.active_id
                         op.persist = bool(state.desk.deliver_due())

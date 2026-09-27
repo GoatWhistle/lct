@@ -16,6 +16,8 @@ from typing import Protocol
 from uuid import UUID
 
 from app.domain.events import TranscriptEntry
+from app.domain.taxonomy import Finding, FindingReview
+from app.scoring.review import add_finding, review_finding
 from app.session.checkpoint import dump_state
 from app.session.state import SessionState
 
@@ -83,8 +85,47 @@ class ScoreOverridden:
     comment: str
 
 
+@dataclass(frozen=True)
+class LessonPaused:
+    at: datetime
+    author: str
+    role: str
+
+
+@dataclass(frozen=True)
+class FindingReviewed:
+    """Преподаватель подтвердил или снял отметку разбора."""
+    index: int
+    review: FindingReview
+    role: str
+
+
+@dataclass(frozen=True)
+class LessonResumed:
+    at: datetime
+    author: str
+    role: str
+    #: Длительность этой конкретной паузы — видно в аудите без пересчёта.
+    paused_ms: int
+
+
+@dataclass(frozen=True)
+class FindingAdded:
+    """Преподаватель добавил свою отметку (`source=instructor`)."""
+    finding: Finding
+    role: str
+
+
 Record = (UtteranceAppended | HintRecorded | NoteAdded | SelfAssessed | LessonStarted
-          | LessonEnded | ScoreCalculated | ScoreArchived | ScoreOverridden)
+          | LessonEnded | ScoreCalculated | ScoreArchived | ScoreOverridden
+          | LessonPaused | LessonResumed | FindingReviewed | FindingAdded)
+
+
+def apply_finding_change(report: dict, change: "FindingReviewed | FindingAdded") -> dict:
+    """Решение по отметке одинаково для живой сессии, строки `Score` и архива."""
+    if isinstance(change, FindingReviewed):
+        return review_finding(report, change.index, change.review)
+    return add_finding(report, change.finding)
 
 
 def apply_score_override(report: dict, override: ScoreOverridden) -> dict:
@@ -200,6 +241,10 @@ class MemorySessionStore:
                 if session_id not in self.scores:
                     raise LookupError(f"нет оценки занятия {session_id}")
                 self.scores[session_id] = apply_score_override(self.scores[session_id], record)
+            elif isinstance(record, FindingReviewed | FindingAdded):
+                if session_id not in self.scores:
+                    raise LookupError(f"нет оценки занятия {session_id}")
+                self.scores[session_id] = apply_finding_change(self.scores[session_id], record)
         self.records.setdefault(session_id, []).extend(records)
 
     def snapshot(self, session_id: UUID) -> dict | None:
