@@ -58,7 +58,7 @@
   "checks_passed": 29,
   "checks_total": 29,
   "pass": true,
-  "depends_on": "29/29 получено только с условием закрытия 1012/1013 из ветки feat/cluster-close-code (коммит 01b0f8a2). Эта ветка его не содержит: мержить после feat/cluster-close-code и тогда повторить прогон.",
+  "depends_on": "29/29 получено только с условием закрытия 1012/1013 из ветки feat/cluster-close-code (коммит 01b0f8a2). Эта ветка уже в main вместе с новыми проверками partition smoke (команда после обрыва БД, fencing при свежем auth); нужен повторный прогон smoke.",
   "branch_script_result": {
     "checks_passed": 25,
     "checks_total": 29,
