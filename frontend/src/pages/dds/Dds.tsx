@@ -613,9 +613,11 @@ export function Dds() {
     </div><aside className="dds-right">
       {pane === "phone" && <section className="dds-panel dds-phone"><div className="dds-panel-title"><h2>IP-телефон</h2><span>SIP/WebRTC + учебный протокол</span></div>
         <Suspense fallback={<p className="dds-hint">Загружаем IP-телефон…</p>}>
-          <SipPhone defaultExtension="6101" defaultTarget="6102" title="Реальный локальный канал ДДС" />
+          <SipPhone defaultExtension="6101" defaultTarget="6102" title="Реальный локальный канал ДДС"
+            contacts={[{ label: "старший группы", number: "6102" },
+              { label: "вышестоящий начальник", number: "6103" }]} />
         </Suspense>
-        <p className="dds-hint">На втором рабочем месте откройте <a href="/phone" target="_blank" rel="noreferrer">телефон старшего группы</a> и зарегистрируйте 6102. Пароли 6101/6102 выдаёт локальный администратор командой <code>make sip-credentials</code>.</p>
+        <p className="dds-hint">На втором рабочем месте откройте <a href="/phone" target="_blank" rel="noreferrer">телефон старшего группы</a> (6102); преподаватель в роли вышестоящего начальника — <a href="/phone?role=superior" target="_blank" rel="noreferrer">телефон 6103</a>. Пароли 6101–6103 выдаёт локальный администратор командой <code>make sip-credentials</code>.</p>
         <h3 className="dds-protocol-title">Учебный протокол доклада</h3>
         <p className="dds-hint">Связь используется при необходимости. Разговор и учебный доклад сохраняются в журнале, но не блокируют изменение статуса.</p>
         <label htmlFor="dds-crew">Дежурная бригада</label>
