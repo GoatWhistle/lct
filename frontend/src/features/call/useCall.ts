@@ -60,6 +60,7 @@ export function useCall(sessionId: string | null) {
   const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textMode = useRef(false);
   const pausedRef = useRef(false);
+  const endedRef = useRef(false);
 
   const append = useCallback((line: Line) => {
     setLines((prev) => {
@@ -70,6 +71,7 @@ export function useCall(sessionId: string | null) {
 
   useEffect(() => {
     if (!sessionId) return;
+    endedRef.current = false;
     const ch = callChannel(sessionId, {
       onStatus: (next) => {
         setStatus(next);
@@ -133,6 +135,7 @@ export function useCall(sessionId: string | null) {
             setTimers(event.timers);
             break;
           case "call.ended":
+            endedRef.current = true;
             setPhase("ended");
             audio.current?.ambience.stop();
             if (textMode.current) { setCardSubmitted(true); break; }
@@ -154,6 +157,10 @@ export function useCall(sessionId: string | null) {
               setCallerSpeaking(false);
               if (patchTimer.current) clearTimeout(patchTimer.current);
               patchTimer.current = null;
+            } else if (endedRef.current) {
+              // Занятие завершили прямо на паузе: сервер снимает её после
+              // `call.ended`, и отложенные правки уже не войдут в оценку.
+              outbox.current = {};
             } else {
               // При переподключении сервер первым присылает состояние паузы.
               // Только после этого повторяем правки, ожидающие подтверждения.

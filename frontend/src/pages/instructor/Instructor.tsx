@@ -708,7 +708,7 @@ export function Instructor() {
             </p>
           )}
           {sessionId && session.title && !session.ended && (
-            exercise === "call" && <Director onInject={control.inject} disabled={control.status !== "open"} error={session.error} />
+            exercise === "call" && <Director onInject={control.inject} disabled={control.status !== "open" || session.paused} error={session.error} />
           )}
           {links && startPendingId && (
             <p className="ref" role="status">Создаём занятие. Ссылки появятся автоматически после подключения.</p>
