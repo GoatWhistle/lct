@@ -348,7 +348,7 @@ async def finish(session_id: UUID, state) -> None:
     # запущенной модели разбор выходит со статусом «недоступно», а не ждёт её.
     state.score["ai_coaching"] = (await coach(result.metrics)).model_dump(mode="json")
     # Полный разбор хранится вместе с оценкой: PDF/CSV и история должны
-    # переживать перезапуск backend, а не зависеть от объекта в hub._sessions.
+    # переживать перезапуск backend, а не зависеть от живого объекта в реестре хаба.
     state.score["full_report"] = build_report(session_id, state, scenario).model_dump(mode="json")
     log.info("сессия %s: оценка %.1f, отметок %d", session_id, result.score, len(result.findings))
 

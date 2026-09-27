@@ -23,7 +23,7 @@ from app.domain.events import (
     TimerTick,
 )
 from app.session.state import SessionState
-from app.session.store import MemorySessionStore, Record, SessionStore
+from app.session.store import MemorySessionStore, Record, SessionLeaseLost, SessionStore
 
 #: Очередь одного подписчика. Медленный наблюдатель не тормозит занятие:
 #: очередь ограничена, переполнение роняет соединение, а не сессию.
@@ -117,6 +117,73 @@ class SessionHub:
     def drop(self, session_id: UUID) -> None:
         self._sessions.pop(session_id, None)
         self.stop_ticker(session_id)
+
+    def live_count(self) -> int:
+        """Сколько занятий этот узел сейчас ведёт — для диагностики администратора."""
+        return sum(1 for state in self._live())
+
+    def _live(self) -> list[SessionState]:
+        return [
+            state for state in self._sessions.values()
+            if not state.ended and not state.lease_fenced
+        ]
+
+    # ── lease узла поверх хранилища ──
+
+    async def restore(self) -> int:
+        """Поднять незавершённые занятия узла после перезапуска процесса."""
+        if not self.store.persistent:
+            return 0
+        restored = await self.store.restore_active()
+        for state in restored:
+            self._adopt(state)
+        return len(restored)
+
+    async def maintain_lease(self) -> None:
+        """Один оборот супервизора: продлить свои lease, подхватить просроченные чужие.
+
+        Непродлённая lease — не повод писать дальше «на авось»: любая ошибка
+        продления закрывает занятие на узле (docs/arch/SCALE-OUT.md).
+        """
+        for state in self._live():
+            try:
+                await self.store.renew(state.session_id)
+            except SessionLeaseLost:
+                await self.fence(state)
+            except Exception:  # неизвестное владение закрывается
+                log.warning("продление lease занятия %s не удалось", state.session_id,
+                            exc_info=True)
+                await self.fence(state)
+        try:
+            claimed = await self.store.claim_expired()
+        except Exception:  # следующий оборот попробует снова
+            log.exception("не удалось подхватить занятия с истёкшей lease")
+            return
+        for state in claimed:
+            current = self._sessions.get(state.session_id)
+            if current is not None and not current.lease_fenced:
+                continue
+            self._adopt(state)
+
+    async def supervise_lease(self, interval: float) -> None:
+        while True:
+            await asyncio.sleep(interval)
+            await self.maintain_lease()
+
+    def _adopt(self, state: SessionState) -> None:
+        self.stop_ticker(state.session_id)
+        self.register(state)
+        self.start_ticker(state.session_id)
+
+    async def save_all(self) -> None:
+        """Снимок живых занятий при остановке узла: следующий владелец продолжит с него."""
+        if not self.store.persistent:
+            return
+        for state in self._live():
+            try:
+                await self.store.commit(state)
+            except Exception:  # остановка должна освободить процесс
+                log.exception("не удалось сохранить снимок %s при остановке", state.session_id)
 
     # ── операция: один commit, потом события ──
 
@@ -269,6 +336,9 @@ class SessionHub:
         """
         for session_id in list(self._tickers):
             self.stop_ticker(session_id)
+        for state in list(self._sessions.values()):
+            if state.voice is not None:
+                await state.voice.close()
 
     async def _tick(self, session_id: UUID) -> None:
         try:

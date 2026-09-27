@@ -83,7 +83,7 @@ backend/
 │   │   ├── store.py            port SessionStore: одна операция — один commit; in-memory adapter
 │   │   ├── pg_store.py         PostgreSQL adapter: снимок, строки хода занятия, lease
 │   │   ├── checkpoint.py       JSON-снимок незавершённого занятия в PostgreSQL
-│   │   └── hub.py              реестр сессий, подписки наблюдателей
+│   │   └── hub.py              реестр сессий, подписки наблюдателей, lease узла
 │   │
 │   ├── scenarios/              ← библиотека
 │   │   ├── schema.py           Pydantic-схема сценария (см. spec/SCENARIO-FORMAT.md)

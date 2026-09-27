@@ -374,7 +374,7 @@ async def _runtime_metrics(db: AsyncSession) -> RuntimeMetrics:
     )
     return RuntimeMetrics(
         **raw,
-        active_sessions=sum(not item.ended for item in hub._sessions.values()),  # noqa: SLF001
+        active_sessions=hub.live_count(),
         restored_sessions=getattr(app.state, "sessions_restored", 0),
         completed_sessions_24h=completed or 0,
     )
@@ -501,9 +501,9 @@ async def status(request: Request, db: AsyncSession = Depends(get_session)) -> l
             name="Живых занятий",
             ok=True,
             detail=(
-                f"активно {sum(not item.ended for item in hub._sessions.values())}; "
+                f"активно {hub.live_count()}; "
                 f"восстановлено после запуска {getattr(app.state, 'sessions_restored', 0)}"
-            ),  # noqa: SLF001 — реестр в памяти процесса
+            ),
         )
     )
     try:

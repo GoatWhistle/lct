@@ -29,10 +29,12 @@ from app.scenarios import store
 from app.scenarios.loader import ScenarioError
 from app.session.hub import hub
 from app.session.pg_store import PostgresSessionStore
-from app.session.store import MemorySessionStore, SessionLeaseLost
+from app.session.store import MemorySessionStore
 from app.voice.models import get_voice_models
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
+#: Треть срока lease (`pg_store.LEASE_SECONDS`): два пропущенных оборота ещё не теряют занятие.
+LEASE_SUPERVISOR_SECONDS = 5
 
 # uvicorn настраивает только собственные логгеры: без этого INFO из модулей
 # приложения («получено N кадров», замеры задержки голоса) молча теряется,
@@ -97,65 +99,26 @@ async def lifespan(app: FastAPI):
         else PostgresSessionStore(get_sessionmaker(), node_id=settings.backend_node_id)
     )
     app.state.sessions_restored = 0
-    if hub.store.persistent:
-        try:
-            async with asyncio.timeout(3):
-                restored = await hub.store.restore_active()
-            for state in restored:
-                hub.register(state)
-                hub.start_ticker(state.session_id)
-            app.state.sessions_restored = len(restored)
-            if restored:
-                logging.getLogger(__name__).info(
-                    "восстановлено активных занятий: %d", len(restored)
-                )
-        except (SQLAlchemyError, OSError, TimeoutError) as exc:
-            logging.getLogger(__name__).warning(
-                "не удалось восстановить активные занятия: %s", exc
+    try:
+        async with asyncio.timeout(3):
+            app.state.sessions_restored = await hub.restore()
+        if app.state.sessions_restored:
+            logging.getLogger(__name__).info(
+                "восстановлено активных занятий: %d", app.state.sessions_restored
             )
-
-    lease_task = None
-    if hub.store.persistent and settings.backend_node_id:
-        async def supervise_session_ownership() -> None:
-            while True:
-                await asyncio.sleep(5)
-                store = hub.store
-                for state in list(hub._sessions.values()):
-                    if state.ended or state.lease_fenced:
-                        continue
-                    try:
-                        await store.renew(state.session_id)
-                    except SessionLeaseLost:
-                        await hub.fence(state)
-                    except (SQLAlchemyError, OSError, TimeoutError):
-                        logging.getLogger(__name__).warning(
-                            "backend lease renewal failed for %s", state.session_id,
-                            exc_info=True,
-                        )
-                        await hub.fence(state)
-                    except Exception:  # noqa: BLE001 — unknown ownership state fails closed
-                        logging.getLogger(__name__).exception(
-                            "unexpected backend lease failure for %s", state.session_id
-                        )
-                        await hub.fence(state)
-                try:
-                    restored = await store.claim_expired()
-                    for state in restored:
-                        current = hub._sessions.get(state.session_id)
-                        if current is not None and not current.lease_fenced:
-                            continue
-                        if current is not None:
-                            hub.stop_ticker(state.session_id)
-                        hub.register(state)
-                        hub.start_ticker(state.session_id)
-                except (SQLAlchemyError, OSError, TimeoutError):
-                    logging.getLogger(__name__).exception(
-                        "не удалось проверить/восстановить занятия с истёкшей backend lease"
-                    )
-
-        lease_task = asyncio.create_task(
-            supervise_session_ownership(), name="session-owner-lease-supervisor"
+    except (SQLAlchemyError, OSError, TimeoutError) as exc:
+        logging.getLogger(__name__).warning(
+            "не удалось восстановить активные занятия: %s", exc
         )
+
+    # Lease держит только узел кластера: без node_id владелец один.
+    lease_task = (
+        asyncio.create_task(
+            hub.supervise_lease(LEASE_SUPERVISOR_SECONDS),
+            name="session-owner-lease-supervisor",
+        )
+        if hub.store.persistent and settings.backend_node_id else None
+    )
 
     # Эмбеддинги для слот-автомата — грузятся один раз, до первого занятия.
     app.state.embeddings_ready = not settings.demo_no_db and get_embedder() is not None
@@ -178,19 +141,8 @@ async def lifespan(app: FastAPI):
         with suppress(asyncio.CancelledError):
             await lease_task
 
-    if hub.store.persistent:
-        for state in list(hub._sessions.values()):
-            if not state.ended and not state.lease_fenced:
-                try:
-                    await hub.store.commit(state)
-                except Exception:  # noqa: BLE001 — shutdown must release the process
-                    logging.getLogger(__name__).exception(
-                        "не удалось сохранить checkpoint %s при shutdown", state.session_id
-                    )
+    await hub.save_all()
     await hub.shutdown()
-    for state in list(hub._sessions.values()):
-        if state.voice is not None:
-            await state.voice.close()
 
 
 app = FastAPI(title="Учебный симулятор занятия для системы 112", lifespan=lifespan)
