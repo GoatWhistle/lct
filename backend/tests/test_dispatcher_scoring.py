@@ -5,9 +5,10 @@ import pytest
 from pydantic import ValidationError
 
 from app.domain.statuses import PhoneReportRecord, ServiceStatus, StatusEntry
-from app.domain.taxonomy import ErrorCode
+from app.domain.taxonomy import Competency, ErrorCode, FindingSource
 from app.scenarios.loader import load_file
 from app.scoring.dispatcher import dispatcher_metrics, evaluate_dispatcher
+from app.scoring.timing import time_credit
 from app.session.dds import DdsLiveCard, build_card
 from app.session.timers import SessionTimers
 
@@ -340,17 +341,39 @@ def test_status_soon_after_crew_report_passes():
     findings, metric = reaction(full_run(arrived_at=110), [crew_report("arrived", 100)])
 
     assert findings == []
-    assert metric.passed and metric.fact == "о прибытии: 10 с"
+    assert metric.passed and metric.weight == 1.5
+    assert metric.fact == (
+        "статус «Прибытие» по докладу бригады «Бригада 12» о прибытии: "
+        "10 с (на 35 с быстрее норматива)"
+    )
+    assert metric.credit == time_credit(10_000, 45_000)
+    assert metric.title == f"{SERVICES[0]}: реакция на доклад бригады"
 
 
 def test_status_later_than_limit_after_crew_report_is_d6_with_fact_and_norm():
     findings, metric = reaction(full_run(arrived_at=170), [crew_report("arrived", 100)])
 
     assert [f.code for f in findings] == [ErrorCode.D6]
-    assert "«Прибытие» отмечен через 70 с" in findings[0].fact
+    assert "«Прибытие»" in findings[0].fact and "70 с (+25 с сверх норматива)" in findings[0].fact
     assert "о прибытии" in findings[0].fact, "факт ссылается на доклад"
-    assert findings[0].norm == "отметить статус по докладу не позже 45 с"
-    assert not metric.passed and metric.norm == "статус по каждому докладу не позже 45 с"
+    assert findings[0].norm == metric.norm == "отметить статус по докладу за 45 с"
+    assert findings[0].competency is Competency.NORMS, "отметка и метрика в одной компетенции"
+    assert findings[0].source is FindingSource.DISPATCHER
+    assert findings[0].service == SERVICES[0]
+    assert not metric.passed and metric.fact == findings[0].fact
+    assert metric.credit == time_credit(70_000, 45_000)
+
+
+def test_violation_by_a_fraction_of_a_second_is_not_shown_as_the_limit():
+    status_log = full_run(arrived_at=170)
+    status_log[2] = status_log[2].model_copy(
+        update={"at": at_second(100) + timedelta(milliseconds=45_400)},
+    )
+
+    findings, metric = reaction(status_log, [crew_report("arrived", 100)])
+
+    assert not metric.passed
+    assert "45.4 с (+0.4 с сверх норматива)" in findings[0].fact
 
 
 def test_missing_status_after_crew_report_is_d6():
@@ -360,21 +383,62 @@ def test_missing_status_after_crew_report_is_d6():
 
     assert [f.code for f in findings] == [ErrorCode.D6]
     assert "не отмечен" in findings[0].fact and "Бригада 12" in findings[0].fact
-    assert not metric.passed and metric.fact == "о прибытии: статус не отмечен"
+    assert not metric.passed and metric.credit == 0.0
+    assert metric.fact == "статус «Прибытие» по докладу бригады «Бригада 12» о прибытии: не отмечен"
+
+
+def test_metric_takes_the_worst_report_and_counts_violations():
+    reports = [crew_report("dispatched", 10), crew_report("arrived", 100),
+               crew_report("working", 175)]
+
+    findings, metric = reaction(full_run(arrived_at=170), reports)
+
+    assert len(findings) == 1, "одна отметка на службу, как у других нормативов"
+    assert "о прибытии: 70 с" in metric.fact
+    assert "с нарушением 1 из 3 докладов" in metric.fact
 
 
 def test_status_set_before_the_report_and_custom_limit():
     findings, metric = reaction(full_run(arrived_at=90), [crew_report("arrived", 100)])
     assert findings == [] and metric.passed, "статус раньше доклада — не нарушение"
+    assert metric.fact.endswith("отмечен не позже доклада") and metric.credit == 1.0
 
     strict, _ = reaction(full_run(arrived_at=130), [crew_report("arrived", 100)], limit_ms=20_000)
-    assert "не позже 20 с" in strict[0].norm
+    assert strict[0].norm == "отметить статус по докладу за 20 с"
 
 
 def test_no_crew_reports_means_no_reaction_metric():
     findings, metric = reaction(full_run(arrived_at=110), [])
 
     assert findings == [] and metric is None
+
+
+def test_refusal_after_crew_report_is_neither_d6_nor_failed_metric():
+    status_log = [
+        mark(ServiceStatus.ACCEPTED, 5), mark(ServiceStatus.RESPONDING, 20),
+        StatusEntry(service=SERVICES[0], status=ServiceStatus.REFUSED, at=at_second(120),
+                    comment="Основание: доклад старшего.\nСведения: бригаде отказано в доступе."),
+    ]
+
+    findings, metric = reaction(status_log, [crew_report("arrived", 100)])
+
+    assert findings == [], "работ не было — статус «Прибытие» отмечать не нужно"
+    assert metric is None, "метрика не снижает балл без отметки"
+
+
+def test_refusal_keeps_late_reaction_on_reported_status():
+    status_log = [
+        mark(ServiceStatus.ACCEPTED, 5), mark(ServiceStatus.RESPONDING, 80),
+        StatusEntry(service=SERVICES[0], status=ServiceStatus.REFUSED, at=at_second(120),
+                    comment="Основание: доклад старшего.\nСведения: бригаде отказано в доступе."),
+    ]
+
+    findings, metric = reaction(status_log, [crew_report("dispatched", 10),
+                                             crew_report("arrived", 100)])
+
+    assert [f.code for f in findings] == [ErrorCode.D6]
+    assert not metric.passed and "о выезде: 70 с" in metric.fact
+    assert "докладов" not in metric.fact, "неотмеченное прибытие при отказе не считается"
 
 
 def test_unfinished_work_after_completion_report_names_the_report():
