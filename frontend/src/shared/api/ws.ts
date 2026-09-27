@@ -164,8 +164,17 @@ export const callChannel = (
   ...options,
   queueKey: (event) => event.type === "kio.patch" ? "kio.patch" : null,
   isAcknowledged: (incoming, pending) => {
-    if (pending.type !== "kio.patch" || incoming.type !== "kio.patch"
-        || incoming.source !== "operator") return false;
+    if (pending.type !== "kio.patch" || incoming.type !== "kio.patch") return false;
+    // `auto` по всем полям команды с другим значением — сервер её переписал
+    // (так он отвечает и на отклонённый пакет), а merge.ts уже снял правку из
+    // pending. Повтор затёр бы серверную истину, а слияние с новыми правками
+    // отклоняло бы и их. Совпадающий `auto` ничего не доказывает: команда
+    // могла не дойти, повтор безвреден.
+    if (incoming.source === "auto") {
+      const keys = Object.keys(pending.fields);
+      return keys.every((key) => key in incoming.fields)
+        && keys.some((key) => !sameJsonValue(pending.fields[key], incoming.fields[key]));
+    }
     return Object.entries(pending.fields).every(([key, value]) =>
       sameJsonValue(value, incoming.fields[key]),
     );

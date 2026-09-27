@@ -15,8 +15,8 @@ from pydantic import ValidationError
 
 from app.api.ws import call as call_ws
 from app.domain import ekp
-from app.domain.events import ErrorEvent, KioPatchIn, SessionMode
-from app.domain.kio import EDITABLE_KIO_FIELDS, KIO, apply_patch
+from app.domain.events import ErrorEvent, KioPatchIn, KioPatchOut, PatchSource, SessionMode
+from app.domain.kio import EDITABLE_KIO_FIELDS, KIO, PatchRejected, apply_patch
 from app.main import app
 from app.scenarios.loader import load_file
 from app.scoring.card import evaluate_card
@@ -63,8 +63,27 @@ def test_operator_adds_catalog_services_without_changing_the_notify_list():
 
     assert updated.notify_extra == ["ФСБ", "ЦЭМП"]
     assert updated.notify == ["Служба 101"], "автоматический список оператор не правит"
-    with pytest.raises(ValidationError):
+    with pytest.raises(PatchRejected):
         apply_patch(card, {"notify_extra": ["Служба, которой нет"]})
+    with pytest.raises(ValidationError):
+        apply_patch(card, {"notify_extra": [item.name for item in ekp.catalog().services[:21]]})
+
+
+def test_service_already_in_notify_is_not_added_twice():
+    """ЦЭМП, ФСБ, МОЭК, Метро, Мосгортранс есть и в каталоге, и в классификаторе."""
+    card = KIO(notify=["ЦЭМП"])
+
+    updated = apply_patch(card, {"notify_extra": ["ЦЭМП", "ФСБ"]})
+
+    assert updated.notify_extra == ["ФСБ"]
+
+
+def test_saved_card_with_renamed_service_still_loads():
+    """Каталог проверяется на входе kio.patch: правка названия в каталоге
+    не должна ломать восстановление снимков и сданных карточек."""
+    card = KIO.model_validate({"notify_extra": ["Прежнее название службы"]})
+
+    assert card.notify_extra == ["Прежнее название службы"]
 
 
 def test_added_services_do_not_change_the_score_against_the_reference():
@@ -89,7 +108,8 @@ def test_catalog_is_served_like_the_classifier():
     assert {"id", "name", "organization", "service_level", "source_reference"} <= body["services"][0].keys()
 
 
-def test_unknown_service_in_kio_patch_is_refused_without_failing_the_lesson(monkeypatch):
+@pytest.fixture
+def lesson(monkeypatch):
     sent = []
     monkeypatch.setattr(hub, "store", MemorySessionStore())
     monkeypatch.setattr(hub, "to_trainee", lambda _session_id, event: sent.append(event))
@@ -98,13 +118,50 @@ def test_unknown_service_in_kio_patch_is_refused_without_failing_the_lesson(monk
                          level="L1", mode=SessionMode.TRAINING)
     hub.register(state)
 
-    async def patch(fields):
-        async with hub.operation(state.session_id):
-            await call_ws._handle(state.session_id, state, KioPatchIn(fields=fields))
+    def patch(fields):
+        sent.clear()
 
-    asyncio.run(patch({"notify_extra": ["Служба, которой нет"]}))
-    assert isinstance(sent[-1], ErrorEvent) and "не принято" in sent[-1].message
+        async def run():
+            async with hub.operation(state.session_id):
+                await call_ws._handle(state.session_id, state, KioPatchIn(fields=fields))
+
+        asyncio.run(run())
+        return list(sent)
+
+    return state, patch
+
+
+def test_unknown_service_in_kio_patch_is_refused_without_failing_the_lesson(lesson):
+    state, patch = lesson
+
+    sent = patch({"notify_extra": ["Служба, которой нет"]})
+    assert isinstance(sent[0], ErrorEvent) and "не принято" in sent[0].message
     assert state.kio.notify_extra == []
 
-    asyncio.run(patch({"notify_extra": ["ФСБ"]}))
+    sent = patch({"notify_extra": ["ФСБ"]})
+    assert state.kio.notify_extra == ["ФСБ"]
+
+
+def test_refused_kio_patch_returns_server_values_to_drop_pending(lesson):
+    """Пакет отклоняется целиком — фронт должен получить серверные значения
+    всех его полей с `auto`, иначе pending висит до следующего kio.state."""
+    state, patch = lesson
+    patch({"address": "улица Ленина, 14", "notify_extra": ["ФСБ"]})
+
+    sent = patch({"address": "Тверская, 1", "fire.floors": 5, "notify_extra": ["ФСБ", "Служба, которой нет"]})
+
+    assert isinstance(sent[0], ErrorEvent)
+    assert isinstance(sent[1], KioPatchOut) and sent[1].source is PatchSource.AUTO
+    assert sent[1].fields == {"address": "улица Ленина, 14", "fire.floors": None, "notify_extra": ["ФСБ"]}
+    assert state.kio.address == "улица Ленина, 14"
+
+
+def test_cleaned_notify_extra_is_sent_back_as_auto(lesson):
+    state, patch = lesson
+    state.kio = state.kio.model_copy(update={"notify": ["ЦЭМП"]})
+
+    sent = patch({"notify_extra": ["ЦЭМП", "ФСБ", "ФСБ"]})
+
+    auto = [event for event in sent if isinstance(event, KioPatchOut) and event.source is PatchSource.AUTO]
+    assert auto and auto[-1].fields["notify_extra"] == ["ФСБ"]
     assert state.kio.notify_extra == ["ФСБ"]

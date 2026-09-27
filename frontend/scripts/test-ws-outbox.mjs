@@ -74,6 +74,18 @@ socket.receive({ type: "kio.patch", fields: {
 }, source: "operator" });
 socket = reconnect(socket);
 assert.deepEqual(socket.sent, [], "matching checkpoint echo clears the KIO patch");
+const refused = { type: "kio.patch", fields: { address: "ул. Новая, 3", notify_extra: ["Нет в каталоге"] } };
+call.send(refused);
+socket.receive({ type: "kio.patch", fields: { address: patch.fields.address, notify_extra: [] }, source: "auto" });
+socket.sent = [];
+call.send({ type: "kio.patch", fields: { floor: "2" } });
+assert.deepEqual(socket.sent.at(-1).fields, { floor: "2" },
+  "server values after a refused patch acknowledge it: refused fields are not merged into the next edit");
+socket.receive({ type: "kio.patch", fields: { floor: "2" }, source: "operator" });
+socket = reconnect(socket);
+assert.deepEqual(socket.sent, [], "nothing left to replay after refusal and the next echo");
+const refusedCard = applyPatch(edit(empty, "notify_extra", ["Нет в каталоге"]), { notify_extra: [] }, "auto");
+assert.deepEqual(refusedCard.pending, {}, "server value after refusal drops the pending edit");
 const edited = edit(empty, "coords", { latitude: 55.7, longitude: 37.6 });
 assert.deepEqual(applyPatch(edited, { coords: { longitude: 37.6, latitude: 55.7 } }, "operator").pending, {});
 assert.deepEqual(applyState(edited, { coords: { longitude: 37.6, latitude: 55.7 } }).pending, {});
