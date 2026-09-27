@@ -11,6 +11,7 @@ from html import escape
 from pathlib import Path
 
 from app.domain.events import SessionReport
+from app.domain.taxonomy import Finding, FindingDecision, FindingSource
 
 
 def _cell(value: object) -> str:
@@ -22,6 +23,21 @@ def _cell(value: object) -> str:
     if probe.startswith(("=", "+", "-", "@")) or result.startswith(("\t", "\r", "\n")):
         return "'" + result
     return result
+
+
+def _finding_origin(item: Finding) -> str:
+    if item.source is FindingSource.INSTRUCTOR:
+        return f"; добавлена преподавателем {item.author or ''}".rstrip()
+    return ""
+
+
+def _finding_decision(item: Finding) -> str:
+    """Решение по отметке рядом с ней: снятая отметка видна вместе с причиной."""
+    if item.review is None:
+        return ""
+    verdict = ("снята" if item.review.decision is FindingDecision.DISMISSED
+               else "подтверждена")
+    return f"; {verdict} преподавателем {item.review.author}: {item.review.reason}"
 
 
 def to_csv(report: SessionReport) -> bytes:
@@ -44,6 +60,7 @@ def to_csv(report: SessionReport) -> bytes:
     row("Критерии", "", "Нарушенных метрик", report.failed_metrics)
     row("Критерии", "", "Зачёт", "да" if report.passed else "нет")
     row("Оценка", "", "Автоматическая", report.score_auto)
+    row("Оценка", "", "После разбора отметок", report.score_reviewed)
     row("Оценка", "", "Итоговая", report.score_final)
     row("Оценка", "", "Изменена преподавателем", report.overridden_by)
     row("Оценка", "", "Причина изменения", report.override_comment)
@@ -54,7 +71,9 @@ def to_csv(report: SessionReport) -> bytes:
             f"Норматив: {item.norm}; результат: {'да' if item.passed else 'нет'}; "
             f"вес: {item.weight:g}{credit}; источник: {item.ref or ''}")
     for number, item in enumerate(report.findings, 1):
-        row("Ошибки", number, item.code.value, item.summary, f"Факт: {item.fact}; норматив: {item.norm or ''}; источник: {item.ref or ''}")
+        row("Ошибки", number, item.code.value, item.summary,
+            f"Факт: {item.fact}; норматив: {item.norm or ''}; источник: {item.ref or ''}"
+            f"{_finding_origin(item)}{_finding_decision(item)}")
     for number, item in enumerate(report.competencies, 1):
         row("Компетенции", number, item.competency, item.value)
     for number, item in enumerate(report.transcript, 1):
@@ -183,7 +202,9 @@ def to_pdf(report: SessionReport) -> bytes:
         story.append(p("Ошибок не выявлено", muted))
     for item in report.findings:
         story.append(p(f"{item.code.value} - {item.summary}"))
-        story.append(p(f"Факт: {item.fact}. Норматив: {item.norm or 'не указан'}. Источник: {item.ref or 'не указан'}", muted))
+        story.append(p(f"Факт: {item.fact}. Норматив: {item.norm or 'не указан'}. "
+                       f"Источник: {item.ref or 'не указан'}"
+                       f"{_finding_origin(item)}{_finding_decision(item)}", muted))
 
     section("Компетенции")
     for item in report.competencies:

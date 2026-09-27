@@ -24,15 +24,31 @@ from app.db.models import Group, Score, Session, Trainee
 from app.domain.events import Exercise, SessionMode, SessionReport
 from app.domain.roles import Role
 from app.domain.statuses import SERVICE_STATUS_LABELS, StationSnapshot, current
+from app.domain.taxonomy import (
+    ERRORS,
+    ErrorCode,
+    Finding,
+    FindingDecision,
+    FindingReview,
+    FindingSource,
+)
 from app.domain.timers import TimerCode
 from app.scoring.export import to_csv, to_pdf
 from app.scoring.report import build as build_report
+from app.scoring.taxonomy import METRIC_MAP
 from app.session.access import can_access
 from app.session.checkpoint import load_state
-from app.session.finish import override_score
+from app.session.finish import change_findings, override_score
 from app.session.score import scoring_scenario
 from app.session.hub import hub
-from app.session.store import ScoreOverridden, apply_score_override
+from app.session.state import now_utc
+from app.session.store import (
+    FindingAdded,
+    FindingReviewed,
+    ScoreOverridden,
+    apply_finding_change,
+    apply_score_override,
+)
 from app.voice.recording import recording_path
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -582,6 +598,133 @@ async def override(
     await db.rollback()  # чтение закончено; запись — одной транзакцией хранилища
     await hub.store.commit_archived(session_id, [correction])
     return SessionReport.model_validate(report["full_report"])
+
+
+def _required_text(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError("поле обязательно")
+    return cleaned
+
+
+class FindingReviewIn(BaseModel):
+    """Решение по отметке: причина обязательна и остаётся в разборе."""
+
+    decision: FindingDecision
+    reason: str = Field(min_length=1, max_length=1000)
+
+    _reason = field_validator("reason")(_required_text)
+
+
+class FindingIn(BaseModel):
+    """Отметка преподавателя: код, факт и норма — то же обоснование, что у автоматической."""
+
+    code: ErrorCode
+    fact: str = Field(min_length=1, max_length=1000)
+    norm: str = Field(min_length=1, max_length=1000)
+    #: Номер карточки очереди ДДС (с 1); без него отметка относится к занятию.
+    card: int | None = Field(default=None, ge=1)
+
+    _fact = field_validator("fact")(_required_text)
+    _norm = field_validator("norm")(_required_text)
+
+
+async def _change_findings(
+    session_id: UUID, who, db: AsyncSession | None, make,
+) -> SessionReport:
+    """Общий путь решений по отметкам — тот же, что у правки итога.
+
+    `make(who, score)` строит запись изменения по сохранённой оценке или
+    отвечает HTTP-ошибкой. Роль проверяет маршрут: администратору сюда нельзя,
+    как и к правке балла.
+    """
+    state = hub.get(session_id)
+    if state is not None:
+        _require_access(who, state)
+        if state.score is None:
+            raise HTTPException(status_code=409, detail="score_not_ready")
+        scenario = scoring_scenario(state)
+        if scenario is None:
+            raise HTTPException(status_code=409, detail="scenario_not_found")
+        change = make(who, state.score)
+        async with hub.operation(session_id):
+            change_findings(state, change)
+        return build_report(session_id, state, scenario)
+
+    if db is None:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    session = await repo.get_session(db, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    _require_access(who, session)
+    score = await db.scalar(select(Score).where(Score.session_id == session_id))
+    if score is None:
+        raise HTTPException(status_code=409, detail="score_not_ready")
+    if (score.report or {}).get("full_report") is None:
+        raise HTTPException(status_code=409, detail="report_not_archived")
+    change = make(who, dict(score.report))
+    report = apply_finding_change(dict(score.report), change)
+    await db.rollback()  # чтение закончено; запись — одной транзакцией хранилища
+    await hub.store.commit_archived(session_id, [change])
+    return SessionReport.model_validate(report["full_report"])
+
+
+@router.post("/{session_id}/findings/{index}/review", response_model=SessionReport)
+async def review_finding(
+    session_id: UUID,
+    index: int,
+    body: FindingReviewIn,
+    request: Request,
+    db: AsyncSession | None = Depends(optional_session),
+) -> SessionReport:
+    """Подтвердить или снять отметку; снятая не штрафует свою метрику."""
+    who = require(request, Role.INSTRUCTOR)
+
+    def make(who, score: dict) -> FindingReviewed:
+        if not 0 <= index < len(score.get("findings", [])):
+            raise HTTPException(status_code=404, detail="finding_not_found")
+        return FindingReviewed(index=index, role=who.role.value, review=FindingReview(
+            decision=body.decision, reason=body.reason, author=who.login, at=now_utc(),
+        ))
+
+    return await _change_findings(session_id, who, db, make)
+
+
+@router.post("/{session_id}/findings", response_model=SessionReport)
+async def add_finding(
+    session_id: UUID,
+    body: FindingIn,
+    request: Request,
+    db: AsyncSession | None = Depends(optional_session),
+) -> SessionReport:
+    """Отметка преподавателя штрафует связанную метрику по той же методике."""
+    who = require(request, Role.INSTRUCTOR)
+
+    def make(who, score: dict) -> FindingAdded:
+        service = None
+        prefix = ""
+        if body.card is not None:
+            cards = score.get("card_results") or []
+            if body.card > len(cards):
+                raise HTTPException(status_code=422, detail="card_not_found")
+            service = cards[body.card - 1].get("managed_service")
+            prefix = f"Карточка {body.card}: " + (f"{service}: " if service else "")
+        competency = next((item for code, item in METRIC_MAP.values() if code is body.code), None)
+        return FindingAdded(role=who.role.value, finding=Finding(
+            code=body.code,
+            source=FindingSource.INSTRUCTOR,
+            summary=f"{prefix}{ERRORS[body.code].title}",
+            fact=body.fact,
+            norm=body.norm,
+            ref="отметка преподавателя на разборе",
+            competency=competency,
+            at=now_utc(),
+            card=body.card,
+            service=service,
+            author=who.login,
+        ))
+
+    return await _change_findings(session_id, who, db, make)
 
 
 @router.get("", response_model=list[SessionOut])

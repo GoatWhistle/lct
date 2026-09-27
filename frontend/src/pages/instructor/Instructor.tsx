@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Debrief } from "@/features/debrief/Debrief";
+import { FindingReview } from "@/features/debrief/FindingReview";
 import { Director } from "@/features/instructor/Director";
 import { ScoreWeightsEditor } from "@/features/instructor/ScoreWeightsEditor";
 import { ScenarioEditor } from "@/features/instructor/ScenarioEditor";
@@ -801,6 +802,8 @@ export function Instructor() {
       {session.report && <>
         <Debrief report={overrideReport?.session_id === session.report.session_id
           ? overrideReport : session.report} />
+        <FindingReview report={overrideReport?.session_id === session.report.session_id
+          ? overrideReport : session.report} onChange={setOverrideReport} />
         <section className="debrief debrief-score-override">
           <h2>Ручная корректировка оценки</h2>
           <p className="ref">Автоматическая оценка: {session.report.score_auto.toFixed(1)} из 100. Меняйте её только при необходимости: причина сохранится в журнале вместе с вашим логином.</p>

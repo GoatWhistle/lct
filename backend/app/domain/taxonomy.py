@@ -152,6 +152,22 @@ COMPETENCY_LABELS: dict[Competency, str] = {
 }
 
 
+class FindingDecision(StrEnum):
+    """Решение преподавателя по отметке на разборе."""
+
+    CONFIRMED = "confirmed"
+    DISMISSED = "dismissed"
+
+
+class FindingReview(BaseModel):
+    """Кто, когда и почему подтвердил или снял отметку. Сама отметка остаётся."""
+
+    decision: FindingDecision
+    reason: str
+    author: str
+    at: datetime
+
+
 class Finding(BaseModel):
     """Отметка в разборе. `fact` и `norm` — то самое обоснование."""
 
@@ -164,3 +180,12 @@ class Finding(BaseModel):
     competency: Competency | None = None
     transcript_ref: str | None = None
     at: datetime | None = None
+    #: Метрика, чей провал объясняет отметка. Без неё связь с метриками идёт
+    #: по методике METRIC_MAP в пределах той же карточки и службы.
+    metric_key: str | None = None
+    #: Номер карточки очереди ДДС (с 1) и служба, к которым относится отметка.
+    card: int | None = None
+    service: str | None = None
+    #: Автор ручной отметки преподавателя (`source=instructor`).
+    author: str | None = None
+    review: FindingReview | None = None

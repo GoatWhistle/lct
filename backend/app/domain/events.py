@@ -692,6 +692,12 @@ class Metric(BaseModel):
     passed: bool
     weight: float = 1.0
     credit: float | None = Field(default=None, ge=0, le=1)
+    #: Номер карточки очереди ДДС (с 1) и служба — область метрики для разбора.
+    card: int | None = None
+    service: str | None = None
+    #: Автоматический вердикт, если его изменило решение преподавателя по отметке.
+    passed_auto: bool | None = None
+    credit_auto: float | None = Field(default=None, ge=0, le=1)
 
 
 class CompetencyScore(BaseModel):
@@ -780,6 +786,8 @@ class SessionReport(BaseModel):
     self_assessment_diff: SelfAssessmentDiff | None = None
     notes: list[InstructorNoteShown] = []
     score_auto: float
+    #: Балл после решений преподавателя по отметкам; None — решений не было.
+    score_reviewed: float | None = None
     score_final: float
     overridden_by: str | None = None
     override_comment: str | None = None

@@ -29,6 +29,8 @@ from app.domain.events import Mood, Speaker, TranscriptEntry
 from app.session.checkpoint import dump_state, load_state
 from app.session.state import SessionState, now_utc
 from app.session.store import (
+    FindingAdded,
+    FindingReviewed,
     HintRecorded,
     LessonEnded,
     LessonIdentity,
@@ -42,6 +44,7 @@ from app.session.store import (
     SelfAssessed,
     SessionLeaseLost,
     UtteranceAppended,
+    apply_finding_change,
     apply_score_override,
 )
 
@@ -238,6 +241,30 @@ class PostgresSessionStore:
                     # а не вторая бессрочная копия свободного текста.
                     detail=(f"{score.score_auto} → {record.score_final}; "
                             f"comment_chars={len(record.comment)}"),
+                ))
+            case FindingReviewed() | FindingAdded():
+                await db.flush()
+                score = await db.scalar(
+                    select(Score).where(Score.session_id == session_id).with_for_update()
+                )
+                if score is None:
+                    raise LookupError(f"нет оценки занятия {session_id}")
+                before = score.score_final
+                score.report = apply_finding_change(dict(score.report or {}), record)
+                score.score_final = score.report.get("score_final", score.score_final)
+                if isinstance(record, FindingReviewed):
+                    actor, action = record.review.author, "finding.review"
+                    what = (f"#{record.index} {record.review.decision.value}; "
+                            f"reason_chars={len(record.review.reason)}")
+                else:
+                    actor, action = record.finding.author or "instructor", "finding.add"
+                    what = f"{record.finding.code.value}; fact_chars={len(record.finding.fact)}"
+                # Как у правки итога: текст решения живёт в разборе, в аудите —
+                # что изменено, кем и как сдвинулся балл.
+                db.add(AuditLog(
+                    actor=actor, role=record.role, action=action,
+                    object_id=str(session_id),
+                    detail=f"{what}; {before} → {score.score_final}",
                 ))
         await db.flush()
 

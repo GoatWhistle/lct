@@ -37,6 +37,7 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
         <article className="debrief-stat">
           <span>Автоматическая оценка</span><strong>{report.score_auto.toFixed(0)}<small> из 100</small></strong>
           <small>{report.overridden_by ? "до корректировки преподавателя" : "расчёт по критериям занятия"}</small>
+          {report.score_reviewed != null && <small>после разбора отметок: {report.score_reviewed.toFixed(0)}</small>}
         </article>
         <article className="debrief-stat">
           <span>Упражнение</span><strong>{report.exercise === "dds" ? "ДДС" : report.exercise === "card" ? "КИО" : report.exercise === "call" ? "Вызов 112" : "112 → ДДС"}</strong>
@@ -144,6 +145,10 @@ export function Debrief({ report, big = false }: { report: SessionReport; big?: 
                   <td>
                     {finding.summary}
                     <div className="ref">{finding.fact}{finding.norm && ` · ${finding.norm}`}</div>
+                    {finding.source === "instructor" && <div className="ref">отметка преподавателя {finding.author ?? ""}</div>}
+                    {finding.review && <div className="ref">
+                      {finding.review.decision === "dismissed" ? "снята" : "подтверждена"} преподавателем: {finding.review.reason}
+                    </div>}
                   </td>
                 </tr>
               ))}
