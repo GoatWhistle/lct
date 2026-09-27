@@ -24,7 +24,13 @@ from app.db.base import get_session
 from app.db.models import Group, Score, Session, Trainee
 from app.domain.events import Exercise, SessionMode, SessionReport
 from app.domain.roles import Role
-from app.domain.statuses import SERVICE_STATUS_LABELS, DdsQueueCard, StationSnapshot, current
+from app.domain.statuses import (
+    SERVICE_STATUS_LABELS,
+    DdsQueueCard,
+    ServiceStatus,
+    StationSnapshot,
+    current,
+)
 from app.domain.timers import TimerCode, TimerState
 from app.scoring.export import to_csv, to_pdf
 from app.scoring.report import build as build_report
@@ -212,10 +218,12 @@ def _signals(
     """
     settings = get_settings()
     signals: list[Signal] = []
-    # Необработанная — без первичного статуса: он останавливает норматив
-    # DDS_ACK. Принятая или отклонённая карточка висит в очереди до
-    # «Следующей», но реакции курсанта уже не ждёт.
-    pending = sum(not card.timer_stopped for card in queue)
+    # Необработанная — без первичного статуса. Норматив DDS_ACK теперь
+    # останавливается открытием карточки, поэтому считаем по статусу службы:
+    # открытая, но не принятая и не отклонённая карточка реакции ещё ждёт.
+    pending = sum(
+        card.service_status in {ServiceStatus.ADDED, ServiceStatus.RECEIVED} for card in queue
+    )
     if pending >= settings.signal_backlog_threshold:
         signals.append(Signal(
             kind="backlog", severity=TimerState.WARN,

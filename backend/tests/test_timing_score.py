@@ -62,19 +62,21 @@ def test_card_fill_time_metric_texts(elapsed_ms, completed, fact, passed):
         (605_000, True, "605 с (+425 с сверх норматива)", False),
         (25_000, True, "25 с (на 155 с быстрее норматива)", True),
         (180_000, True, "180 с (точно в норматив)", True),
-        (None, False, "карточка не завершена; время обработки не зафиксировано", False),
-        (25_000, False, "карточка не завершена; 25 с (на 155 с быстрее норматива)", False),
+        (None, False, "первая запись не добавлена; карточка не открыта", False),
+        (25_000, False, "первая запись не добавлена; 25 с (на 155 с быстрее норматива)", False),
     ],
 )
 def test_dds_work_time_metric_texts(elapsed_ms, completed, fact, passed):
     metric, finding = time_metric(DDS_WORK_TIME, elapsed_ms, 180_000, completed=completed)
 
     assert metric.key == "dds_work_time"
-    assert metric.title == "Отработка карточки ДДС"
+    assert metric.title == "Первая запись по карточке ДДС"
     assert metric.fact == fact
-    assert metric.norm == "завершить за 180 с"
+    assert metric.norm == "открыть карточку и добавить первую запись (статус и текст) за 180 с"
     assert metric.passed is passed
     assert (finding is None) is passed
     if finding is not None:
-        assert finding.summary == "ДДС: норматив времени отработки карточки не выполнен"
-        assert (finding.fact, finding.norm) == (fact, "завершить за 180 с")
+        assert finding.summary == "ДДС: первая запись по карточке позже норматива"
+        assert (finding.fact, finding.norm) == (
+            fact, "открыть карточку и добавить первую запись (статус и текст) за 180 с"
+        )

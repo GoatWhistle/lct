@@ -37,7 +37,7 @@ def to_csv(report: SessionReport) -> bytes:
     row("Занятие", "", "Сценарий", report.scenario_id)
     row("Занятие", "", "Режим", report.mode.value)
     row("Занятие", "", "Попытка", report.attempt)
-    row("Критерии", "", "Лимит решения ДДС, с", report.criteria.decision_time_limit_seconds)
+    row("Критерии", "", "Лимит открытия карточки ДДС, с", report.criteria.decision_time_limit_seconds)
     row("Критерии", "", "Допустимо ошибок", report.criteria.allowed_errors)
     row("Критерии", "", "Грамматика обязательна", "да" if report.criteria.require_correct_grammar else "нет")
     row("Критерии", "", "Переопределения весов", report.criteria.score_weights or "стандартные")
@@ -150,7 +150,7 @@ def to_pdf(report: SessionReport) -> bytes:
         ("Сценарий", report.scenario_id),
         ("Режим", report.mode.value),
         ("Попытка", report.attempt),
-        ("Лимит решения ДДС", f"{report.criteria.decision_time_limit_seconds} с"),
+        ("Лимит открытия карточки ДДС", f"{report.criteria.decision_time_limit_seconds} с"),
         ("Допустимо ошибок", report.criteria.allowed_errors),
         ("Грамматика обязательна", "да" if report.criteria.require_correct_grammar else "нет"),
         ("Переопределения весов", report.criteria.score_weights or "стандартные"),

@@ -56,8 +56,9 @@ def fire():
 
 def accept_with_crew(state: SessionState, card) -> None:
     service = state.card_services(card)[0]
+    card.on_event("dds.open")  # карточка открыта: 30 с остановлены
     card.set_service_status(service, ServiceStatus.ACCEPTED, "Принято в работу")
-    card.on_event("card.ack")
+    card.on_event("dds.record")
     card.crew_selected = state.crew_options(card)[0]
     card.crew_assignments[service] = card.crew_selected
     card.dds_log.append(("crew.select", now_utc(), card.crew_selected))
