@@ -23,8 +23,6 @@ from app.db import repo
 from app.db.base import get_session
 from app.db.models import Group, Score, Session, Trainee
 from app.domain.events import Exercise, SessionMode, SessionReport
-from app.domain.roles import Role
-from app.domain.statuses import SERVICE_STATUS_LABELS, DdsQueueCard, StationSnapshot, current
 from app.domain.taxonomy import (
     ERRORS,
     ErrorCode,
@@ -33,23 +31,22 @@ from app.domain.taxonomy import (
     FindingReview,
     FindingSource,
 )
+from app.domain.roles import Role
+from app.domain.statuses import SERVICE_STATUS_LABELS, DdsQueueCard, StationSnapshot, current
 from app.domain.timers import TimerCode, TimerState
 from app.scoring.export import to_csv, to_pdf
 from app.scoring.report import build as build_report
+from app.scoring.review import has_finding
 from app.scoring.taxonomy import METRIC_MAP
 from app.session.access import can_access
 from app.session.checkpoint import load_state
 from app.session.finish import change_findings, override_score
+from app.session.store import FindingAdded, FindingReviewed
+from app.session.timers import now_utc
 from app.session.score import scoring_scenario
 from app.session.hub import hub
-from app.session.state import SessionState, now_utc
-from app.session.store import (
-    FindingAdded,
-    FindingReviewed,
-    ScoreOverridden,
-    apply_score_override,
-)
-from app.scoring.review import has_finding
+from app.session.state import SessionState
+from app.session.store import ScoreOverridden, apply_score_override
 from app.voice.recording import recording_path
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
