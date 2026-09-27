@@ -9,6 +9,7 @@ import asyncio
 import time
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -16,7 +17,8 @@ from fastapi.testclient import TestClient
 
 from app.api.http import sessions as sessions_http
 from app.api.ws import control as control_ws
-from app.domain.events import CallEndReason, Exercise, LessonCriteria, SessionMode
+from app.api.ws import call as call_ws
+from app.domain.events import CallEndReason, Exercise, LessonCriteria, SessionMode, SessionPaused, TtsCancel, TtsEnd
 from app.domain.statuses import ServiceStatus
 from app.domain.timers import TimerCode
 from app.main import app
@@ -163,6 +165,12 @@ def test_checkpoint_round_trip_keeps_pause_without_adding_downtime(clock):
     assert restored_timer.elapsed_ms == card.timers.timers[TimerCode.DDS_ACK].elapsed_ms
     assert restored_timer.started_at is None
 
+    # После takeover пауза всё ещё действует; лишь явное возобновление
+    # продолжает норматив с пяти секунд до прерывания.
+    restored.resume()
+    clock.advance(10)
+    assert restored_timer.current_ms(clock.now) == 15_000
+
 
 def test_pause_and_resume_are_recorded_for_audit(monkeypatch):
     scenario = load_file(LIBRARY / "fire-apartment-l2.yaml", LIBRARY)
@@ -250,15 +258,30 @@ def test_ending_session_while_paused_finalizes_pause_and_unblocks_report(clock, 
     idle = timedelta(seconds=45)
     monkeypatch.setattr("app.session.state.now_utc", lambda: base + idle)
 
+    events = []
+
     async def run():
-        async with hub.operation(state.session_id):
-            await end_session(state.session_id, state, CallEndReason.INSTRUCTOR)
+        with hub.trainee(state.session_id) as queue:
+            async with hub.operation(state.session_id):
+                await end_session(state.session_id, state, CallEndReason.INSTRUCTOR)
+            async with hub.operation(state.session_id):
+                await call_ws._handle(
+                    state.session_id, state,
+                    SimpleNamespace(type="self_assessment.submit", missed=[], comment="Проверил"),
+                )
+            while not queue.empty():
+                events.append(queue.get_nowait())
 
     asyncio.run(run())
 
     assert state.ended
     assert state.paused is False
     assert state.total_paused_ms >= 30_000
+    assert state.self_assessed
+    assert state.score is not None
+    assert state.score["full_report"]["total_paused_ms"] >= 30_000
+    assert any(isinstance(event, SessionPaused) and not event.paused for event in events)
+    assert any(isinstance(record, LessonResumed) for _sid, batch in store.commits for record in batch)
 
 
 def test_dds_work_overdue_survives_pause():
@@ -278,6 +301,27 @@ def test_dds_work_overdue_survives_pause():
         timer.started_at is not None or timer.paused
     ) and not timer.stopped and timer.current_ms(time.monotonic()) > limits[TimerCode.DDS_WORK]
     assert overdue is True
+
+
+def test_active_registry_keeps_existing_overdue_during_pause(http_client, clock):
+    app.dependency_overrides[sessions_http.optional_session] = lambda: None
+    state, card = _dds_state_with_active_card(clock)
+    state.owner_login = "dev"
+    timer = card.timers.timers.setdefault(TimerCode.DDS_WORK, Timer(code=TimerCode.DDS_WORK))
+    card.timers.limits[TimerCode.DDS_WORK] = 1_000
+    timer.start(clock.now)
+    clock.advance(5)
+    state.pause()
+    hub._sessions[state.session_id] = state
+    try:
+        response = http_client.get("/api/sessions/active")
+        assert response.status_code == 200
+        row = next(item for item in response.json() if item["session_id"] == str(state.session_id))
+        assert row["dds_work_overdue_cards"] == 1
+        assert row["paused"] is True
+    finally:
+        hub._sessions.pop(state.session_id, None)
+        app.dependency_overrides.pop(sessions_http.optional_session, None)
 
 
 @pytest.fixture
@@ -347,3 +391,62 @@ def test_reconnect_to_call_replays_paused_banner(http_client):
                 message["type"] == "session.paused" and message["paused"]
                 for message in messages
             )
+
+        control.send_json({"type": "session.resume"})
+        _wait(lambda: not hub.get(session_id).paused)
+        with http_client.websocket_connect(f"/ws/call/{session_id}") as trainee:
+            message = trainee.receive_json()
+            assert message == {"type": "session.paused", "paused": False}
+
+
+@pytest.mark.asyncio
+async def test_pause_cancels_inflight_voice_and_clears_buffer(monkeypatch):
+    from app.voice import pipeline
+
+    class FakeVad:
+        def __init__(self, *_args, **_kwargs):
+            self.reset_count = 0
+
+        def reset(self):
+            self.reset_count += 1
+
+        def push(self, _frame):
+            return []
+
+    monkeypatch.setattr(pipeline, "StreamingVad", FakeVad)
+    state, _card = _dds_state_with_active_card(lambda: 1_000.0)
+    events = []
+    audio = []
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class Models:
+        vad_path = None
+
+    voice = pipeline.VoiceSession(
+        state.session_id, state, Models(), events.append, lambda _event: None, audio.append,
+    )
+    state.voice = voice
+
+    async def slow_synthesis(_text):
+        started.set()
+        await release.wait()
+        return b"\x00\x00" * 2_400
+
+    monkeypatch.setattr(voice, "synthesize", slow_synthesis)
+    try:
+        speaking = voice.speak("Алло, помогите!", state.persona.mood if state.persona else pipeline.Mood.PANIC)
+        await asyncio.wait_for(started.wait(), timeout=1)
+        voice._queue.put_nowait((b"old", time.monotonic()))
+        state.pause()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await speaking
+        await asyncio.sleep(0)
+        assert any(isinstance(event, TtsCancel) and event.reason == "director" for event in events)
+        assert not any(isinstance(event, TtsEnd) for event in events)
+        assert audio == []
+        assert voice._queue.empty()
+        assert voice._vad.reset_count == 1
+    finally:
+        await voice.close()

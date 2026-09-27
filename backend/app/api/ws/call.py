@@ -235,6 +235,9 @@ async def _handle(session_id: UUID, state, event) -> None:
                     code=ErrorKind.INTERNAL, message="Не удалось получить ответ заявителя. Попробуйте ещё раз.",
                 ))
                 return
+            if state.paused:
+                # Ответ модели мог закончиться уже после команды преподавателя.
+                return
             caller_entry = state.append(Speaker.CALLER, line.text, line.mood)
             hub.to_trainee(session_id, CallerUtterance(
                 utterance_id=uuid4(), text=line.text,
@@ -399,10 +402,9 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
     _who, state = entered
 
     with hub.trainee(session_id) as queue:
-        if state.paused:
-            # Переподключение не ждёт следующего `session.pause`: баннер должен
-            # быть на экране сразу, раз сервер уже отклоняет команды (lct-39).
-            hub.to_trainee(session_id, SessionPaused(paused=True))
+        # Каждый новый канал получает серверное состояние, включая снятую паузу:
+        # клиент мог потерять событие resume во время переподключения.
+        queue.put_nowait(SessionPaused(paused=state.paused))
         if state.exercise is Exercise.CARD:
             from app.api.ws.control import card_briefing
 

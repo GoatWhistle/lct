@@ -316,6 +316,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 /* АРМ ДДС: реестр остаётся плотной таблицей, карточка и связь — рядом. */
 .dds-workspace { max-width: 1800px; margin: 0 auto; }
+.dds-pause-controls { display: contents; border: 0; margin: 0; padding: 0; min-width: 0; }
 .dds-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 8px 0 16px; }
 .dds-header h1 { margin: 2px 0 0; }
 .dds-header h1 span { color: #576273; font-size: 15px; font-weight: 400; }

@@ -12,7 +12,7 @@ import logging
 import time
 from uuid import UUID
 
-from app.domain.events import CallEnded, CallEndReason, Exercise, ScoreReady, SessionEnded
+from app.domain.events import CallEnded, CallEndReason, Exercise, ScoreReady, SessionEnded, SessionPaused
 from app.domain.statuses import ServiceStatus, current
 from app.domain.timers import TimerCode
 from app.scoring.ai_coach import coach
@@ -27,6 +27,7 @@ from app.session.score import ScoringSnapshot, score_session, scoring_scenario
 from app.session.state import DdsCardRecord, DdsLiveCard, now_utc
 from app.session.store import (
     LessonEnded,
+    LessonResumed,
     ScoreArchived,
     ScoreCalculated,
     ScoreOverridden,
@@ -181,7 +182,16 @@ async def end_session(session_id: UUID, state, reason: CallEndReason) -> None:
     """
     if state.ended:
         return
+    was_paused = state.paused
+    paused_ms_before = state.total_paused_ms
     ended_at = state.end(reason)
+    if was_paused:
+        hub.record(session_id, LessonResumed(
+            at=ended_at, author="система", role="system",
+            paused_ms=state.total_paused_ms - paused_ms_before,
+        ))
+        hub.broadcast(session_id, SessionPaused(paused=False))
+        hub.to_station(session_id, SessionPaused(paused=False))
     if state.exercise is Exercise.CARD and state.dispatched_card is None:
         state.on_event("card.end")
     # Норматив отработки фиксируется событием, а не текущим значением часов.

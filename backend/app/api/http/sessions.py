@@ -228,7 +228,10 @@ async def active(
                 states[state.session_id] = state
 
     for state in states.values():
-        elapsed = (max(0, int((now - state.started_at).total_seconds()))
+        paused_ms = state.total_paused_ms
+        if state.paused and state.paused_at is not None:
+            paused_ms += max(0, int((now - state.paused_at).total_seconds() * 1000))
+        elapsed = (max(0, int((now - state.started_at).total_seconds() - paused_ms / 1000))
                    if state.started_at else 0)
         station = state.station_snapshot() if state.exercise is Exercise.DDS else None
         queue = station.queue_cards if station else []

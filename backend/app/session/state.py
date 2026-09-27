@@ -197,6 +197,8 @@ class SessionState(PersistedSession):
             card.timers.pause(now)
         self.paused = True
         self.paused_at = now_utc()
+        if self.voice is not None:
+            self.voice.pause()
 
     def resume(self) -> None:
         """Снять паузу: таймеры продолжают с прежней отметки, очередь сдвигается на простой."""

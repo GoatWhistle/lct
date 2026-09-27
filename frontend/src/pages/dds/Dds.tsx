@@ -321,7 +321,7 @@ export function Dds() {
     return () => clearInterval(timer);
   }, []);
 
-  const send = (command: StationToServer): boolean => channel.current?.send(command) ?? false;
+  const send = (command: StationToServer): boolean => !paused && (channel.current?.send(command) ?? false);
   if (!sessionId) return <DdsHistoryOnly cards={ddsHistory.cards} error={ddsHistory.error} />;
 
   const reports = station?.phone_reports ?? [];
@@ -331,6 +331,7 @@ export function Dds() {
   const phoneCall = station?.phone_pending ?? null;
   const phoneLines = (station?.phone_lines ?? []).filter((line) => line.crew === selectedCrew);
   const isConnected = status === "open";
+  const pausedSeconds = Math.round((report?.total_paused_ms ?? 0) / 1000);
   const cardId = card ? String(readPath(card.server, "card_id") ?? "") : "";
   const cardIndex = station?.card_index ?? 1;
   const cardTotal = station?.card_total ?? 1;
@@ -378,6 +379,7 @@ export function Dds() {
       {report ? <div style={{ padding: 12 }}>
         <p><strong>Итоговая оценка: {report.score_final.toFixed(0)} из 100</strong>
           {report.score_final !== report.score_auto && ` · автооценка ${report.score_auto.toFixed(0)}`}</p>
+        <p className="ref">Паузы занятия: {Math.floor(pausedSeconds / 60)} мин {pausedSeconds % 60} с. Время пауз исключено из нормативов.</p>
         <p className="ref">Скачать отчёт: <a href={`/api/sessions/${sessionId}/report.csv`}>CSV</a>
           {" · "}<a href={`/api/sessions/${sessionId}/report.pdf`}>PDF</a></p>
         {Boolean(report.card_results?.length) && <>
@@ -413,6 +415,7 @@ export function Dds() {
       </div>}
     </section>}
 
+    <fieldset className="dds-pause-controls" disabled={paused && !ended}>
     {view === "registry" && <>
     <section className="dds-search">
       <div className="dds-search-main">
@@ -707,6 +710,7 @@ export function Dds() {
         </div>
       </nav>
     </div>}
+    </fieldset>
   </main>;
 }
 
