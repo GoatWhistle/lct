@@ -316,7 +316,7 @@ def crew_report(phase: str, seconds: int) -> PhoneReportRecord:
                              text="доклад", at=at_second(seconds))
 
 
-def reaction(status_log, reports, limit_ms=45_000):
+def reaction(status_log, reports, limit_ms=45_000, pause_intervals=None):
     card = live_card(status_log=status_log, crew_assignments={SERVICES[0]: "Бригада 12"},
                      dispatched_at=T0)
     card.phone_reports = reports
@@ -324,9 +324,11 @@ def reaction(status_log, reports, limit_ms=45_000):
         entries=status_log, services=SERVICES, crew_assignments=card.crew_assignments,
         deadline_ms=30_000, elapsed_ms=5_000, phone_reports=reports,
         report_reaction_ms=limit_ms,
+        pause_intervals=pause_intervals,
     )
     metric = next((m for m in dispatcher_metrics(card, 30_000, services=SERVICES,
-                                                 report_reaction_ms=limit_ms)
+                                                 report_reaction_ms=limit_ms,
+                                                 pause_intervals=pause_intervals)
                    if m.key == "dds_report_reaction"), None)
     return [f for f in findings if f.metric_key == "dds_report_reaction"], metric
 
@@ -362,6 +364,21 @@ def test_status_later_than_limit_after_crew_report_is_d6_with_fact_and_norm():
     assert findings[0].service == SERVICES[0]
     assert not metric.passed and metric.fact == findings[0].fact
     assert metric.credit == time_credit(70_000, 45_000)
+
+
+def test_pause_between_report_and_status_does_not_count_as_reaction_time():
+    marks = full_run(arrived_at=180)
+    reports = [crew_report("arrived", 100)]
+    pause = [(at_second(110), at_second(170))]
+
+    without_pause, late = reaction(marks, reports)
+    with_pause, active = reaction(marks, reports, pause_intervals=pause)
+
+    assert [finding.code for finding in without_pause] == [ErrorCode.D6]
+    assert not late.passed
+    assert with_pause == []
+    assert active.passed and active.credit == time_credit(20_000, 45_000)
+    assert "20 с" in active.fact
 
 
 def test_violation_by_a_fraction_of_a_second_is_not_shown_as_the_limit():

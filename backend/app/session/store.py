@@ -86,11 +86,27 @@ class ScoreOverridden:
 
 
 @dataclass(frozen=True)
+class LessonPaused:
+    at: datetime
+    author: str
+    role: str
+
+
+@dataclass(frozen=True)
 class FindingReviewed:
     """Преподаватель подтвердил или снял отметку разбора."""
     index: int
     review: FindingReview
     role: str
+
+
+@dataclass(frozen=True)
+class LessonResumed:
+    at: datetime
+    author: str
+    role: str
+    #: Длительность этой конкретной паузы — видно в аудите без пересчёта.
+    paused_ms: int
 
 
 @dataclass(frozen=True)
@@ -102,7 +118,7 @@ class FindingAdded:
 
 Record = (UtteranceAppended | HintRecorded | NoteAdded | SelfAssessed | LessonStarted
           | LessonEnded | ScoreCalculated | ScoreArchived | ScoreOverridden
-          | FindingReviewed | FindingAdded)
+          | LessonPaused | LessonResumed | FindingReviewed | FindingAdded)
 
 
 def apply_finding_change(report: dict, change: "FindingReviewed | FindingAdded") -> dict:

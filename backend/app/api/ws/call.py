@@ -31,6 +31,7 @@ from app.domain.events import (
     PatchSource,
     ScoreReady,
     SessionMode,
+    SessionPaused,
     StationState,
     TimerTick,
     TextTurnAccepted,
@@ -192,6 +193,14 @@ async def _handle(session_id: UUID, state, event) -> None:
             code=ErrorKind.UNSUPPORTED_EVENT, message="Занятие уже завершено",
         ))
         return
+    if state.paused:
+        # Отказ временный, в отличие от отклонённого значения: `kio.patch`
+        # без `auto`-отката. useCall держит правку в pending и повторяет её
+        # после `session.paused: false` — откат стёр бы ввод курсанта.
+        hub.to_trainee(session_id, ErrorEvent(
+            code=ErrorKind.UNSUPPORTED_EVENT, message="Пауза, ждите преподавателя",
+        ))
+        return
     if (event.type == "text.turn" and state.exercise is not Exercise.CARD) or state.exercise is Exercise.DDS or (
         state.exercise is Exercise.CARD and event.type not in {"kio.patch", "card.submit", "text.turn"}
     ) or (state.exercise is Exercise.CALL and event.type == "card.submit"):
@@ -229,6 +238,9 @@ async def _handle(session_id: UUID, state, event) -> None:
                 hub.to_trainee(session_id, ErrorEvent(
                     code=ErrorKind.INTERNAL, message="Не удалось получить ответ заявителя. Попробуйте ещё раз.",
                 ))
+                return
+            if state.paused:
+                # Ответ модели мог закончиться уже после команды преподавателя.
                 return
             caller_entry = state.append(Speaker.CALLER, line.text, line.mood)
             hub.to_trainee(session_id, CallerUtterance(
@@ -420,6 +432,8 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
         if hub.is_lease_fenced(session_id):
             await close_fenced(ws)
             return
+        # Переподключившийся клиент сначала узнаёт, разрешён ли ввод.
+        queue.put_nowait(SessionPaused(paused=state.paused))
         if state.exercise is Exercise.CARD:
             from app.api.ws.control import card_briefing
 
@@ -462,6 +476,10 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
                 # Бинарные кадры — аудио, текстовые — события. Направление определяется
                 # каналом, обёртки JSON вокруг звука нет (docs/arch/CONTRACT.md).
                 if message.get("bytes") is not None:
+                    if state.paused:
+                        # JSON-команды отказывает `_handle`; бинарные кадры сюда
+                        # не заходят, поэтому пауза глушит звук здесь же (lct-39).
+                        continue
                     if state.exercise is Exercise.CALL:
                         _on_audio(session_id, state, message["bytes"])
                     else:

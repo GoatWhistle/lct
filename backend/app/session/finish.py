@@ -12,7 +12,7 @@ import logging
 import time
 from uuid import UUID
 
-from app.domain.events import CallEnded, CallEndReason, Exercise, ScoreReady, SessionEnded
+from app.domain.events import CallEnded, CallEndReason, Exercise, ScoreReady, SessionEnded, SessionPaused
 from app.domain.statuses import ServiceStatus, current
 from app.domain.timers import TimerCode
 from app.scoring.ai_coach import coach
@@ -29,6 +29,7 @@ from app.session.store import (
     FindingAdded,
     FindingReviewed,
     LessonEnded,
+    LessonResumed,
     ScoreArchived,
     ScoreCalculated,
     ScoreOverridden,
@@ -60,10 +61,12 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
         expected_decision_reason=dds_decision.reason,
         phone_reports=card.phone_reports,
         report_reaction_ms=reaction_ms,
+        pause_intervals=state.pause_intervals,
     )
     metrics = dispatcher_metrics(
         card, decision_limit_ms, dds_decision.expected, dds_decision.reason,
         services=services, report_reaction_ms=reaction_ms,
+        pause_intervals=state.pause_intervals,
     )
     weighted = GostResult(metrics=metrics, findings=findings)
     work_limit_ms = card.timers.limits[TimerCode.DDS_WORK]
@@ -189,7 +192,14 @@ async def end_session(session_id: UUID, state, reason: CallEndReason) -> None:
     """
     if state.ended:
         return
+    was_paused = state.paused
+    paused_ms_before = state.total_paused_ms
     ended_at = state.end(reason)
+    if was_paused:
+        hub.record(session_id, LessonResumed(
+            at=ended_at, author="система", role="system",
+            paused_ms=state.total_paused_ms - paused_ms_before,
+        ))
     if state.exercise is Exercise.CARD and state.dispatched_card is None:
         state.on_event("card.end")
     # Норматив отработки фиксируется событием, а не текущим значением часов.
@@ -208,6 +218,11 @@ async def end_session(session_id: UUID, state, reason: CallEndReason) -> None:
         hub.to_station(session_id, SessionEnded(reason=reason))
     else:
         hub.to_trainee(session_id, CallEnded(reason=reason))
+    if was_paused:
+        # Снятие паузы — после сообщения о конце: иначе клиент дошлёт отложенные
+        # на паузе правки карточки в уже закрытое занятие.
+        hub.broadcast(session_id, SessionPaused(paused=False))
+        hub.to_station(session_id, SessionPaused(paused=False))
     if state.score is None:
         return
     hub.to_observers(session_id, ScoreReady(session_id=session_id))

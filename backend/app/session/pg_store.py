@@ -34,7 +34,9 @@ from app.session.store import (
     HintRecorded,
     LessonEnded,
     LessonIdentity,
+    LessonPaused,
     LessonRequest,
+    LessonResumed,
     LessonStarted,
     NoteAdded,
     Record,
@@ -199,6 +201,16 @@ class PostgresSessionStore:
                     actor=actor, role=role, action="self_assessment.submit",
                     object_id=str(session_id),
                     detail=f"missed_count={len(record.missed)}; comment_chars={len(record.comment)}",
+                ))
+            case LessonPaused(at=at, author=author, role=role):
+                db.add(AuditLog(
+                    actor=author, role=role, action="session.pause",
+                    object_id=str(session_id), detail=f"at={at.isoformat()}",
+                ))
+            case LessonResumed(at=at, author=author, role=role, paused_ms=paused_ms):
+                db.add(AuditLog(
+                    actor=author, role=role, action="session.resume",
+                    object_id=str(session_id), detail=f"at={at.isoformat()}; paused_ms={paused_ms}",
                 ))
             case LessonStarted(at=at):
                 await db.execute(

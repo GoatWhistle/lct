@@ -8,6 +8,7 @@
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from app.domain.events import CallEndReason, Exercise, LessonCriteria, Metric
@@ -68,6 +69,7 @@ class ScoringSnapshot:
     #: Карточка на пульте в упражнении по звонку: отметки D1–D6 рядом с E1–E6.
     call_card: DdsLiveCard | None
     call_card_services: tuple[str, ...]
+    pause_intervals: tuple[tuple[datetime, datetime], ...]
 
     @property
     def reports_cards(self) -> bool:
@@ -112,6 +114,7 @@ class ScoringSnapshot:
             call_card=live_card.model_copy(deep=True) if live_card is not None else None,
             call_card_services=(tuple(state.card_services(live_card))
                                 if live_card is not None else ()),
+            pause_intervals=tuple(state.pause_intervals),
         )
 
 
@@ -231,10 +234,12 @@ async def score_session(
             expected_decision_reason=scenario.dds_decision.reason,
             phone_reports=live_card.phone_reports,
             report_reaction_ms=reaction_ms,
+            pause_intervals=snapshot.pause_intervals,
         ))
         result.metrics.extend(dispatcher_metrics(
             live_card, decision_limit_ms, scenario.dds_decision.expected,
             scenario.dds_decision.reason, services=services, report_reaction_ms=reaction_ms,
+            pause_intervals=snapshot.pause_intervals,
         ))
     # Карточки ДДС уже взвешены каждая своим сценарием плюс настройкой
     # занятия. Веса первого сценария поверх них испортили бы остальные.

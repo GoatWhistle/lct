@@ -83,6 +83,9 @@ class Timer(BaseModel):
     elapsed_ms: int = 0
     attempt: int = 1
     stopped: bool = False
+    #: Пауза занятия — таймер заморожен, но не завершён: `start()` его не
+    #: считает новой попыткой, в отличие от `stopped` (lct-39).
+    paused: bool = False
 
     @model_serializer(mode="wrap")
     def _dump(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
@@ -100,13 +103,20 @@ class Timer(BaseModel):
         data = dict(data)
         elapsed = max(0, int(data.get("elapsed_ms", 0)))
         stopped = bool(data.get("stopped"))
-        downtime = 0 if stopped else (info.context or {}).get("downtime_ms", 0)
+        paused = bool(data.get("paused"))
+        # На паузе занятие не простаивало без присмотра — оно ждало
+        # преподавателя, и это время не досчитывается таймеру при перезапуске.
+        downtime = 0 if stopped or paused else (info.context or {}).get("downtime_ms", 0)
         started = data.pop("started")
         data["started_at"] = time.monotonic() - (elapsed + downtime) / 1000 if started else None
-        data["elapsed_ms"] = elapsed if stopped else 0
+        data["elapsed_ms"] = elapsed if (stopped or paused) else 0
         return data
 
     def start(self, now: float) -> None:
+        if self.paused:
+            # Таймер уже идёт, просто заморожен: запуск с нуля потерял бы
+            # набранное время, а ход до `resume` посчитал бы паузу.
+            return
         if self.stopped:
             # Повторный запуск после остановки — это новая попытка (обратный дозвон).
             self.attempt += 1
@@ -125,6 +135,19 @@ class Timer(BaseModel):
             return self.elapsed_ms
         return int((now - self.started_at) * 1000)
 
+    def pause(self, now: float) -> None:
+        """Зафиксировать прошедшее время и остановить ход часов до `resume`."""
+        if self.started_at is not None and not self.stopped:
+            self.elapsed_ms = self.current_ms(now)
+            self.started_at = None
+            self.paused = True
+
+    def resume(self, now: float) -> None:
+        """Продолжить с той же отметки — простой в счёт не идёт."""
+        if self.paused:
+            self.started_at = now - self.elapsed_ms / 1000
+            self.paused = False
+
 
 class SessionTimers(BaseModel):
     """Набор таймеров одной сессии. `limits` приходит из конфига —
@@ -141,6 +164,16 @@ class SessionTimers(BaseModel):
             self.timers.setdefault(code, Timer(code=code)).start(now)
         for code in STOPS.get(event_type, ()):
             self.timers.setdefault(code, Timer(code=code)).stop(now)
+
+    def pause(self, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        for timer in self.timers.values():
+            timer.pause(now)
+
+    def resume(self, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        for timer in self.timers.values():
+            timer.resume(now)
 
     def snapshot(self, now: float | None = None) -> list[TimerSnapshot]:
         """Только запущенные таймеры: показывать нули по нормативам,

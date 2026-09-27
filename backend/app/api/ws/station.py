@@ -39,6 +39,9 @@ def _error(session_id: UUID, message: str) -> None:
 
 
 async def _handle(session_id: UUID, state, event) -> None:
+    if state.paused:
+        _error(session_id, "Пауза, ждите преподавателя")
+        return
     outcome = state.desk.apply(event, state)
     if outcome.error is not None:
         _error(session_id, outcome.error)

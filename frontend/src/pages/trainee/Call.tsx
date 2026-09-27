@@ -122,15 +122,16 @@ export function Call() {
             event.preventDefault();
             if (call.sendText(textTurn)) setTextTurn("");
           }}>
-            <input aria-label="Ваша реплика заявителю" value={textTurn} maxLength={1000}
+            <input aria-label="Ваша реплика заявителю" value={textTurn} maxLength={1000} disabled={call.paused}
               placeholder="Ваша реплика…" onChange={(event) => setTextTurn(event.target.value)} />
-            <button type="submit" disabled={call.status !== "open" || !textTurn.trim() || call.cardSubmitted}>Отправить</button>
+            <button type="submit" disabled={call.paused || call.status !== "open" || !textTurn.trim() || call.cardSubmitted}>Отправить</button>
           </form>
+          {call.paused && <p role="status" className="state-warn">Пауза, ждите преподавателя</p>}
           {call.error && <p role="alert" className="state-violated">{call.error}</p>}
         </section>
         <div className="arm-card-wrap">
           <KioCard state={call.card} required={call.briefing.required_fields}
-            readOnly={call.cardSubmitted} referenceArm onChange={call.patchKio} />
+            readOnly={call.paused || call.cardSubmitted} referenceArm onChange={call.patchKio} />
         </div>
       </div>
       <section className="arm-support" aria-label="Норматив заполнения карточки">
@@ -142,7 +143,7 @@ export function Call() {
             ? notifiedServices.map((service) => <b key={service}>{service}</b>)
             : <em>появятся после выбора признаков</em>}
         </span>
-        {!call.cardSubmitted && <button type="button" className="arm-primary" disabled={call.status !== "open"}
+        {!call.cardSubmitted && <button type="button" className="arm-primary" disabled={call.paused || call.status !== "open"}
           onClick={call.submitCard}>Сохранить и проверить</button>}
         {call.cardSubmitted && <strong>{call.briefing.handoff_to_dds ? "Карточка передана ДДС" : "Карточка отправлена"}</strong>}
       </footer>
@@ -174,11 +175,11 @@ export function Call() {
       </header>
 
       <div className="arm-call-actions">
-        {(call.phase === "incoming" || call.phase === "talking") && !call.micOn && <button type="button" className="arm-answer" onClick={() => void call.answer()}>
+        {(call.phase === "incoming" || call.phase === "talking") && !call.micOn && <button type="button" className="arm-answer" disabled={call.paused} onClick={() => void call.answer()}>
           {call.phase === "talking" ? "☎ Продолжить разговор" : "☎ Ответить на вызов"}
         </button>}
         {call.micOn && <span className="arm-live">● Разговор идёт</span>}
-        {call.micOn && hintsAllowed(call.incoming?.mode) && <button type="button" onClick={call.hint}>Подсказка</button>}
+        {call.micOn && hintsAllowed(call.incoming?.mode) && <button type="button" disabled={call.paused} onClick={call.hint}>Подсказка</button>}
         <span className="arm-call-actions-note">{call.phase === "ended"
           ? "Вызов завершён"
           : !call.micOn && call.phase === "incoming"
@@ -190,13 +191,14 @@ export function Call() {
               : "Ожидайте входящего вызова"}</span>
       </div>
 
+      {call.paused && <p className="state-warn arm-message" role="status">Пауза, ждите преподавателя</p>}
       {call.error && <p className="violated arm-message" role="alert">{call.error}</p>}
 
       <div className="arm-card-wrap">
           <KioCard
             state={call.card}
             required={call.incoming?.required_fields ?? []}
-            readOnly={!call.micOn}
+            readOnly={call.paused || !call.micOn}
             referenceArm
             onChange={call.patchKio}
           />
@@ -207,12 +209,12 @@ export function Call() {
             <button
               type="button"
               className="arm-primary"
-              disabled={!call.micOn || (!service && !autoRoute)}
+              disabled={call.paused || !call.micOn || (!service && !autoRoute)}
               onClick={() => call.dispatch(service)}
             >
               Передать в ДДС
             </button>
-            {call.micOn && <button type="button" onClick={call.hangup}>Завершить вызов</button>}
+            {call.micOn && <button type="button" disabled={call.paused} onClick={call.hangup}>Завершить вызов</button>}
         </div>
       </footer>
       <div className="arm-secondary">
@@ -225,6 +227,7 @@ export function Call() {
                 type="text"
                 aria-label="Комментарий при закрытии вызова без карточки"
                 value={resolveComment}
+                disabled={call.paused}
                 placeholder="что сказали заявителю, куда передали"
                 onChange={(event) => setResolveComment(event.target.value)}
               />
@@ -232,7 +235,7 @@ export function Call() {
             <p>
               <button
                 type="button"
-                disabled={!call.micOn || resolved !== null}
+                disabled={call.paused || !call.micOn || resolved !== null}
                 onClick={() => {
                   call.resolve("consultation", resolveComment);
                   setResolved("consultation");
@@ -242,7 +245,7 @@ export function Call() {
               </button>{" "}
               <button
                 type="button"
-                disabled={!call.micOn || resolved !== null}
+                disabled={call.paused || !call.micOn || resolved !== null}
                 onClick={() => {
                   call.resolve("transfer_region", resolveComment);
                   setResolved("transfer_region");

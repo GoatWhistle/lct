@@ -718,12 +718,20 @@ export function Instructor() {
           {sessionId && session.title && (
             <p>
               {session.ended ? "занятие завершено" : (
-                <button type="button" onClick={control.stop}>Завершить занятие</button>
+                <>
+                  <button type="button" onClick={control.stop}>Завершить занятие</button>{" "}
+                  {session.paused ? (
+                    <button type="button" onClick={control.resume}>Возобновить</button>
+                  ) : (
+                    <button type="button" onClick={control.pause}>Пауза</button>
+                  )}
+                  {session.paused && <small className="ref" role="status">Занятие на паузе — время не идёт</small>}
+                </>
               )}
             </p>
           )}
           {sessionId && session.title && !session.ended && (
-            exercise === "call" && <Director onInject={control.inject} disabled={control.status !== "open"} error={session.error} />
+            exercise === "call" && <Director onInject={control.inject} disabled={control.status !== "open" || session.paused} error={session.error} />
           )}
           {links && startPendingId && (
             <p className="ref" role="status">Создаём занятие. Ссылки появятся автоматически после подключения.</p>

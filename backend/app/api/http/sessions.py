@@ -123,6 +123,7 @@ class ActiveSessionOut(BaseModel):
     dds_overdue_cards: int
     dds_work_overdue_cards: int
     dds_statuses: dict[str, str]
+    paused: bool = False
     dds_snapshot: StationSnapshot | None = None
     signals: list[Signal] = []
     presence_known: bool = True
@@ -302,7 +303,10 @@ async def active(
                 checkpoint_only.add(state.session_id)
 
     for state in states.values():
-        elapsed = (max(0, int((now - state.started_at).total_seconds()))
+        paused_ms = state.total_paused_ms
+        if state.paused and state.paused_at is not None:
+            paused_ms += max(0, int((now - state.paused_at).total_seconds() * 1000))
+        elapsed = (max(0, int((now - state.started_at).total_seconds() - paused_ms / 1000))
                    if state.started_at else 0)
         station = state.station_snapshot() if state.dds_phase else None
         queue = station.queue_cards if station else []
@@ -330,12 +334,15 @@ async def active(
             ),
             dds_work_overdue_cards=sum(
                 (timer := card.timers.timers.get(TimerCode.DDS_WORK)) is not None
-                and timer.started_at is not None
+                # Пауза держит `started_at=None`, хотя таймер уже шёл: судить
+                # по нему одному спрятало бы уже случившееся нарушение (lct-39).
+                and (timer.started_at is not None or timer.paused)
                 and not timer.stopped
                 and timer.current_ms(time.monotonic()) > card.timers.limits[TimerCode.DDS_WORK]
                 for card in state.desk.cards.values()
             ),
             dds_statuses=latest_statuses,
+            paused=state.paused,
             dds_snapshot=station,
             signals=_signals(state, queue, now, live=state.session_id not in checkpoint_only),
             presence_known=state.session_id not in checkpoint_only,
