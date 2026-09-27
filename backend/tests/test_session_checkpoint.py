@@ -12,12 +12,13 @@ from app.domain.events import (
     SessionMode,
 )
 from app.domain.kio import KIO
-from app.domain.statuses import PhoneCallPending, ServiceStatus
+from app.domain.statuses import PhoneCallPending, PhoneReportRecord, ServiceStatus
 from app.domain.taxonomy import ErrorCode, Finding, FindingSource
 from app.domain.timers import TimerCode
 from app.scenarios.loader import load_file
 from app.session.checkpoint import dump_state, load_state
 from app.session.dds import prepare_handoff_queue, prepare_queue
+from app.session.finish import score_dds_card
 from app.session.state import DdsCardRecord, SessionState, now_utc
 
 LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
@@ -83,6 +84,38 @@ def test_active_dds_session_round_trips_without_losing_work():
     timer = next(item for item in card.timers.snapshot() if item.code is TimerCode.DDS_ACK)
     assert timer.elapsed_ms >= 1_900
     assert timer.limit_ms == 45_000
+
+
+def test_report_reaction_keeps_times_and_limit_after_restore():
+    before = dds_state()
+    before.criteria.dds_report_reaction_limit_seconds = 20
+    card = before.desk.active
+    service = before.card_services(card)[0]
+    card.phone_reports.append(PhoneReportRecord(
+        service=service, crew=card.crew_selected, phase="dispatched",
+        text="Бригада выехала", at=now_utc(),
+    ))
+    card.set_service_status(service, ServiceStatus.RESPONDING,
+                            "Основание: доклад.\nСведения: бригада выехала.")
+    card.phone_reports[0].at -= timedelta(seconds=70)
+
+    restored = load_state(dump_state(before), now_utc())
+
+    assert restored.criteria.dds_report_reaction_limit_seconds == 20
+    assert restored.desk.active.phone_reports == card.phone_reports
+
+    def reaction(state):
+        result = score_dds_card(state, state.desk.active)
+        metric = next(item for item in result.metrics if item.key == "dds_report_reaction")
+        findings = [item for item in result.findings if item.metric_key == "dds_report_reaction"]
+        return metric, findings
+
+    metric, findings = reaction(restored)
+    assert not metric.passed
+    assert metric.norm == "отметить статус по докладу за 20 с"
+    assert "70 с (+50 с сверх норматива)" in metric.fact
+    assert [item.code for item in findings] == [ErrorCode.D6]
+    assert reaction(restored) == reaction(before), "оценка после восстановления та же"
 
 
 def completed_card() -> DdsCardRecord:

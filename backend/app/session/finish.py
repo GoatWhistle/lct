@@ -48,6 +48,7 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
     services = state.card_services(card)
     decision_limit_ms = card.timers.limits[TimerCode.DDS_ACK]
     dds_decision = card.scenario.dds_decision
+    reaction_ms = state.criteria.dds_report_reaction_limit_seconds * 1000
     findings = evaluate_dispatcher(
         entries=card.status_log,
         services=services,
@@ -57,10 +58,12 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
         reply_text=card.reply_text,
         expected_decision=dds_decision.expected,
         expected_decision_reason=dds_decision.reason,
+        phone_reports=card.phone_reports,
+        report_reaction_ms=reaction_ms,
     )
     metrics = dispatcher_metrics(
         card, decision_limit_ms, dds_decision.expected, dds_decision.reason,
-        services=services,
+        services=services, report_reaction_ms=reaction_ms,
     )
     weighted = GostResult(metrics=metrics, findings=findings)
     work_limit_ms = card.timers.limits[TimerCode.DDS_WORK]

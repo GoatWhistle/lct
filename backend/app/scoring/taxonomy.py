@@ -31,6 +31,7 @@ METRIC_MAP: dict[str, tuple[ErrorCode, Competency]] = {
     "dds_progress": (ErrorCode.D6, Competency.CARD),
     "dds_completion": (ErrorCode.D6, Competency.CARD),
     "dds_reply": (ErrorCode.D5, Competency.COMMUNICATION),
+    "dds_report_reaction": (ErrorCode.D6, Competency.NORMS),
     "dds_grammar": (ErrorCode.D5, Competency.COMMUNICATION),
     "description_grammar": (ErrorCode.E4, Competency.COMMUNICATION),
 }
@@ -64,4 +65,5 @@ METRIC_WEIGHTS: dict[str, float] = {
     "description_grammar": 1.0,
     "card_fill_time": 1.5,
     "dds_work_time": 1.5,
+    "dds_report_reaction": 1.5,
 }

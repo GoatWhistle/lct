@@ -68,6 +68,7 @@ def test_csv_contains_sections_and_blocks_formula_injection():
     assert any(row[0] == "Занятие" and row[3] == "'=1+1" for row in rows)
     assert any(row[0] == "Ошибки" and row[3] == "'+HYPERLINK(\"x\")" for row in rows)
     assert any(row[0] == "Самооценка" and row[3] == "'@SUM(1,2)" for row in rows)
+    assert ["Критерии", "", "Лимит реакции на доклад бригады, с", "45", ""] in rows
     assert _cell("  =cmd") == "'  =cmd"
     assert _cell("\tОбычный текст") == "'\tОбычный текст"
 
@@ -89,6 +90,7 @@ def test_pdf_supports_cyrillic_and_spans_pages(tmp_path):
         assert "Отчёт по учебному занятию" in extracted
         assert "Адрес должен быть уточнён" in extracted
         assert "Заявитель сообщает о дыме" in extracted
+        assert "Лимит реакции на доклад бригады" in extracted
 
 
 def test_certificate_pdf_contains_saved_result(tmp_path):
