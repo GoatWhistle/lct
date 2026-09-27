@@ -360,6 +360,7 @@ export interface KIO {
   description?: string | null;
   victims_count?: number | null;
   is_emergency?: boolean;
+  offence_signs?: boolean | null;
   life_threat?: boolean;
   evacuation_needed?: boolean;
   /** Список оповещения */

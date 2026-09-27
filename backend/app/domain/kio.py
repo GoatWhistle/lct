@@ -112,6 +112,7 @@ class KIO(BaseModel):
     description: str | None = None
     victims_count: int | None = None
     is_emergency: bool = False
+    offence_signs: bool | None = None
     life_threat: bool = False
     evacuation_needed: bool = False
 
@@ -153,7 +154,7 @@ EDITABLE_KIO_FIELDS: frozenset[str] = frozenset({
     "caller_name", "caller_contact", "phone_on_scene", "language",
     "okato", "address", "street", "building", "entrance", "floor",
     "intercom_code", "description", "incident_group", "signs",
-    "incident_type", "victims_count", "is_emergency", "life_threat",
+    "incident_type", "victims_count", "is_emergency", "offence_signs", "life_threat",
     "evacuation_needed", "dds", "notify_extra",
     "fire.fire_nature", "fire.object_kind", "fire.floors", "fire.gasified",
     "fire.people_inside", "fire.smoke_spread",
@@ -193,7 +194,10 @@ def missing_fields(card: KIO, required: list[str]) -> list[str]:
 #: те же «признаки», только не про тип происшествия, а про обстоятельства:
 #: пострадавшие поднимают скорую, газификация — МОСГАЗ (domain/ekp.py).
 MODIFIER_FIELDS: frozenset[str] = frozenset(
-    {"incident_group", "signs", "victims_count", "life_threat", "evacuation_needed", "fire.gasified"}
+    {
+        "incident_group", "signs", "victims_count", "life_threat",
+        "evacuation_needed", "fire.gasified", "offence_signs", "police.offence_kind",
+    }
 )
 
 
@@ -208,6 +212,12 @@ def modifiers(card: KIO) -> list[str]:
         keys.append("evacuation")
     if card.fire is not None and card.fire.gasified:
         keys.append("gas")
+    if card.offence_signs is True or (
+        card.police is not None
+        and card.police.offence_kind is not None
+        and bool(card.police.offence_kind.strip())
+    ):
+        keys.append("offence")
     return keys
 
 
