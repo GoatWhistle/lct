@@ -46,9 +46,9 @@ from app.session.store import (
     FindingAdded,
     FindingReviewed,
     ScoreOverridden,
-    apply_finding_change,
     apply_score_override,
 )
+from app.scoring.review import has_finding
 from app.voice.recording import recording_path
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -624,6 +624,8 @@ class FindingIn(BaseModel):
     norm: str = Field(min_length=1, max_length=1000)
     #: Номер карточки очереди ДДС (с 1); без него отметка относится к занятию.
     card: int | None = Field(default=None, ge=1)
+    #: Ключ идемпотентности с клиента: повтор запроса не добавит отметку второй раз.
+    client_id: UUID | None = None
 
     _fact = field_validator("fact")(_required_text)
     _norm = field_validator("norm")(_required_text)
@@ -648,7 +650,8 @@ async def _change_findings(
             raise HTTPException(status_code=409, detail="scenario_not_found")
         change = make(who, state.score)
         async with hub.operation(session_id):
-            change_findings(state, change)
+            if not _repeated(state.score, change):
+                change_findings(state, change)
         return build_report(session_id, state, scenario)
 
     if db is None:
@@ -662,11 +665,24 @@ async def _change_findings(
         raise HTTPException(status_code=409, detail="score_not_ready")
     if (score.report or {}).get("full_report") is None:
         raise HTTPException(status_code=409, detail="report_not_archived")
-    change = make(who, dict(score.report))
-    report = apply_finding_change(dict(score.report), change)
+    current = dict(score.report)
+    change = make(who, current)
     await db.rollback()  # чтение закончено; запись — одной транзакцией хранилища
-    await hub.store.commit_archived(session_id, [change])
-    return SessionReport.model_validate(report["full_report"])
+    if not _repeated(current, change):
+        await hub.store.commit_archived(session_id, [change])
+    # Ответ — по строке после commit: пересчёт шёл под блокировкой и мог учесть
+    # решение из соседней вкладки, которого не было в прочитанном выше отчёте.
+    score = await db.scalar(
+        select(Score).where(Score.session_id == session_id)
+        .execution_options(populate_existing=True)
+    )
+    report = SessionReport.model_validate(score.report["full_report"])
+    await db.rollback()
+    return report
+
+
+def _repeated(report: dict, change: FindingReviewed | FindingAdded) -> bool:
+    return isinstance(change, FindingAdded) and has_finding(report, change.finding.client_id)
 
 
 @router.post("/{session_id}/findings/{index}/review", response_model=SessionReport)
@@ -703,6 +719,13 @@ async def add_finding(
     def make(who, score: dict) -> FindingAdded:
         service = None
         prefix = ""
+        exercise = (score.get("full_report") or {}).get("exercise")
+        # E1–E6 в связке 112 → ДДС — ошибки приёма вызова: их метрики у занятия,
+        # а не у карточки очереди. С номером карточки отметка не нашла бы свою
+        # метрику 112 и штрафовала бы отдельной метрикой преподавателя.
+        if (body.card is not None and body.code.value.startswith("E")
+                and exercise != Exercise.DDS.value):
+            raise HTTPException(status_code=422, detail="call_code_without_card")
         if body.card is not None:
             cards = score.get("card_results") or []
             if body.card > len(cards):
@@ -722,6 +745,7 @@ async def add_finding(
             card=body.card,
             service=service,
             author=who.login,
+            client_id=body.client_id,
         ))
 
     return await _change_findings(session_id, who, db, make)
