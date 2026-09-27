@@ -3,7 +3,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { Level, SessionMode, SessionReport, StationSnapshot } from "@/shared/types/generated";
+import type {
+  Level, SessionMode, SessionReport, StationSnapshot, TimerState,
+} from "@/shared/types/generated";
 
 import { reportErrorMessage, reportRetryDelay, shouldRetryReport } from "./report.mjs";
 
@@ -96,7 +98,7 @@ export interface SessionInfo {
 
 export interface Signal {
   kind: "backlog" | "refusals" | "offline";
-  severity: "warn" | "violated";
+  severity: TimerState;
   text: string;
 }
 

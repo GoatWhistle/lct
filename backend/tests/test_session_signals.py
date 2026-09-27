@@ -3,17 +3,18 @@
 import asyncio
 import time
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.engine.result import IteratorResult, SimpleResultMetaData
 from starlette.websockets import WebSocketDisconnect
 
 from app.api.auth import Principal
 from app.api.http import sessions as sessions_http
 from app.api.ws import session as session_ws
 from app.config import get_settings
+from app.db.models import Session
 from app.domain.events import Exercise, SessionMode
 from app.domain.roles import Role
 from app.main import app
@@ -151,6 +152,28 @@ def test_signal_backlog_when_queue_reaches_threshold(client, monkeypatch):
         row = row_for(client, session_id)
         assert row["dds_open_cards"] == 2
         assert "backlog" in signal_kinds(row)
+    finally:
+        hub.stop_ticker(session_id)
+        control.__exit__(None, None, None)
+
+
+def test_declined_card_leaves_backlog(client, monkeypatch):
+    monkeypatch.setenv("SIGNAL_BACKLOG_THRESHOLD", "2")
+    get_settings.cache_clear()
+    session_id, control = start_two_card_dds(client)
+    try:
+        state = hub.get(session_id)
+        first_card = state.desk.ordered()[0]
+        with client.websocket_connect(f"/ws/station/{session_id}?role=dds") as station:
+            read_until(station, "station.state")
+            station.send_json({
+                "type": "card.status", "service": state.card_services(first_card)[0],
+                "status": "declined", "comment": "не наш адрес, передано в УК",
+            })
+            read_until(station, "station.state")
+        row = row_for(client, session_id)
+        assert row["dds_open_cards"] == 2, "отклонённая карточка ждёт «Следующей» на пульте"
+        assert "backlog" not in signal_kinds(row)
     finally:
         hub.stop_ticker(session_id)
         control.__exit__(None, None, None)
@@ -406,11 +429,12 @@ def test_checkpoint_on_another_node_marks_presence_unknown(client, monkeypatch):
         checkpoint_at = datetime.now(UTC)
         hub.drop(session_id)
 
+        row = Session(id=session_id, owner_login="dev",
+                      live_state=snapshot, checkpoint_at=checkpoint_at)
+
         class CheckpointDB:
             async def scalars(self, _query):
-                row = SimpleNamespace(id=session_id, owner_login="dev",
-                                      live_state=snapshot, checkpoint_at=checkpoint_at)
-                return SimpleNamespace(all=lambda: [row])
+                return IteratorResult(SimpleResultMetaData(["Session"]), iter([(row,)])).scalars()
 
         monkeypatch.setattr(sessions_http, "require", lambda _request, _role:
                             Principal(login="dev", full_name="Преподаватель",

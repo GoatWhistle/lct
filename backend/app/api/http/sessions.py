@@ -25,7 +25,7 @@ from app.db.models import Group, Score, Session, Trainee
 from app.domain.events import Exercise, SessionMode, SessionReport
 from app.domain.roles import Role
 from app.domain.statuses import SERVICE_STATUS_LABELS, DdsQueueCard, StationSnapshot, current
-from app.domain.timers import TimerCode
+from app.domain.timers import TimerCode, TimerState
 from app.scoring.export import to_csv, to_pdf
 from app.scoring.report import build as build_report
 from app.session.access import can_access
@@ -93,7 +93,7 @@ class Signal(BaseModel):
     `severity` (AGENTS.md); текст обязателен и не заменяется цветом."""
 
     kind: Literal["backlog", "refusals", "offline"]
-    severity: Literal["warn", "violated"]
+    severity: TimerState
     text: str
 
 
@@ -212,14 +212,18 @@ def _signals(
     """
     settings = get_settings()
     signals: list[Signal] = []
-    if len(queue) >= settings.signal_backlog_threshold:
+    # Необработанная — без первичного статуса: он останавливает норматив
+    # DDS_ACK. Принятая или отклонённая карточка висит в очереди до
+    # «Следующей», но реакции курсанта уже не ждёт.
+    pending = sum(not card.timer_stopped for card in queue)
+    if pending >= settings.signal_backlog_threshold:
         signals.append(Signal(
-            kind="backlog", severity="warn",
-            text=f"Очередь: {len(queue)} необработанных карточек",
+            kind="backlog", severity=TimerState.WARN,
+            text=f"Очередь: {pending} необработанных карточек",
         ))
     if state.consecutive_refusals >= settings.signal_refusals_threshold:
         signals.append(Signal(
-            kind="refusals", severity="warn",
+            kind="refusals", severity=TimerState.WARN,
             text=f"Подряд отказов: {state.consecutive_refusals}",
         ))
     if live:
@@ -233,10 +237,10 @@ def _signals(
         )
         if not connected and offline_seconds >= settings.signal_offline_window_seconds:
             signals.append(Signal(
-                kind="offline", severity="violated",
+                kind="offline", severity=TimerState.VIOLATED,
                 text=f"Курсант не на связи {int(offline_seconds)} с",
             ))
-    return sorted(signals, key=lambda signal: signal.severity != "violated")
+    return sorted(signals, key=lambda signal: signal.severity is not TimerState.VIOLATED)
 
 
 @router.get("/active", response_model=list[ActiveSessionOut])
