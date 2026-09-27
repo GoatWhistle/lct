@@ -7,7 +7,7 @@
 
 import asyncio
 import time
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -41,14 +41,14 @@ from app.domain.events import (
     TtsEnd,
 )
 from app.domain.roles import Role
-from app.domain.statuses import ServiceStatus
+from app.domain.statuses import PhoneReportRecord, ServiceStatus
 from app.domain.timers import TimerCode
 from app.main import app
 from app.scenarios.loader import load_file
 from app.scoring.dispatcher import dispatcher_metrics
 from app.session import timers as timers_module
 from app.session.checkpoint import dump_state, load_state
-from app.session.finish import end_session
+from app.session.finish import end_session, score_dds_card
 from app.session.hub import hub
 from app.session.state import SessionState, now_utc
 from app.session.store import LessonPaused, LessonResumed, MemorySessionStore
@@ -621,7 +621,47 @@ def test_repeated_pause_and_resume_are_idempotent(clock, monkeypatch):
     assert sum(isinstance(record, LessonResumed) for record in records) == 1
     assert [event.paused for event in events if isinstance(event, SessionPaused)] == [True, False]
     assert state.total_paused_ms == 60_000
+    assert state.pause_intervals == [(base, base + timedelta(seconds=60))]
     assert card.timers.timers[TimerCode.DDS_ACK].current_ms(clock.now) == 15_000
+
+
+def test_report_reaction_excludes_pause_after_control_and_checkpoint(clock, monkeypatch):
+    base = datetime(2026, 9, 27, 10, tzinfo=UTC)
+    state, card = _dds_state_with_active_card(clock)
+    service = state.card_services(card)[0]
+    monkeypatch.setattr("app.session.dds.now_utc", lambda: base)
+    card.set_service_status(service, ServiceStatus.ACCEPTED, "Карточка принята")
+    card.phone_reports.append(PhoneReportRecord(
+        service=service, crew="Бригада 12", phase="dispatched",
+        text="Бригада выехала", at=base,
+    ))
+    store = MemorySessionStore()
+    monkeypatch.setattr(hub, "store", store)
+    monkeypatch.setitem(hub._sessions, state.session_id, state)
+
+    async def command(event):
+        async with hub.operation(state.session_id):
+            await control_ws._command(state.session_id, event, TEACHER)
+
+    monkeypatch.setattr("app.session.state.now_utc", lambda: base + timedelta(seconds=10))
+    asyncio.run(command(SessionPause()))
+    restored = load_state(dump_state(state), base + timedelta(seconds=70))
+    assert restored.paused and restored.pause_intervals == []
+    monkeypatch.setitem(hub._sessions, state.session_id, restored)
+    monkeypatch.setattr("app.session.state.now_utc", lambda: base + timedelta(seconds=70))
+    asyncio.run(command(SessionResume()))
+    monkeypatch.setattr("app.session.dds.now_utc", lambda: base + timedelta(seconds=80))
+    restored.desk.active.set_service_status(
+        service, ServiceStatus.RESPONDING, "Основание: доклад. Сведения: бригада выехала.",
+    )
+
+    result = score_dds_card(restored, restored.desk.active)
+    reaction = next(item for item in result.metrics if item.key == "dds_report_reaction")
+    assert restored.pause_intervals == [
+        (base + timedelta(seconds=10), base + timedelta(seconds=70)),
+    ]
+    assert reaction.passed and "20 с" in reaction.fact
+    assert not any(item.metric_key == "dds_report_reaction" for item in result.findings)
 
 
 def test_pause_is_ignored_in_ended_session(clock, monkeypatch):

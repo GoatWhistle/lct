@@ -111,6 +111,8 @@ class PersistedSession(BaseModel):
     paused_at: datetime | None = None
     #: Суммарная длительность пауз — для разбора, чтобы время было объяснимо.
     total_paused_ms: int = 0
+    #: Закрытые интервалы пауз нужны для расчёта активного времени между докладом и статусом.
+    pause_intervals: list[tuple[datetime, datetime]] = Field(default_factory=list)
     #: Карточка оператора 112, замороженная при передаче в ДДС.
     dispatched_card: KIO | None = None
     dispatched_at: datetime | None = None
@@ -218,8 +220,11 @@ class SessionState(PersistedSession):
         for card in self.desk.cards.values():
             card.timers.resume(now)
         if self.paused_at is not None:
-            idle = now_utc() - self.paused_at
+            resumed_at = now_utc()
+            idle = resumed_at - self.paused_at
             self.total_paused_ms += max(0, int(idle.total_seconds() * 1000))
+            if resumed_at > self.paused_at:
+                self.pause_intervals.append((self.paused_at, resumed_at))
             if self.desk.next_arrival_at is not None:
                 self.desk.next_arrival_at += idle
         self.paused = False

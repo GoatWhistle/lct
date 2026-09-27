@@ -163,6 +163,7 @@ def full_state() -> SessionState:
         paused=True,
         paused_at=AT,
         total_paused_ms=15_000,
+        pause_intervals=[(AT - timedelta(seconds=20), AT - timedelta(seconds=5))],
         processed_station_commands=[str(uuid4())],
         text_revealed_facts={"f_address": "улица Ленина, 14"},
         consecutive_refusals=2,

@@ -12,6 +12,8 @@
 """
 
 import math
+from collections.abc import Sequence
+from datetime import datetime
 
 from app.domain.statuses import (
     COMMENT_REQUIRED,
@@ -68,6 +70,7 @@ TERMINAL_REFUSAL = {ServiceStatus.DECLINED, ServiceStatus.REFUSED}
 
 def report_reactions(
     marks: list[StatusEntry], reports: list[PhoneReportRecord],
+    pause_intervals: Sequence[tuple[datetime, datetime]] | None = None,
 ) -> list[tuple[PhoneReportRecord, int | None]]:
     """Задержка статуса после каждого доклада бригады, мс; None — статус не отмечен.
 
@@ -84,15 +87,22 @@ def report_reactions(
             result.append((report, 0))
             continue
         after = min(times, default=None)
-        result.append((
-            report,
-            int((after - report.at).total_seconds() * 1000) if after is not None else None,
-        ))
+        if after is None:
+            result.append((report, None))
+            continue
+        elapsed_ms = int((after - report.at).total_seconds() * 1000)
+        for start, end in pause_intervals or ():
+            overlap_start = max(report.at, start)
+            overlap_end = min(after, end)
+            if overlap_end > overlap_start:
+                elapsed_ms -= int((overlap_end - overlap_start).total_seconds() * 1000)
+        result.append((report, max(0, elapsed_ms)))
     return result
 
 
 def report_reaction(
     service: str, marks: list[StatusEntry], reports: list[PhoneReportRecord], limit_ms: int,
+    pause_intervals: Sequence[tuple[datetime, datetime]] | None = None,
 ) -> tuple[Metric, Finding | None] | None:
     """Метрика и отметка D6 по самой поздней реакции службы на доклады бригады.
 
@@ -100,7 +110,7 @@ def report_reaction(
     где отметки нет. None — реагировать было не на что.
     """
     refused = current(marks, service) in TERMINAL_REFUSAL
-    reactions = [(report, delay) for report, delay in report_reactions(marks, reports)
+    reactions = [(report, delay) for report, delay in report_reactions(marks, reports, pause_intervals)
                  if delay is not None or not refused]
     if not reactions:
         return None
@@ -190,6 +200,7 @@ def evaluate_dispatcher(
     expected_decision_reason: str | None = None,
     phone_reports: list[PhoneReportRecord] | None = None,
     report_reaction_ms: int = REPORT_REACTION_MS,
+    pause_intervals: Sequence[tuple[datetime, datetime]] | None = None,
 ) -> list[Finding]:
     """Отметки по работе диспетчера. Пустой список — работа без нарушений.
 
@@ -381,7 +392,7 @@ def evaluate_dispatcher(
             )
 
         # D6 — статус по докладу бригады отмечен позже лимита или не отмечен.
-        reaction = report_reaction(service, marks, reports, report_reaction_ms)
+        reaction = report_reaction(service, marks, reports, report_reaction_ms, pause_intervals)
         if reaction is not None and reaction[1] is not None:
             findings.append(reaction[1])
 
@@ -396,6 +407,7 @@ def dispatcher_metrics(
     *,
     services: list[str] | None = None,
     report_reaction_ms: int = REPORT_REACTION_MS,
+    pause_intervals: Sequence[tuple[datetime, datetime]] | None = None,
 ) -> list[Metric]:
     """Числовая часть оценки ДДС; каждый проверяемый шаг имеет факт и норму.
 
@@ -429,7 +441,7 @@ def dispatcher_metrics(
         # Метрика есть только там, где бригада докладывала: без докладов
         # реагировать не на что, и отсутствие звонков не штраф.
         reports = [report for report in card.phone_reports if report.service == service]
-        reaction = report_reaction(service, marks, reports, report_reaction_ms)
+        reaction = report_reaction(service, marks, reports, report_reaction_ms, pause_intervals)
         if reaction is not None:
             metrics.append(reaction[0])
         expected_status = (ServiceStatus.ACCEPTED if expected_decision == "accept"
