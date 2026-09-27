@@ -177,15 +177,23 @@ async def test_stale_generation_snapshot_does_not_restore_revoked_cookie(monkeyp
     snapshot_read = asyncio.Event()
     release_snapshot = asyncio.Event()
 
+    raised = []
+
     class FakeResult:
         def all(self):
             return [("revoked", 0)]
 
     class FakeDb:
-        async def execute(self, _query):
+        async def execute(self, query):
+            if query.is_update:
+                raised.append(query.compile().params)
+                return None
             snapshot_read.set()
             await release_snapshot.wait()
             return FakeResult()
+
+        async def commit(self):
+            return None
 
     class FakeSession:
         async def __aenter__(self):
@@ -203,6 +211,151 @@ async def test_stale_generation_snapshot_does_not_restore_revoked_cookie(monkeyp
     release_snapshot.set()
     await sync
     assert auth._generations["revoked"] == 1
+    # В БД версия уже 1 (отзыв записан до invalidate); UPDATE «только вверх»
+    # в реальной БД ничего не изменит, в снимке же он выглядит как отставание.
+    assert [params["auth_version"] for params in raised] == [1]
+
+
+def _versioned_users_db(versions: dict[str, int]):
+    """Поддельная users: сверка читает версии, UPDATE поднимает их только вверх."""
+    updates = []
+
+    class FakeResult:
+        def all(self):
+            return list(versions.items())
+
+    class FakeDb:
+        async def execute(self, query):
+            if query.is_update:
+                params = query.compile().params
+                login = next(v for k, v in params.items() if k.startswith("login"))
+                target = params["auth_version"]
+                updates.append((login, target))
+                if versions.get(login, target) < target:
+                    versions[login] = target
+                return None
+            return FakeResult()
+
+        async def scalar(self, _query):
+            raise AssertionError("login is cached, no one-shot lookup expected")
+
+        async def commit(self):
+            return None
+
+        async def rollback(self):
+            return None
+
+    class FakeSession:
+        async def __aenter__(self):
+            return FakeDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    return updates, lambda: lambda: FakeSession()
+
+
+@pytest.mark.asyncio
+async def test_failed_logout_revocation_is_written_to_db_so_nodes_converge(monkeypatch):
+    """Неудачный logout поднял версию только на этом узле (B). Сверка не
+    откатывает отзыв, а записывает его в БД: соседний узел A догоняет, и вход
+    на A после этого выдаёт cookie, которую B принимает."""
+    login = "failed-logout-user"
+    versions = {login: 4}
+    updates, sessionmaker = _versioned_users_db(versions)
+    monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(dev_auth_bypass=False))
+    monkeypatch.setattr(auth, "get_sessionmaker", sessionmaker)
+    auth.prime_generations({login: 4})
+    try:
+        auth.invalidate_login(login)  # ветка except в logout: БД недоступна
+        assert auth._generations[login] == 5
+
+        await auth.sync_generations()
+        assert updates == [(login, 5)]
+        assert versions[login] == 5, "revocation must reach the shared DB"
+        assert auth._generations[login] == 5, "sync must not roll back a local revocation"
+
+        # Вход на A берёт версию из БД, и теперь она совпадает с версией B.
+        assert versions[login] == auth._generations[login]
+
+        await auth.sync_generations()
+        assert updates == [(login, 5)], "converged nodes must not write again"
+    finally:
+        auth._generations.pop(login, None)
+
+
+@pytest.mark.asyncio
+async def test_recreated_account_is_raised_to_the_node_revocation_version(monkeypatch):
+    """Учётку удалили (узел отозвал её, поколение +1) и создали заново с 0.
+    Без записи в БД узел остался бы впереди навсегда."""
+    login = "recreated-user"
+    versions = {}
+    updates, sessionmaker = _versioned_users_db(versions)
+    monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(dev_auth_bypass=False))
+    monkeypatch.setattr(auth, "get_sessionmaker", sessionmaker)
+    auth.prime_generations({login: 2})
+    try:
+        await auth.sync_generations()
+        assert auth._generations[login] == 3
+        assert login in auth._vanished
+
+        versions[login] = 0  # оператор создал учётку заново
+        await auth.sync_generations()
+        assert updates == [(login, 3)]
+        assert versions[login] == 3
+        assert login not in auth._vanished
+    finally:
+        auth._generations.pop(login, None)
+        auth._vanished.discard(login)
+
+
+def test_login_raises_db_version_when_node_revocation_was_not_persisted(client, monkeypatch):
+    """Вход на узле, где отзыв не дошёл до БД: cookie получает версию узла,
+    а БД поднимается до неё. Сброс к версии БД вернул бы силу старой cookie."""
+    from app.config import get_settings
+
+    user = SimpleNamespace(
+        login="ahead-login", auth_provider="local", password_hash="hash",
+        blocked=False, role="instructor", full_name="Преподаватель",
+        service=None, trainee_id=None, auth_version=1,
+    )
+    updates = []
+
+    class FakeDb:
+        async def scalar(self, _statement):
+            return user
+
+        async def execute(self, query):
+            assert query.is_update
+            updates.append(query.compile().params["auth_version"])
+
+        async def commit(self):
+            return None
+
+    class FakeSession:
+        async def __aenter__(self):
+            return FakeDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    async def audit_ok(*_args, **_kwargs):
+        return True
+
+    settings = get_settings().model_copy(update={"demo_no_db": False, "ldap_enabled": False})
+    monkeypatch.setattr(auth, "get_settings", lambda: settings)
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: FakeSession())
+    monkeypatch.setattr(auth, "verify_password", lambda *_args: True)
+    monkeypatch.setattr(auth, "audit", audit_ok)
+    auth._generations[user.login] = 2  # неудачный logout на этом узле
+    try:
+        response = client.post("/api/auth/login", json={"login": user.login, "password": "x"})
+        assert response.status_code == 200
+        assert updates == [2]
+        assert auth._generations[user.login] == 2, "local revocation must not be rolled back"
+        assert client.get("/api/auth/me").status_code == 200
+    finally:
+        auth._generations.pop(user.login, None)
 
 
 def test_cross_origin_browser_websocket_is_rejected_before_handshake(client):
@@ -662,6 +815,7 @@ def test_unknown_login_lookup_deduplicates_concurrent_requests_into_one_select(m
         )
         assert results == [9, 9, 9]
         assert calls == [1], "concurrent lookups for one login must issue a single SELECT"
+        assert login not in auth._lookup_locks, "lock entry must not outlive its waiters"
 
     monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: FakeSession())
     try:
@@ -732,6 +886,146 @@ def test_unknown_login_lookup_fails_closed_when_database_is_unreachable(monkeypa
         asyncio.run(run())
     finally:
         auth._lookup_locks.pop(login, None)
+
+
+def test_unknown_login_lookup_times_out_instead_of_hanging_on_partition(monkeypatch):
+    """При partition SELECT может висеть до таймаута TCP. Разовая проверка
+    ограничена тем же порогом, что сверка, и закрывает вход 503 / 1013 —
+    и для запроса, который ждёт lock за зависшим."""
+    login = "peer-node-hanging-db-login"
+    monkeypatch.setattr(auth, "AUTH_GENERATION_MAX_AGE_SECONDS", 0.3)
+
+    class HangingDb:
+        async def scalar(self, _query):
+            await asyncio.Event().wait()
+
+    class FakeSession:
+        async def __aenter__(self):
+            return HangingDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class InnerApp:
+        called = False
+
+        async def __call__(self, _scope, _receive, _send):
+            self.called = True
+
+    async def run():
+        auth.prime_generations({})
+        cookie_session = {
+            "principal": {"login": login},
+            "auth_instance": auth._INSTANCE,
+            "auth_generation": 0,
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        http_messages, ws_messages = [], []
+
+        async def http_send(message):
+            http_messages.append(message)
+
+        async def ws_send(message):
+            ws_messages.append(message)
+
+        http_app, ws_app = InnerApp(), InnerApp()
+        started = asyncio.get_running_loop().time()
+        await asyncio.wait_for(asyncio.gather(
+            auth.AuthVersionMiddleware(http_app)(
+                {"type": "http", "path": "/api/admin/users", "session": dict(cookie_session)},
+                receive, http_send,
+            ),
+            auth.AuthVersionMiddleware(ws_app)(
+                {"type": "websocket", "path": "/ws/control/x", "session": dict(cookie_session)},
+                receive, ws_send,
+            ),
+        ), timeout=2)
+        elapsed = asyncio.get_running_loop().time() - started
+        assert elapsed < 1, "a queued handshake must not wait for a second timeout"
+        assert not http_app.called and not ws_app.called
+        assert http_messages[0]["status"] == 503
+        assert ws_messages[0] == {"type": "websocket.close", "code": 1013}
+        assert login not in auth._lookup_locks, "timed-out lookup must release its lock entry"
+
+    settings = auth.get_settings().model_copy(update={"demo_no_db": False})
+    monkeypatch.setattr(auth, "get_settings", lambda: settings)
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: FakeSession())
+    asyncio.run(run())
+
+
+def test_one_shot_lookup_logs_login_marker_not_login(caplog, monkeypatch):
+    """Кластерный смоук ищет эту метку в журнале узла B: она доказывает, что
+    вход прошёл через разовую проверку, а не через обычную сверку."""
+    login = "peer-node-logged-login"
+
+    class FakeDb:
+        async def scalar(self, _query):
+            return 0
+
+    class FakeSession:
+        async def __aenter__(self):
+            return FakeDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    async def run():
+        auth.prime_generations({})
+        assert await auth._resolve_unknown_login(login) == 0
+
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: FakeSession())
+    try:
+        with caplog.at_level("WARNING", logger="app.api.auth"):
+            asyncio.run(run())
+    finally:
+        auth._generations.pop(login, None)
+    assert auth.login_log_marker(login) in caplog.text
+    assert login not in caplog.text
+
+
+def test_missing_login_is_cached_until_next_sync_and_lock_entries_are_released(monkeypatch):
+    login = "peer-node-replayed-missing-login"
+    lookups = []
+
+    class FakeResult:
+        def all(self):
+            return []
+
+    class FakeDb:
+        async def scalar(self, _query):
+            lookups.append(1)
+            return None
+
+        async def execute(self, _query):
+            return FakeResult()
+
+    class FakeSession:
+        async def __aenter__(self):
+            return FakeDb()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    async def run():
+        auth.prime_generations({})
+        assert await auth._resolve_unknown_login(login) is None
+        assert await auth._resolve_unknown_login(login) is None
+        assert lookups == [1], "a replayed cookie must not query users on every request"
+        assert auth._lookup_locks == {}
+
+        await auth.sync_generations()
+        assert await auth._resolve_unknown_login(login) is None
+        assert lookups == [1, 1], "the negative result lives only until the next sync"
+
+    monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(dev_auth_bypass=False))
+    monkeypatch.setattr(auth, "get_sessionmaker", lambda: lambda: FakeSession())
+    try:
+        asyncio.run(run())
+    finally:
+        auth._missing_logins.discard(login)
 
 
 def test_auth_middleware_uses_fresh_generation_cache_without_per_request_database_query(monkeypatch):
