@@ -29,7 +29,8 @@ from app.scoring.export import to_csv, to_pdf
 from app.scoring.report import build as build_report
 from app.session.access import can_access
 from app.session.checkpoint import load_state
-from app.session.finish import override_score, scoring_scenario
+from app.session.finish import override_score
+from app.session.score import scoring_scenario
 from app.session.hub import hub
 from app.session.store import ScoreOverridden, apply_score_override
 from app.voice.recording import recording_path

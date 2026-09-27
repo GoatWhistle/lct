@@ -12,22 +12,18 @@ import logging
 import time
 from uuid import UUID
 
-from app.domain.events import CallEnded, CallEndReason, Exercise, Metric, ScoreReady, SessionEnded
+from app.domain.events import CallEnded, CallEndReason, Exercise, ScoreReady, SessionEnded
 from app.domain.statuses import ServiceStatus, current
-from app.domain.taxonomy import Competency, ErrorCode, Finding, FindingSource
 from app.domain.timers import TimerCode
-from app.scenarios import store
 from app.scoring.ai_coach import coach
-from app.scoring.card import evaluate_card
-from app.scoring.competency import radar
 from app.scoring.dispatcher import dispatcher_metrics, evaluate_dispatcher
-from app.scoring.gost import GostResult, evaluate
+from app.scoring.gost import GostResult
 from app.scoring.grammar import assess
 from app.scoring.report import build as build_report
-from app.scoring.taxonomy import METRIC_WEIGHTS
-from app.scoring.timing import time_credit
+from app.scoring.timing import DDS_WORK_TIME, time_metric
 from app.scoring.weights import apply_weights
 from app.session.hub import hub
+from app.session.score import ScoringSnapshot, score_session, scoring_scenario
 from app.session.state import DdsCardRecord, DdsLiveCard, now_utc
 from app.session.store import (
     LessonEnded,
@@ -77,39 +73,12 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
         }
         for service in services
     )
-    work_passed = terminal and work_elapsed_ms is not None and work_elapsed_ms <= work_limit_ms
-    work_delta_ms = (work_elapsed_ms - work_limit_ms) if work_elapsed_ms is not None else None
-    if work_elapsed_ms is None:
-        work_fact = "время обработки не зафиксировано"
-    elif work_delta_ms and work_delta_ms > 0:
-        work_fact = f"{round(work_elapsed_ms / 1000)} с (+{round(work_delta_ms / 1000)} с сверх норматива)"
-    elif work_delta_ms and work_delta_ms < 0:
-        work_fact = (f"{round(work_elapsed_ms / 1000)} с (на "
-                     f"{round(abs(work_delta_ms) / 1000)} с быстрее норматива)")
-    else:
-        work_fact = f"{round(work_elapsed_ms / 1000)} с (точно в норматив)"
-    if not terminal:
-        work_fact = f"карточка не завершена; {work_fact}"
-    weighted.metrics.append(Metric(
-        key="dds_work_time",
-        title="Отработка карточки ДДС",
-        fact=work_fact,
-        norm=f"завершить за {round(work_limit_ms / 1000)} с",
-        ref="ТЗ задачи № 9; сессия вопросов и ответов 16.09.2026",
-        passed=work_passed,
-        weight=METRIC_WEIGHTS["dds_work_time"],
-        credit=time_credit(work_elapsed_ms, work_limit_ms) if terminal else 0.0,
-    ))
-    if not work_passed:
-        weighted.findings.append(Finding(
-            code=ErrorCode.E3,
-            source=FindingSource.TIMERS,
-            summary="ДДС: норматив времени отработки карточки не выполнен",
-            fact=work_fact,
-            norm=f"завершить за {round(work_limit_ms / 1000)} с",
-            ref="ТЗ задачи № 9; сессия вопросов и ответов 16.09.2026",
-            competency=Competency.NORMS,
-        ))
+    work_metric, work_finding = time_metric(
+        DDS_WORK_TIME, work_elapsed_ms, work_limit_ms, completed=terminal
+    )
+    weighted.metrics.append(work_metric)
+    if work_finding is not None:
+        weighted.findings.append(work_finding)
     apply_weights(weighted, {**card.scenario.score_weights, **state.criteria.score_weights})
     actions = [
         {"type": "card.status", "service": mark.service, "status": mark.status.value,
@@ -149,20 +118,6 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
     )
 
 
-def scoring_scenario(state):
-    """Сценарий, по которому оценивается и разбирается занятие.
-
-    После передачи 112→ДДС КИО курсанта оценивается по эталону упражнения
-    112. Балл, разбор и чек-лист самооценки обязаны брать один и тот же
-    сценарий.
-    """
-    if state.handoff_to_dds and state.operator_scenario:
-        return state.operator_scenario
-    if state.scenario is None and state.desk.scenarios:
-        return state.desk.scenarios[0]
-    return state.scenario or store.get(state.scenario_id)
-
-
 def score_live_dds_cards(state) -> list[DdsCardRecord]:
     """Все карточки занятия: завершённые и оценка ещё открытых.
 
@@ -182,185 +137,30 @@ async def finish(session_id: UUID, state) -> None:
     if state.recorder is not None:
         path = await asyncio.to_thread(state.recorder.finalize)
         state.recording_path = str(path) if path else None
+    # Все карточки выданы одновременно: при досрочном завершении оцениваем
+    # каждую, включая не открытую, потому что её норматив уже шёл.
+    if state.exercise is Exercise.DDS or (state.handoff_to_dds and state.desk.scenarios):
+        score_live_dds_cards(state)
     # Сценарий занятия, а не библиотечный: директивы могли поправить эталон.
-    scenario = scoring_scenario(state)
-    if scenario is None:
+    snapshot = ScoringSnapshot.of(state)
+    if snapshot is None:
         return
-
-    cards: list[DdsCardRecord] = []
-    if state.exercise is Exercise.CARD:
-        result = evaluate_card(
-            scenario, state.operator_kio or state.dispatched_card or state.kio
-        )
-        limit_ms = state.timers.limits[TimerCode.CARD_FILL]
-        elapsed_ms = state.timers.measured_ms(TimerCode.CARD_FILL)
-        submitted = state.dispatched_card is not None
-        if elapsed_ms is None:
-            elapsed_fact = "время не зафиксировано"
-        else:
-            delta_ms = elapsed_ms - limit_ms
-            elapsed_seconds = round(elapsed_ms / 1000)
-            if delta_ms > 0:
-                deviation = f"+{round(delta_ms / 1000)} с сверх норматива"
-            elif delta_ms < 0:
-                deviation = f"на {round(abs(delta_ms) / 1000)} с быстрее норматива"
-            else:
-                deviation = "точно в норматив"
-            elapsed_fact = f"{elapsed_seconds} с ({deviation})"
-        passed = submitted and elapsed_ms is not None and elapsed_ms <= limit_ms
-        result.metrics.append(Metric(
-            key="card_fill_time",
-            title="Время заполнения карточки",
-            fact=elapsed_fact if submitted else f"карточка не сдана; {elapsed_fact}",
-            norm=f"сдать карточку за {round(limit_ms / 1000)} с",
-            ref="ТЗ задачи № 9; сессия вопросов и ответов 16.09.2026",
-            passed=passed,
-            weight=METRIC_WEIGHTS["card_fill_time"],
-            credit=time_credit(elapsed_ms, limit_ms) if submitted else 0.0,
-        ))
-        if not passed:
-            result.findings.append(Finding(
-                code=ErrorCode.E3,
-                source=FindingSource.TIMERS,
-                summary="Время заполнения карточки: норматив не выполнен",
-                fact=elapsed_fact if submitted else f"карточка не сдана; {elapsed_fact}",
-                norm=f"сдать карточку за {round(limit_ms / 1000)} с",
-                ref="ТЗ задачи № 9; сессия вопросов и ответов 16.09.2026",
-                competency=Competency.NORMS,
-            ))
-    elif state.exercise is Exercise.DDS:
-        # Все карточки выданы одновременно: при досрочном завершении оцениваем
-        # каждую, включая не открытую, потому что её норматив уже шёл.
-        result = GostResult()
-        cards = score_live_dds_cards(state)
-        for card in cards:
-            result.metrics.extend(card.metrics)
-            result.findings.extend(card.findings)
-    else:
-        result = evaluate(
-            scenario=scenario,
-            kio=state.kio,
-            timers=state.timers,
-            revealed_facts=[fact.id for fact in state.slots.revealed_facts()] if state.slots else None,
-            refined_facts=list(state.slots.refined) if state.slots else None,
-            end_reason=state.end_reason,
-            bounced_fields=state.bounced_fields,
-            resolved_outcome=state.resolved_outcome,
-            dispatched=state.dispatched_card is not None,
-        )
-    # Грамматика относится к свободному описанию оператора 112, а не к
-    # заполнению карточки на стороне ДДС. Учитывается только по явной настройке
-    # преподавателя и только когда есть текст для проверки.
-    operator_kio = state.operator_kio if state.handoff_to_dds else None
-    description = (operator_kio or state.kio).description or ""
-    if (state.exercise is not Exercise.DDS and state.criteria.require_correct_grammar
-            and description.strip()):
-        grammar = await assess(description)
-        result.metrics.append(Metric(
-            key="description_grammar",
-            title="Грамматика описания происшествия",
-            fact="ошибок не обнаружено" if grammar.passed else "; ".join(grammar.errors),
-            norm="грамматически корректное описание",
-            ref="критерий занятия; правила русского языка",
-            passed=grammar.passed,
-            weight=1.0,
-        ))
-        if not grammar.passed:
-            result.findings.append(Finding(
-                code=ErrorCode.E4,
-                source=FindingSource.GRAMMAR,
-                summary="Грамматическая ошибка в описании происшествия",
-                fact="; ".join(grammar.errors),
-                norm="грамматически корректное описание",
-                ref="критерий занятия; правила русского языка",
-                competency=Competency.COMMUNICATION,
-            ))
-    # Работа диспетчера — вторая роль и вторая таксономия. Отметки D1–D6 идут
-    # рядом с E1–E6, а не вместо: в живой цепочке 112 → ДДС в одном занятии
-    # участвуют оба (docs/spec/DATASET.md#статусы-реагирования).
-    live_card = state.desk.active
-    if live_card is not None and state.exercise is Exercise.CALL:
-        decision_limit_ms = live_card.timers.limits[TimerCode.DDS_ACK]
-        services = state.card_services(live_card)
-        dispatcher_findings = evaluate_dispatcher(
-            entries=live_card.status_log,
-            services=services,
-            crew_assignments=live_card.crew_assignments,
-            deadline_ms=decision_limit_ms,
-            elapsed_ms=live_card.timers.measured_ms(TimerCode.DDS_ACK),
-            reply_text=live_card.reply_text,
-            expected_decision=scenario.dds_decision.expected,
-            expected_decision_reason=scenario.dds_decision.reason,
-        )
-        result.findings.extend(dispatcher_findings)
-        result.metrics.extend(dispatcher_metrics(
-            live_card, decision_limit_ms, scenario.dds_decision.expected,
-            scenario.dds_decision.reason, services=services,
-        ))
-    # DDS cards were weighted individually in score_dds_card using each
-    # card's scenario defaults plus the lesson override. Reapplying the first
-    # scenario's weights here would corrupt the other ticket cards.
-    if state.exercise is not Exercise.DDS:
-        apply_weights(result, {**scenario.score_weights, **state.criteria.score_weights})
-
-    if state.handoff_to_dds and state.desk.scenarios:
-        # В связке КИО оценивается относительно эталона и весов упражнения
-        # 112, а каждая карточка очереди уже взвешена собственным сценарием.
-        cards = score_live_dds_cards(state)
-        for card in cards:
-            result.metrics.extend(card.metrics)
-            result.findings.extend(card.findings)
-
-    # Сводка числами: по ней считается дельта между попытками в профиле.
-    # Вытаскивать её разбором текста метрик («94 с») — путь к тихим ошибкам.
-    required = scenario.ground_truth.required_facts
-    revealed = [fact.id for fact in state.slots.revealed_facts()] if state.slots else []
-    codes: dict[str, int] = {}
-    for finding in result.findings:
-        codes[finding.code.value] = codes.get(finding.code.value, 0) + 1
-
-    state.score = {
-        "score_auto": result.score,
-        "summary": {
-            "interview_ms": state.timers.measured_ms(TimerCode.INTERVIEW),
-            "card_fill_ms": state.timers.measured_ms(TimerCode.CARD_FILL),
-            "facts_got": len([fact for fact in required if fact in revealed]),
-            "facts_required": len(required),
-            "hints": len(state.hints_shown),
-            "codes": codes,
-        },
-        "metrics": [metric.model_dump() for metric in result.metrics],
-        "findings": [finding.model_dump(mode="json") for finding in result.findings],
-        "competencies": [item.model_dump() for item in radar(result.metrics)],
-        "unavailable": result.unavailable,
-        # Статус карточки — готовая красная метка, понятная любому диспетчеру.
-        "card_status": state.station_snapshot().card.value,
-        "card_results": [
-            {"card_id": str(card.card_id), "scenario_id": card.scenario_id,
-             "score_auto": card.score_auto, "reply_text": card.reply_text,
-             "actions": card.actions, "duration_ms": card.duration_ms,
-             "title": card.title, "address": card.address,
-             "description": card.description, "incident_type": card.incident_type,
-             "victims_count": card.victims_count,
-             "received_at": card.received_at.isoformat() if card.received_at else None,
-             "managed_service": card.managed_service,
-             "recipient_services": card.recipient_services,
-             "metrics": [metric.model_dump(mode="json") for metric in card.metrics],
-             "findings": [finding.model_dump(mode="json") for finding in card.findings]}
-            for card in cards
-        ] if state.exercise is Exercise.DDS or state.handoff_to_dds else [],
-    }
+    report = await score_session(snapshot, grammar=assess)
+    state.score = report.payload(card_status=state.station_snapshot().card.value)
     # Модель только поясняет уже посчитанные провалы и балл не трогает; без
     # запущенной модели разбор выходит со статусом «недоступно», а не ждёт её.
-    state.score["ai_coaching"] = (await coach(result.metrics)).model_dump(mode="json")
+    state.score["ai_coaching"] = (await coach(report.result.metrics)).model_dump(mode="json")
     # Полный разбор хранится вместе с оценкой: PDF/CSV и история должны
     # переживать перезапуск backend, а не зависеть от живого объекта в реестре хаба.
-    state.score["full_report"] = build_report(session_id, state, scenario).model_dump(mode="json")
-    log.info("сессия %s: оценка %.1f, отметок %d", session_id, result.score, len(result.findings))
+    state.score["full_report"] = build_report(
+        session_id, state, snapshot.scenario
+    ).model_dump(mode="json")
+    log.info("сессия %s: оценка %.1f, отметок %d",
+             session_id, report.result.score, len(report.result.findings))
 
     # Оценка и аудит уходят в commit операции, завершившей занятие; ScoreReady
     # рассылает `end_session` и ждёт того же commit — без записи итог не выдаётся.
-    hub.record(session_id, ScoreCalculated(result.score, state.score))
+    hub.record(session_id, ScoreCalculated(report.result.score, state.score))
 
 
 def _ends_on_station(state) -> bool:

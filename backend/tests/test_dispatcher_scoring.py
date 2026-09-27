@@ -1,12 +1,28 @@
 from datetime import datetime, timezone
-from types import SimpleNamespace
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from app.domain.statuses import ServiceStatus, StatusEntry
 from app.domain.taxonomy import ErrorCode
+from app.scenarios.loader import load_file
 from app.scoring.dispatcher import dispatcher_metrics, evaluate_dispatcher
+from app.session.dds import DdsLiveCard, build_card
+from app.session.timers import SessionTimers
+
+LIBRARY = Path(__file__).resolve().parents[2] / "scenarios"
+SERVICES = ["Служба 101"]
+
+
+def live_card(*, status_log, crew_assignments, dispatched_at) -> DdsLiveCard:
+    """Карточка пульта с заданным журналом статусов — вход оценки ДДС."""
+    scenario = load_file(LIBRARY / "fire-apartment-l2.yaml", LIBRARY)
+    card = build_card(scenario, 0, SessionTimers().limits)
+    card.status_log = status_log
+    card.crew_assignments = crew_assignments
+    card.dispatched_at = dispatched_at
+    return card
 
 
 def test_late_primary_status_has_d1_finding_even_when_status_exists():
@@ -110,8 +126,7 @@ def test_missing_manual_status_comment_has_a_d5_finding():
 
 def test_each_manual_status_comment_is_part_of_the_numeric_reply_metric():
     at = datetime.now(timezone.utc)
-    state = SimpleNamespace(
-        managed_services=lambda: ["Служба 101"],
+    card = live_card(
         status_log=[
             StatusEntry(
                 service="Служба 101", status=ServiceStatus.ACCEPTED,
@@ -127,7 +142,7 @@ def test_each_manual_status_comment_is_part_of_the_numeric_reply_metric():
     )
 
     reply = next(
-        metric for metric in dispatcher_metrics(state, 30_000)
+        metric for metric in dispatcher_metrics(card, 30_000, services=SERVICES)
         if metric.key == "dds_reply"
     )
 
@@ -135,9 +150,9 @@ def test_each_manual_status_comment_is_part_of_the_numeric_reply_metric():
     assert "к каждой ручной отметке" in reply.norm
 
     findings = evaluate_dispatcher(
-        entries=state.status_log,
+        entries=card.status_log,
         services=["Служба 101"],
-        crew_assignments=state.crew_assignments,
+        crew_assignments=card.crew_assignments,
         deadline_ms=30_000,
         elapsed_ms=0,
     )
@@ -173,13 +188,13 @@ def test_scenario_may_define_a_valid_decline_for_duplicate_or_territory():
         expected_decision_reason="дублирующая карточка",
     )
     assert ErrorCode.D3 not in [finding.code for finding in findings]
-    state = SimpleNamespace(
-        managed_services=lambda: ["Служба 101"], status_log=entries,
+    card = live_card(
+        status_log=entries,
         crew_assignments={}, dispatched_at=at,
     )
     metrics = dispatcher_metrics(
-        state, 30_000, expected_decision="decline",
-        expected_decision_reason="дублирующая карточка",
+        card, 30_000, expected_decision="decline",
+        expected_decision_reason="дублирующая карточка", services=SERVICES,
     )
     decision = next(metric for metric in metrics if metric.key == "dds_decision")
     assert decision.passed
@@ -188,8 +203,7 @@ def test_scenario_may_define_a_valid_decline_for_duplicate_or_territory():
 
 def test_nonempty_unstructured_comment_fails_reply_metric_but_structured_passes():
     at = datetime.now(timezone.utc)
-    state = SimpleNamespace(
-        managed_services=lambda: ["Служба 101"],
+    card = live_card(
         status_log=[StatusEntry(
             service="Служба 101", status=ServiceStatus.ACCEPTED,
             at=at, comment="бригада на связи",
@@ -197,19 +211,19 @@ def test_nonempty_unstructured_comment_fails_reply_metric_but_structured_passes(
         crew_assignments={"Служба 101": "Бригада 12"},
         dispatched_at=at,
     )
-    reply = next(m for m in dispatcher_metrics(state, 30_000) if m.key == "dds_reply")
+    reply = next(m for m in dispatcher_metrics(card, 30_000, services=SERVICES) if m.key == "dds_reply")
     assert not reply.passed
     findings = evaluate_dispatcher(
-        entries=state.status_log, services=["Служба 101"],
-        crew_assignments=state.crew_assignments,
+        entries=card.status_log, services=["Служба 101"],
+        crew_assignments=card.crew_assignments,
         deadline_ms=30_000, elapsed_ms=0,
     )
     assert any("не разделяют основание и сведения" in f.summary for f in findings)
 
-    state.status_log[0] = state.status_log[0].model_copy(update={
+    card.status_log[0] = card.status_log[0].model_copy(update={
         "comment": "Основание: доклад старшего.\nСведения: бригада на связи.",
     })
-    reply = next(m for m in dispatcher_metrics(state, 30_000) if m.key == "dds_reply")
+    reply = next(m for m in dispatcher_metrics(card, 30_000, services=SERVICES) if m.key == "dds_reply")
     assert reply.passed
 
 def test_accepting_card_with_scenario_expected_decline_is_explained():
@@ -242,11 +256,11 @@ def test_incomplete_work_path_has_d6_for_failed_progress_metrics():
         StatusEntry(service="Служба 101", status=ServiceStatus.ACCEPTED, at=at),
         StatusEntry(service="Служба 101", status=ServiceStatus.RESPONDING, at=at),
     ]
-    state = SimpleNamespace(
-        managed_services=lambda: ["Служба 101"], status_log=entries,
+    card = live_card(
+        status_log=entries,
         crew_assignments={"Служба 101": "Бригада 1"}, dispatched_at=at,
     )
-    metrics = dispatcher_metrics(state, 30_000)
+    metrics = dispatcher_metrics(card, 30_000, services=SERVICES)
     assert not next(item for item in metrics if item.key == "dds_progress").passed
     assert not next(item for item in metrics if item.key == "dds_completion").passed
     findings = evaluate_dispatcher(
@@ -267,11 +281,11 @@ def test_reasoned_refusal_after_acceptance_is_a_valid_terminal_path():
             comment="Бригаде переданы сведения, выезд не выполнялся по причине угрозы.",
         ),
     ]
-    state = SimpleNamespace(
-        managed_services=lambda: ["Служба 101"], status_log=entries,
+    card = live_card(
+        status_log=entries,
         crew_assignments={"Служба 101": "Бригада 1"}, dispatched_at=at,
     )
-    metrics = dispatcher_metrics(state, 30_000)
+    metrics = dispatcher_metrics(card, 30_000, services=SERVICES)
     assert next(item for item in metrics if item.key == "dds_progress").passed
     assert next(item for item in metrics if item.key == "dds_completion").passed
     findings = evaluate_dispatcher(
