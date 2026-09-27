@@ -50,6 +50,7 @@ export function useCall(sessionId: string | null) {
   const [scoreReady, setScoreReady] = useState(false);
   const { report, error: reportError } = useSessionReport(sessionId, scoreReady);
   const [error, setError] = useState<string | null>(null);
+  const [paused, setPaused] = useState(false);
 
   const channel = useRef<ReturnType<typeof callChannel> | null>(null);
   const capture = useRef<Capture | null>(null);
@@ -58,6 +59,8 @@ export function useCall(sessionId: string | null) {
   const outbox = useRef<Record<string, unknown>>({});
   const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textMode = useRef(false);
+  const pausedRef = useRef(false);
+  const endedRef = useRef(false);
 
   const append = useCallback((line: Line) => {
     setLines((prev) => {
@@ -68,22 +71,14 @@ export function useCall(sessionId: string | null) {
 
   useEffect(() => {
     if (!sessionId) return;
+    endedRef.current = false;
     const ch = callChannel(sessionId, {
       onStatus: (next) => {
         setStatus(next);
-        if (next === "open") {
-          // Браузер не подтверждает доставку WebSocket-кадра. Всё, что ещё
-          // отмечено pending и не пришло эхом от сервера, повторяем после
-          // reconnect: kio.patch идемпотентен и не создаёт двойных действий.
-          queueMicrotask(() => setCard((current) => {
-            if (Object.keys(current.pending).length) {
-              channel.current?.send({ type: "kio.patch", fields: current.pending });
-            }
-            return current;
-          }));
-        }
       },
-      onBinary: (frame) => audio.current?.playback.enqueue(frame),
+      onBinary: (frame) => {
+        if (!pausedRef.current) audio.current?.playback.enqueue(frame);
+      },
       onEvent: (event: ServerToTrainee) => {
         if (event.type === "text.turn.accepted") {
           append({ speaker: "operator", text: event.text });
@@ -140,6 +135,7 @@ export function useCall(sessionId: string | null) {
             setTimers(event.timers);
             break;
           case "call.ended":
+            endedRef.current = true;
             setPhase("ended");
             audio.current?.ambience.stop();
             if (textMode.current) { setCardSubmitted(true); break; }
@@ -152,6 +148,33 @@ export function useCall(sessionId: string | null) {
             break;
           case "score.ready":
             setScoreReady(true);
+            break;
+          case "session.paused":
+            pausedRef.current = event.paused;
+            setPaused(event.paused);
+            if (event.paused) {
+              audio.current?.playback.flush();
+              setCallerSpeaking(false);
+              if (patchTimer.current) clearTimeout(patchTimer.current);
+              patchTimer.current = null;
+            } else if (endedRef.current) {
+              // Занятие завершили прямо на паузе: сервер снимает её после
+              // `call.ended`, и отложенные правки уже не войдут в оценку.
+              outbox.current = {};
+            } else {
+              // При переподключении сервер первым присылает состояние паузы.
+              // Только после этого повторяем правки, ожидающие подтверждения.
+              queueMicrotask(() => setCard((current) => {
+                if (Object.keys(current.pending).length) {
+                  channel.current?.send({ type: "kio.patch", fields: current.pending });
+                }
+                if (Object.keys(outbox.current).length) {
+                  channel.current?.send({ type: "kio.patch", fields: outbox.current });
+                  outbox.current = {};
+                }
+                return current;
+              }));
+            }
             break;
           case "error":
             setError(event.message);
@@ -170,13 +193,15 @@ export function useCall(sessionId: string | null) {
   }, [sessionId, append]);
 
   const answer = useCallback(async () => {
+    if (pausedRef.current) return;
     try {
       setError(null);
       // Контекст создаётся по нажатию: браузер не даёт играть звук без действия человека.
       const context = new AudioContext({ sampleRate: CALLER_RATE });
       audio.current = { context, playback: new Playback(context), ambience: new Ambience(context) };
 
-      capture.current = await startCapture((frame) => {
+      const startedCapture = await startCapture((frame) => {
+        if (pausedRef.current) return;
         const playback = audio.current?.playback;
         // Перебивание: фронт гасит звук мгновенно, сервер подтвердит `tts.cancel`.
         if (gate.current.push(frame) && playback?.speaking) {
@@ -185,6 +210,13 @@ export function useCall(sessionId: string | null) {
         }
         channel.current?.sendBinary(frame);
       });
+      if (pausedRef.current) {
+        await startedCapture.stop();
+        await context.close();
+        audio.current = null;
+        return;
+      }
+      capture.current = startedCapture;
       setMicOn(true);
       channel.current?.send({ type: "call.answer" });
     } catch (err) {
@@ -193,36 +225,45 @@ export function useCall(sessionId: string | null) {
   }, []);
 
   const hangup = useCallback(() => {
+    if (pausedRef.current) return;
     channel.current?.send({ type: "call.hangup" });
     void capture.current?.stop();
     capture.current = null;
     setMicOn(false);
   }, []);
 
-  const hint = useCallback(() => channel.current?.send({ type: "hint.request" }), []);
+  const hint = useCallback(() => {
+    if (!pausedRef.current) channel.current?.send({ type: "hint.request" });
+  }, []);
 
   const patchKio = useCallback((path: string, value: unknown) => {
+    if (pausedRef.current) return;
     setCard((prev) => edit(prev, path, value));
     outbox.current[path] = value;
     if (patchTimer.current) clearTimeout(patchTimer.current);
     patchTimer.current = setTimeout(() => {
       const fields = outbox.current;
       outbox.current = {};
-      if (Object.keys(fields).length) channel.current?.send({ type: "kio.patch", fields });
+      if (pausedRef.current) {
+        outbox.current = { ...fields, ...outbox.current };
+      } else if (Object.keys(fields).length) channel.current?.send({ type: "kio.patch", fields });
     }, PATCH_DEBOUNCE_MS);
   }, []);
 
   const dispatch = useCallback((service?: DDSCode) => {
+    if (pausedRef.current) return;
     channel.current?.send(service ? { type: "dds.dispatch", service } : { type: "dds.dispatch" });
   }, []);
 
   const sendText = useCallback((text: string) => {
+    if (pausedRef.current) return false;
     const clean = text.trim();
     if (!clean || clean.length > 1000) return false;
     return Boolean(channel.current?.send({ type: "text.turn", text: clean }));
   }, []);
 
   const submitCard = useCallback(() => {
+    if (pausedRef.current) return;
     if (patchTimer.current) clearTimeout(patchTimer.current);
     patchTimer.current = null;
     const fields = outbox.current;
@@ -243,17 +284,19 @@ export function useCall(sessionId: string | null) {
    *  Отдельное действие, а не «положил трубку»: система должна отличить
    *  осознанное решение от брошенного вызова (docs/spec/TICKETS.md). */
   const resolve = useCallback((outcome: Outcome, comment: string) => {
+    if (pausedRef.current) return;
     channel.current?.send({ type: "call.resolve", outcome, comment });
   }, []);
 
   const submitSelfAssessment = useCallback((missed: string[], comment: string) => {
+    if (pausedRef.current) return;
     channel.current?.send({ type: "self_assessment.submit", missed, comment });
     setSelfAssessed(true);
   }, []);
 
   return {
     resolve,
-    status, phase, incoming, briefing, cardSubmitted, lines, timers, callerSpeaking, micOn, error, card,
+    status, phase, incoming, briefing, cardSubmitted, lines, timers, callerSpeaking, micOn, error, paused, card,
     checklist, selfAssessed, scoreReady, report, reportError,
     answer, hangup, hint, patchKio, dispatch, submitCard, submitSelfAssessment, sendText,
   };

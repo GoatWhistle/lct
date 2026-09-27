@@ -157,3 +157,22 @@ type=aor
 max_contacts=2
 remove_existing=yes
 qualify_frequency=0
+
+; Вышестоящий начальник ДДС: роль играет преподаватель со страницы
+; /phone?role=superior. Обязательный голосовой маршрут по ответу заказчика (П.7).
+[6103](webrtc-endpoint)
+auth=6103-auth
+aors=6103
+callerid=Веб вышестоящий начальник <6103>
+
+[6103-auth]
+type=auth
+auth_type=userpass
+username=6103
+password=${SIP_6103_PASSWORD}
+
+[6103]
+type=aor
+max_contacts=2
+remove_existing=yes
+qualify_frequency=0

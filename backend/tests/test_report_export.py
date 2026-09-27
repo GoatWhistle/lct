@@ -68,8 +68,19 @@ def test_csv_contains_sections_and_blocks_formula_injection():
     assert any(row[0] == "Занятие" and row[3] == "'=1+1" for row in rows)
     assert any(row[0] == "Ошибки" and row[3] == "'+HYPERLINK(\"x\")" for row in rows)
     assert any(row[0] == "Самооценка" and row[3] == "'@SUM(1,2)" for row in rows)
+    assert ["Критерии", "", "Лимит реакции на доклад бригады, с", "не применяется", ""] in rows
     assert _cell("  =cmd") == "'  =cmd"
     assert _cell("\tОбычный текст") == "'\tОбычный текст"
+
+
+def test_csv_shows_enabled_report_reaction_limit():
+    report = sample_report()
+    report.criteria.dds_report_reaction_enabled = True
+    report.criteria.dds_report_reaction_limit_seconds = 20
+
+    rows = list(csv.reader(io.StringIO(to_csv(report).decode("utf-8-sig"))))
+
+    assert ["Критерии", "", "Лимит реакции на доклад бригады, с", "20", ""] in rows
 
 
 def test_pdf_supports_cyrillic_and_spans_pages(tmp_path):
@@ -89,6 +100,8 @@ def test_pdf_supports_cyrillic_and_spans_pages(tmp_path):
         assert "Отчёт по учебному занятию" in extracted
         assert "Адрес должен быть уточнён" in extracted
         assert "Заявитель сообщает о дыме" in extracted
+        assert "Лимит реакции на доклад бригады" in extracted
+        assert "не применяется" in extracted
 
 
 def test_certificate_pdf_contains_saved_result(tmp_path):

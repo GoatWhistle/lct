@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -396,6 +396,7 @@ def test_instructor_criteria_change_timer_and_success_threshold(client, monkeypa
         client,
         criteria={
             "decision_time_limit_seconds": 45,
+            "dds_report_reaction_limit_seconds": 20,
             "allowed_errors": 50,
             "require_correct_grammar": False,
             "score_weights": {"dds_ack": 3.5},
@@ -456,6 +457,8 @@ def test_instructor_criteria_change_timer_and_success_threshold(client, monkeypa
             "decision_time_limit_seconds": 45,
             "card_fill_time_limit_seconds": 180,
             "dds_card_work_time_limit_seconds": 180,
+            "dds_report_reaction_enabled": False,
+            "dds_report_reaction_limit_seconds": 20,
             "allowed_errors": 50,
             "require_correct_grammar": False,
             "score_weights": {"dds_ack": 3.5},
@@ -752,7 +755,7 @@ def test_late_first_record_has_e3_and_long_work_after_it_does_not(client):
 
 
 def test_complete_dds_workflow_with_training_calls_and_status_updates(client):
-    session_id, control = start(client)
+    session_id, control = start(client, criteria={"dds_report_reaction_enabled": True})
     try:
         state = hub.get(session_id)
         with client.websocket_connect(f"/ws/station/{session_id}") as station:
@@ -802,6 +805,120 @@ def test_complete_dds_workflow_with_training_calls_and_status_updates(client):
         ]
         assert all(report.crew == crew for report in state.desk.active.phone_reports)
         assert not score["findings"]
+        reaction = [m for m in score["metrics"] if m["key"] == "dds_report_reaction"]
+        assert len(reaction) == 1 and reaction[0]["passed"], "каждый доклад отмечен вовремя"
+        assert "с нарушением 0 из 4 докладов" in reaction[0]["fact"]
+    finally:
+        control.__exit__(None, None, None)
+
+
+STATUS_COMMENT = "Основание: доклад бригады.\nСведения: передано старшему бригады."
+
+
+def accept_with_crew(station):
+    read_until(station, "card.received")
+    snapshot = read_until(station, "station.state")["snapshot"]
+    service = snapshot["services"][0]
+    crew = next(option for option in snapshot["crew_options"]
+                if option.startswith(service + " — "))
+    station.send_json({"type": "card.status", "service": service, "status": "accepted",
+                       "comment": STATUS_COMMENT})
+    read_until(station, "station.state")
+    station.send_json({"type": "crew.select", "crew": crew})
+    read_until(station, "station.state")
+    return service
+
+
+def send_status(station, service, status):
+    station.send_json({"type": "card.status", "service": service, "status": status,
+                       "comment": STATUS_COMMENT})
+    read_until(station, "station.state")
+
+
+@pytest.mark.parametrize(("reaction", "passed"), [
+    ("fast", True), ("slow", False), ("missing", False), ("early", True),
+])
+def test_dds_report_reaction_goes_from_criteria_to_report(client, reaction, passed):
+    """Лимит из `scenario.start` доходит до метрики, отметки D6 и отчёта."""
+    session_id, control = start(client, criteria={
+        "dds_report_reaction_enabled": True,
+        "dds_report_reaction_limit_seconds": 20,
+        "score_weights": {"dds_report_reaction": 3.5},
+    })
+    try:
+        state = hub.get(session_id)
+        with client.websocket_connect(f"/ws/station/{session_id}") as station:
+            service = accept_with_crew(station)
+            if reaction == "early":
+                send_status(station, service, "responding")
+            complete_phone_call(station, state, "dispatched")
+            read_until(station, "station.state")
+            if reaction in {"fast", "slow"}:
+                send_status(station, service, "responding")
+            if reaction == "slow":
+                # Доклад на 70 с раньше статуса: время доклада — серверное.
+                state.desk.active.phone_reports[0].at -= timedelta(seconds=70)
+            station.send_json({"type": "station.finish"})
+            read_until(station, "score.ready")
+
+        score = wait_for(lambda: hub.get(session_id).score)
+        metrics = [item for item in score["metrics"] if item["key"] == "dds_report_reaction"]
+        assert len(metrics) == 1
+        metric = metrics[0]
+        assert metric["passed"] is passed
+        assert metric["weight"] == 3.5
+        assert metric["norm"] == "отметить статус по докладу за 20 с"
+        assert "«Начало реагирования» по докладу бригады" in metric["fact"]
+        findings = [item for item in score["findings"]
+                    if item["metric_key"] == "dds_report_reaction"]
+        assert [item["code"] for item in findings] == ([] if passed else ["D6"])
+        assert all(item["competency"] == "norms" for item in findings)
+        if reaction == "slow":
+            assert "70 с (+50 с сверх норматива)" in metric["fact"]
+            assert findings[0]["fact"] == metric["fact"]
+        if reaction == "missing":
+            assert metric["fact"].endswith(": не отмечен") and metric["credit"] == 0.0
+        if reaction == "early":
+            assert metric["fact"].endswith("отмечен не позже доклада")
+
+        report = client.get(f"/api/sessions/{session_id}/report").json()
+        assert report["criteria"]["dds_report_reaction_limit_seconds"] == 20
+        assert report["criteria"]["dds_report_reaction_enabled"] is True
+        assert [item for item in report["metrics"]
+                if item["key"] == "dds_report_reaction"] == metrics
+        if reaction == "slow":
+            csv_text = client.get(f"/api/sessions/{session_id}/report.csv").content.decode("utf-8-sig")
+            assert "Лимит реакции на доклад бригады" in csv_text
+            assert "70 с (+50 с сверх норматива)" in csv_text
+    finally:
+        control.__exit__(None, None, None)
+
+
+def test_refusal_after_crew_report_does_not_lower_score_without_finding(client):
+    """Бригада доложила о прибытии, но работы не проводились: отказ с причиной
+    — терминальный исход, неотмеченное «Прибытие» не штрафуется."""
+    session_id, control = start(client, criteria={"dds_report_reaction_enabled": True})
+    try:
+        state = hub.get(session_id)
+        with client.websocket_connect(f"/ws/station/{session_id}") as station:
+            service = accept_with_crew(station)
+            complete_phone_call(station, state, "dispatched")
+            read_until(station, "station.state")
+            send_status(station, service, "responding")
+            complete_phone_call(station, state, "arrived")
+            read_until(station, "station.state")
+            send_status(station, service, "refused")
+            station.send_json({"type": "station.finish"})
+            read_until(station, "score.ready")
+
+        score = wait_for(lambda: hub.get(session_id).score)
+        assert [report.phase for report in state.desk.active.phone_reports] == [
+            "dispatched", "arrived",
+        ]
+        metric = next(item for item in score["metrics"] if item["key"] == "dds_report_reaction")
+        assert metric["passed"], "прибытие при отказе не требуется"
+        assert "о выезде" in metric["fact"] and "докладов" not in metric["fact"]
+        assert not [item for item in score["findings"] if item["code"] == "D6"]
     finally:
         control.__exit__(None, None, None)
 
