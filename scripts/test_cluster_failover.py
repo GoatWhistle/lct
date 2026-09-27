@@ -250,6 +250,10 @@ async def main(args: argparse.Namespace) -> int:
 
         instructor_cookie = login(backend, instructor_login, instructor_password)
         trainee_cookie = login(backend, trainee_login, trainee_password)
+        # Учётки созданы прямо в БД, вход — на узле A, а сокет занятия Nginx
+        # может отдать узлу B. B узнаёт новый логин при очередной сверке
+        # поколений (раз в секунду); до неё middleware считает cookie отозванной.
+        await asyncio.sleep(2.5)
         await send_control(ws_base, session_id, instructor_cookie, {
             "type": "scenario.start", "scenario_id": args.scenario,
             "trainee": trainee.name, "trainee_id": str(trainee.id),
@@ -418,8 +422,19 @@ async def main(args: argparse.Namespace) -> int:
                     f"existing_{channel}_closed": closure["closed"]
                     for channel, closure in result["existing_channel_closures"].items()
                 })
+                # Без БД старый владелец закрывает каналы fail-closed одним из двух
+                # путей: auth не может сверить поколения учёток дольше 2 с — 1013,
+                # supervisor lease замечает потерю владения (цикл 5 с) — 1012.
+                # Auth обычно успевает первым; оба кода корректны, фронт их не
+                # различает. Фактический код остаётся в existing_channel_closures.
+                result["existing_channel_close_codes"] = {
+                    channel: closure.get("close_code")
+                    for channel, closure in result["existing_channel_closures"].items()
+                }
                 result["checks"].update({
-                    f"existing_{channel}_fenced_with_1012": closure["fence_notice"]
+                    f"existing_{channel}_closed_fail_closed": (
+                        closure["fence_notice"] or closure.get("close_code") == 1013
+                    )
                     for channel, closure in result["existing_channel_closures"].items()
                 })
 

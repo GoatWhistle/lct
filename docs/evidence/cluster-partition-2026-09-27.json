@@ -1,0 +1,365 @@
+{
+  "date": "2026-09-27",
+  "test": "scripts/test_cluster_failover.py --failure-mode partition",
+  "environment": "изолированный Compose project lct-cluster-partition: PostgreSQL, два backend за TCP-прокси к БД, Nginx TLS; локальная машина WSL2, не целевое оборудование",
+  "note": "После кэша поколений учёток открытые каналы старого владельца закрываются 1013 от auth раньше, чем supervisor lease закрывает их с 1012; оба кода — fail-closed",
+  "result": {
+    "session_id": "e35f4f33-7bae-4c93-ae85-1cf683905aaa",
+    "checks": {
+      "lost_ack_command_ack_emitted": true,
+      "lost_ack_command_committed": true,
+      "owner_process_running": true,
+      "existing_control_closed": true,
+      "existing_call_closed": true,
+      "existing_observe_closed": true,
+      "existing_station_closed": true,
+      "existing_control_closed_fail_closed": true,
+      "existing_call_closed_fail_closed": true,
+      "existing_observe_closed_fail_closed": true,
+      "existing_station_closed_fail_closed": true,
+      "owner_changed": true,
+      "fencing_epoch_incremented": true,
+      "checkpoint_restored": true,
+      "lost_ack_command_replayed": true,
+      "old_owner_process_healthy": true,
+      "stale_owner_control_rejected": true,
+      "session_rest": true,
+      "ws_control": true,
+      "ws_call": true,
+      "ws_observe": true,
+      "ws_station": true,
+      "boundary_command_reconciled": true,
+      "dds_finished": true,
+      "dds_business_metrics_passed": true,
+      "dds_statuses_persisted_exactly_once": true,
+      "lost_ack_status_recorded_once": true
+    },
+    "initial_owner": "backend-a",
+    "initial_epoch": 1,
+    "dds_progress_before_fault": [
+      "accepted",
+      "crew.select",
+      "responding"
+    ],
+    "dds_service": "Служба 101",
+    "dds_crew": "Служба 101 — бригада №1",
+    "lost_ack_command_id": "ed974e0c-5e94-4db3-bfab-29c1302504a0",
+    "lost_ack_ack_dispatched_to_browser": false,
+    "boundary_command_sent_to_old_owner": "arrived",
+    "existing_channel_closures": {
+      "control": {
+        "closed": true,
+        "fence_notice": false,
+        "close_code": 1013,
+        "reason": "Состояние доступа временно недоступно"
+      },
+      "call": {
+        "closed": true,
+        "fence_notice": false,
+        "close_code": 1013,
+        "reason": "Состояние доступа временно недоступно"
+      },
+      "observe": {
+        "closed": true,
+        "fence_notice": false,
+        "close_code": 1013,
+        "reason": "Состояние доступа временно недоступно"
+      },
+      "station": {
+        "closed": true,
+        "fence_notice": false,
+        "close_code": 1013,
+        "reason": "Состояние доступа временно недоступно"
+      }
+    },
+    "existing_channel_fence_notices": {
+      "control": false,
+      "call": false,
+      "observe": false,
+      "station": false
+    },
+    "existing_channel_close_codes": {
+      "control": 1013,
+      "call": 1013,
+      "observe": 1013,
+      "station": 1013
+    },
+    "takeover_owner": "backend-b",
+    "takeover_epoch": 2,
+    "takeover_seconds": 11.19,
+    "stale_owner_control": {
+      "connected": false,
+      "error": "InvalidStatus: server rejected WebSocket connection: HTTP 403"
+    },
+    "rest_attempts": 1,
+    "rest_elapsed_seconds": 0.02,
+    "websockets": {
+      "control": {
+        "connected": true,
+        "initial_event": "connected_no_initial_event",
+        "attempts": 1
+      },
+      "call": {
+        "connected": true,
+        "initial_event": {
+          "type": "timer.tick",
+          "timers": [
+            {
+              "code": "close",
+              "elapsed_ms": 35435,
+              "limit_ms": 300000,
+              "state": "ok",
+              "attempt": 1,
+              "stopped": false
+            },
+            {
+              "code": "dds_ack",
+              "elapsed_ms": 154,
+              "limit_ms": 30000,
+              "state": "ok",
+              "attempt": 1,
+              "stopped": true
+            },
+            {
+              "code": "dds_work",
+              "elapsed_ms": 35280,
+              "limit_ms": 180000,
+              "state": "ok",
+              "attempt": 1,
+              "stopped": false
+            },
+            {
+              "code": "interview",
+              "elapsed_ms": 0,
+              "limit_ms": 75000,
+              "state": "ok",
+              "attempt": 1,
+              "stopped": true
+            }
+          ]
+        },
+        "attempts": 1
+      },
+      "observe": {
+        "connected": true,
+        "initial_event": {
+          "type": "session.snapshot",
+          "session_id": "e35f4f33-7bae-4c93-ae85-1cf683905aaa",
+          "scenario_id": "fire-apartment-l2",
+          "scenario_title": "Пожар в квартире, паникующий заявитель",
+          "level": "L2",
+          "mode": "training",
+          "exercise": "dds",
+          "criteria": {
+            "decision_time_limit_seconds": 30,
+            "card_fill_time_limit_seconds": 180,
+            "dds_card_work_time_limit_seconds": 180,
+            "allowed_errors": 0,
+            "require_correct_grammar": true,
+            "score_weights": {}
+          },
+          "trainee_name": "Failover smoke ba4f6f8e438e",
+          "started_at": "2026-09-27T12:39:55.056084Z",
+          "kio": {
+            "card_id": "06bff8d1-acd0-4015-86bb-3d6750ee3bdc",
+            "registered_at": "2026-09-27T12:39:55.055618Z",
+            "response_status": "transferred",
+            "caller_number": null,
+            "caller_name": null,
+            "caller_contact": null,
+            "phone_on_scene": null,
+            "language": "ru",
+            "okato": null,
+            "address": "улица Ленина, 14",
+            "street": null,
+            "building": null,
+            "entrance": null,
+            "floor": "5",
+            "intercom_code": null,
+            "coords": null,
+            "incident_group": 1,
+            "signs": [
+              "жилой дом",
+              "балкон",
+              "открытое пламя"
+            ],
+            "incident_code": "1050201",
+            "incident_type": "fire",
+            "description": "улица Ленина, 14, квартира 47, 5-й этаж; горит балкон, дым пошёл в квартиру; в квартире жена и ребёнок, не выходят",
+            "victims_count": 2,
+            "is_emergency": false,
+            "life_threat": false,
+            "evacuation_needed": false,
+            "notify": [
+              "Служба 101",
+              "МВД",
+              "СМП",
+              "ЦЭМП",
+              "Мособлгаз",
+              "Гор. Хозяйство",
+              "Мослифт",
+              "ЦОДД",
+              "Департамент РБиПК (ГКУ МОСБЕЗ)",
+              "МКП, Аналитика",
+              "Аппарат МЭРА",
+              "Территориальные ОИВ",
+              "Территориальные ОИВ ТиНАО",
+              "Мосжилинспекция",
+              "ГКУ НТУ",
+              "ФСО",
+              "ДГП (Департамент градостроительной политики)",
+              "ЦУКБ Министерство обороны"
+            ],
+            "dds": "01",
+            "dispatch_order_at": null,
+            "arrival_at": null,
+            "fire": null,
+            "police": null,
+            "medical": null,
+            "utility": null
+          },
+          "required_fields": [
+            "address",
+            "floor",
+            "incident_type",
+            "dds",
+            "victims_count",
+            "description"
+          ],
+          "transcript": [],
+          "timers": [
+            {
+              "code": "close",
+              "elapsed_ms": 35448,
+              "limit_ms": 300000,
+              "state": "ok",
+              "attempt": 1,
+              "stopped": false
+            },
+            {
+              "code": "dds_ack",
+              "elapsed_ms": 154,
+              "limit_ms": 30000,
+              "state": "ok",
+              "attempt": 1,
+              "stopped": true
+            },
+            {
+              "code": "dds_work",
+              "elapsed_ms": 35293,
+              "limit_ms": 180000,
+              "state": "ok",
+              "attempt": 1,
+              "stopped": false
+            },
+            {
+              "code": "interview",
+              "elapsed_ms": 0,
+              "limit_ms": 75000,
+              "state": "ok",
+              "attempt": 1,
+              "stopped": true
+            }
+          ],
+          "hints_used": 0,
+          "ended": false
+        },
+        "attempts": 1
+      },
+      "station": {
+        "connected": true,
+        "initial_event": {
+          "type": "card.received",
+          "card": {
+            "card_id": "06bff8d1-acd0-4015-86bb-3d6750ee3bdc",
+            "registered_at": "2026-09-27T12:39:55.055618Z",
+            "response_status": "transferred",
+            "caller_number": null,
+            "caller_name": null,
+            "caller_contact": null,
+            "phone_on_scene": null,
+            "language": "ru",
+            "okato": null,
+            "address": "улица Ленина, 14",
+            "street": null,
+            "building": null,
+            "entrance": null,
+            "floor": "5",
+            "intercom_code": null,
+            "coords": null,
+            "incident_group": 1,
+            "signs": [
+              "жилой дом",
+              "балкон",
+              "открытое пламя"
+            ],
+            "incident_code": "1050201",
+            "incident_type": "fire",
+            "description": "улица Ленина, 14, квартира 47, 5-й этаж; горит балкон, дым пошёл в квартиру; в квартире жена и ребёнок, не выходят",
+            "victims_count": 2,
+            "is_emergency": false,
+            "life_threat": false,
+            "evacuation_needed": false,
+            "notify": [
+              "Служба 101",
+              "МВД",
+              "СМП",
+              "ЦЭМП",
+              "Мособлгаз",
+              "Гор. Хозяйство",
+              "Мослифт",
+              "ЦОДД",
+              "Департамент РБиПК (ГКУ МОСБЕЗ)",
+              "МКП, Аналитика",
+              "Аппарат МЭРА",
+              "Территориальные ОИВ",
+              "Территориальные ОИВ ТиНАО",
+              "Мосжилинспекция",
+              "ГКУ НТУ",
+              "ФСО",
+              "ДГП (Департамент градостроительной политики)",
+              "ЦУКБ Министерство обороны"
+            ],
+            "dds": "01",
+            "dispatch_order_at": null,
+            "arrival_at": null,
+            "fire": null,
+            "police": null,
+            "medical": null,
+            "utility": null
+          },
+          "from_operator": "учебный сценарий",
+          "at": "2026-09-27T12:39:55.056084Z",
+          "card_index": 1,
+          "card_total": 1
+        },
+        "attempts": 1
+      }
+    },
+    "boundary_status_after_takeover": "arrived",
+    "boundary_command_outcome": "committed before takeover",
+    "dds_progress_after_takeover": [
+      "working",
+      "completed"
+    ],
+    "dds_final_score": 98.8,
+    "dds_card_metrics": {
+      "dds_primary": true,
+      "dds_ack": true,
+      "dds_decision": true,
+      "dds_crew": true,
+      "dds_progress": true,
+      "dds_completion": true,
+      "dds_reply": true,
+      "dds_work_time": true
+    },
+    "dds_status_counts": {
+      "accepted": 1,
+      "responding": 1,
+      "arrived": 1,
+      "working": 1,
+      "completed": 1
+    },
+    "pass": true
+  }
+}
