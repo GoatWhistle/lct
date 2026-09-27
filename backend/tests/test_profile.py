@@ -21,7 +21,7 @@ from app.session.hub import hub
 
 
 @pytest.fixture(scope="module")
-def client():
+def client(template_caller):
     # Доступность базы проверяется подключением к порту: синхронного драйвера
     # в проекте нет, и попытка проверить им даёт ложный пропуск теста.
     import socket

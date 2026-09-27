@@ -12,6 +12,20 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 os.environ.setdefault("DEV_AUTH_BYPASS", "true")
+# Тесты ждут локальную модель по умолчанию. Личный backend/.env с облачным
+# провайдером иначе валит проверки офлайн-гарда; переменные окружения
+# перекрывают .env, а живые проверки test_llm.py выставляют свои поверх.
+# Рекомендации Vikhr выключены: на WSL2 подключение к закрытому loopback-порту
+# висит до таймаута, и финиш занятия ждал бы 6 с. Тесты рекомендаций
+# подменяют coach сами.
+os.environ.update({
+    "LLM_PROVIDER": "local",
+    "LLM_BASE_URL": "http://127.0.0.1:18080/v1",
+    "LLM_API_KEY": "",
+    "LLM_MODEL_CALLER": "Qwen3-1.7B",
+    "LLM_MODEL_JUDGE": "",
+    "ASSESSMENT_FEEDBACK_ENABLED": "false",
+})
 
 import pytest  # noqa: E402
 
@@ -34,6 +48,19 @@ def postgres_access():
             pass
     except OSError as exc:
         pytest.skip(f"PostgreSQL unavailable ({exc})")
+
+
+@pytest.fixture(scope="module")
+def template_caller():
+    """Звонящий без модели: сквозные тесты занятия ждут заготовки и офлайн-
+    ответы. С моделью по умолчанию (loopback Qwen) фабрика выбрала бы
+    LlmCaller и ждала неподнятый сервер."""
+    from app.dialog import factory
+
+    settings = get_settings().model_copy(update={"llm_provider": "disabled"})
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(factory, "get_settings", lambda: settings)
+        yield
 
 
 @pytest.fixture(autouse=True, scope="session")
