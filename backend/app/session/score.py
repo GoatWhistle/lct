@@ -234,11 +234,13 @@ async def score_session(
             expected_decision_reason=scenario.dds_decision.reason,
             phone_reports=live_card.phone_reports,
             report_reaction_ms=reaction_ms,
+            report_reaction_enabled=snapshot.criteria.dds_report_reaction_enabled,
             pause_intervals=snapshot.pause_intervals,
         ))
         result.metrics.extend(dispatcher_metrics(
             live_card, decision_limit_ms, scenario.dds_decision.expected,
             scenario.dds_decision.reason, services=services, report_reaction_ms=reaction_ms,
+            report_reaction_enabled=snapshot.criteria.dds_report_reaction_enabled,
             pause_intervals=snapshot.pause_intervals,
         ))
     # Карточки ДДС уже взвешены каждая своим сценарием плюс настройкой

@@ -324,10 +324,12 @@ def reaction(status_log, reports, limit_ms=45_000, pause_intervals=None):
         entries=status_log, services=SERVICES, crew_assignments=card.crew_assignments,
         deadline_ms=30_000, elapsed_ms=5_000, phone_reports=reports,
         report_reaction_ms=limit_ms,
+        report_reaction_enabled=True,
         pause_intervals=pause_intervals,
     )
     metric = next((m for m in dispatcher_metrics(card, 30_000, services=SERVICES,
                                                  report_reaction_ms=limit_ms,
+                                                 report_reaction_enabled=True,
                                                  pause_intervals=pause_intervals)
                    if m.key == "dds_report_reaction"), None)
     return [f for f in findings if f.metric_key == "dds_report_reaction"], metric

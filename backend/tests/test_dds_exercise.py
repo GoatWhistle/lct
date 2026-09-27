@@ -455,6 +455,7 @@ def test_instructor_criteria_change_timer_and_success_threshold(client, monkeypa
             "decision_time_limit_seconds": 45,
             "card_fill_time_limit_seconds": 180,
             "dds_card_work_time_limit_seconds": 180,
+            "dds_report_reaction_enabled": False,
             "dds_report_reaction_limit_seconds": 20,
             "allowed_errors": 50,
             "require_correct_grammar": False,
@@ -749,7 +750,7 @@ def test_dds_card_over_three_minutes_has_e3_finding_and_actual_deviation(client)
 
 
 def test_complete_dds_workflow_with_training_calls_and_status_updates(client):
-    session_id, control = start(client)
+    session_id, control = start(client, criteria={"dds_report_reaction_enabled": True})
     try:
         state = hub.get(session_id)
         with client.websocket_connect(f"/ws/station/{session_id}") as station:
@@ -835,6 +836,7 @@ def send_status(station, service, status):
 def test_dds_report_reaction_goes_from_criteria_to_report(client, reaction, passed):
     """Лимит из `scenario.start` доходит до метрики, отметки D6 и отчёта."""
     session_id, control = start(client, criteria={
+        "dds_report_reaction_enabled": True,
         "dds_report_reaction_limit_seconds": 20,
         "score_weights": {"dds_report_reaction": 3.5},
     })
@@ -876,6 +878,7 @@ def test_dds_report_reaction_goes_from_criteria_to_report(client, reaction, pass
 
         report = client.get(f"/api/sessions/{session_id}/report").json()
         assert report["criteria"]["dds_report_reaction_limit_seconds"] == 20
+        assert report["criteria"]["dds_report_reaction_enabled"] is True
         assert [item for item in report["metrics"]
                 if item["key"] == "dds_report_reaction"] == metrics
         if reaction == "slow":
@@ -889,7 +892,7 @@ def test_dds_report_reaction_goes_from_criteria_to_report(client, reaction, pass
 def test_refusal_after_crew_report_does_not_lower_score_without_finding(client):
     """Бригада доложила о прибытии, но работы не проводились: отказ с причиной
     — терминальный исход, неотмеченное «Прибытие» не штрафуется."""
-    session_id, control = start(client)
+    session_id, control = start(client, criteria={"dds_report_reaction_enabled": True})
     try:
         state = hub.get(session_id)
         with client.websocket_connect(f"/ws/station/{session_id}") as station:

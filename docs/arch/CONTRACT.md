@@ -158,7 +158,7 @@ ACK намеренно не dispatch-ился в приложение брауз
 
 | Событие | Payload | Применение |
 |---|---|---|
-| `scenario.start` | `{scenario_id, scenario_ids?, random_scenario_ids?, dds_arrival_interval_seconds, dds_max_waiting, trainee, trainee_id?, dds_service?, group_id?, mode, exercise?, handoff_to_dds, criteria?: {decision_time_limit_seconds, card_fill_time_limit_seconds, dds_card_work_time_limit_seconds, dds_report_reaction_limit_seconds, allowed_errors, require_correct_grammar, score_weights}}` | Запуск занятия; `trainee_id` связывает результат с курсантом, `criteria` сохраняет условия зачёта и переопределяет лимиты `dds_ack`, `card_fill`, `dds_work` и реакции на доклад бригады |
+| `scenario.start` | `{scenario_id, scenario_ids?, random_scenario_ids?, dds_arrival_interval_seconds, dds_max_waiting, trainee, trainee_id?, dds_service?, group_id?, mode, exercise?, handoff_to_dds, criteria?: {decision_time_limit_seconds, card_fill_time_limit_seconds, dds_card_work_time_limit_seconds, dds_report_reaction_enabled, dds_report_reaction_limit_seconds, allowed_errors, require_correct_grammar, score_weights}}` | Запуск занятия; `trainee_id` связывает результат с курсантом, `criteria` сохраняет условия зачёта и переопределяет лимиты `dds_ack`, `card_fill`, `dds_work`; срок реакции на доклад включается отдельно преподавателем |
 | `director.inject` | `{directive, mode: "next_turn"\|"immediate"}` | Директива звонящему, только в `exercise=call` ([../product/CALL-SIM.md](../product/CALL-SIM.md#преподаватель-режиссёр)) |
 | `reference.play` | `{}` | Сейчас только посылает `reference.started` наблюдателям, без проигрывания аудио |
 | `instructor_note.add` | `{transcript_ref, text}` | Пометка к реплике транскрипта |
@@ -286,7 +286,7 @@ class KIO(BaseModel):
 | `dds_ack` | Подтверждение получения карточки (решение ДДС) | ≤ 30 с, ПП РФ № 1931; лимит занятия — `criteria.decision_time_limit_seconds` |
 | `card_fill` | Заполнение КИО по вводной | 180 с по умолчанию, `criteria.card_fill_time_limit_seconds` |
 | `dds_work` | Отработка карточки ДДС | 180 с по умолчанию, `criteria.dds_card_work_time_limit_seconds` |
-| — | Статус ДДС по докладу бригады (метрика `dds_report_reaction`) | 45 с по умолчанию, `criteria.dds_report_reaction_limit_seconds`; не таймер: считается по серверному `at` доклада и статуса |
+| — | Статус ДДС по докладу бригады (метрика `dds_report_reaction`) | По умолчанию выключен; при `criteria.dds_report_reaction_enabled=true` исходный лимит 45 с, меняется через `criteria.dds_report_reaction_limit_seconds`; считается по серверному `at` доклада и статуса за вычетом пауз занятия |
 | `zone_check` | Проверка зоны ответственности | ≤ 30 с |
 | `callback` | Обратный дозвон при обрыве | ≤ 10 с набора, 3 попытки |
 | `close` | Снятие с контроля | ≤ 5 мин |

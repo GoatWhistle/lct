@@ -200,6 +200,7 @@ def evaluate_dispatcher(
     expected_decision_reason: str | None = None,
     phone_reports: list[PhoneReportRecord] | None = None,
     report_reaction_ms: int = REPORT_REACTION_MS,
+    report_reaction_enabled: bool = False,
     pause_intervals: Sequence[tuple[datetime, datetime]] | None = None,
 ) -> list[Finding]:
     """Отметки по работе диспетчера. Пустой список — работа без нарушений.
@@ -392,9 +393,10 @@ def evaluate_dispatcher(
             )
 
         # D6 — статус по докладу бригады отмечен позже лимита или не отмечен.
-        reaction = report_reaction(service, marks, reports, report_reaction_ms, pause_intervals)
-        if reaction is not None and reaction[1] is not None:
-            findings.append(reaction[1])
+        if report_reaction_enabled:
+            reaction = report_reaction(service, marks, reports, report_reaction_ms, pause_intervals)
+            if reaction is not None and reaction[1] is not None:
+                findings.append(reaction[1])
 
     return findings
 
@@ -407,6 +409,7 @@ def dispatcher_metrics(
     *,
     services: list[str] | None = None,
     report_reaction_ms: int = REPORT_REACTION_MS,
+    report_reaction_enabled: bool = False,
     pause_intervals: Sequence[tuple[datetime, datetime]] | None = None,
 ) -> list[Metric]:
     """Числовая часть оценки ДДС; каждый проверяемый шаг имеет факт и норму.
@@ -441,9 +444,10 @@ def dispatcher_metrics(
         # Метрика есть только там, где бригада докладывала: без докладов
         # реагировать не на что, и отсутствие звонков не штраф.
         reports = [report for report in card.phone_reports if report.service == service]
-        reaction = report_reaction(service, marks, reports, report_reaction_ms, pause_intervals)
-        if reaction is not None:
-            metrics.append(reaction[0])
+        if report_reaction_enabled:
+            reaction = report_reaction(service, marks, reports, report_reaction_ms, pause_intervals)
+            if reaction is not None:
+                metrics.append(reaction[0])
         expected_status = (ServiceStatus.ACCEPTED if expected_decision == "accept"
                            else ServiceStatus.DECLINED)
         expected_label = "Принята" if expected_decision == "accept" else "Не принята"

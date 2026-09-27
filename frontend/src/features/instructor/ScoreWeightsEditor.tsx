@@ -47,10 +47,12 @@ const REVIEW_METRICS: MetricOption[] = [
 
 export function ScoreWeightsEditor({
   exercise,
+  reportReactionEnabled,
   values,
   onChange,
 }: {
   exercise: LessonExercise;
+  reportReactionEnabled: boolean;
   values: Record<string, number>;
   onChange: (weights: Record<string, number>) => void;
 }) {
@@ -63,6 +65,11 @@ export function ScoreWeightsEditor({
         ? [["Карточка КИО", CARD_METRICS], ["Реагирование ДДС", DDS_METRICS]]
         : [["Опрос 112", CALL_METRICS], ["Реагирование ДДС", DDS_METRICS]];
   groups.push(["Разбор", REVIEW_METRICS]);
+  if (!reportReactionEnabled) {
+    for (const group of groups) {
+      group[1] = group[1].filter(({ key }) => key !== "dds_report_reaction");
+    }
+  }
 
   function setWeight(key: string, raw: string) {
     const next = { ...values };

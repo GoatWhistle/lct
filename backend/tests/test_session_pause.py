@@ -628,6 +628,7 @@ def test_repeated_pause_and_resume_are_idempotent(clock, monkeypatch):
 def test_report_reaction_excludes_pause_after_control_and_checkpoint(clock, monkeypatch):
     base = datetime(2026, 9, 27, 10, tzinfo=UTC)
     state, card = _dds_state_with_active_card(clock)
+    state.criteria.dds_report_reaction_enabled = True
     service = state.card_services(card)[0]
     monkeypatch.setattr("app.session.dds.now_utc", lambda: base)
     card.set_service_status(service, ServiceStatus.ACCEPTED, "Карточка принята")
