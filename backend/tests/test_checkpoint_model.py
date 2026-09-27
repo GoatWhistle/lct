@@ -160,14 +160,14 @@ def full_state() -> SessionState:
         desk=desk,
         resolved_outcome="справка",
         resolve_comment="передано в другой регион",
+        paused=True,
+        paused_at=AT,
+        total_paused_ms=15_000,
         processed_station_commands=[str(uuid4())],
         text_revealed_facts={"f_address": "улица Ленина, 14"},
         consecutive_refusals=2,
         socket_last_seen_at=AT,
         socket_connected_at_checkpoint=True,
-        paused=True,
-        paused_at=AT,
-        total_paused_ms=15_000,
     )
 
 

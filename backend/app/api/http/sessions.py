@@ -111,10 +111,10 @@ class ActiveSessionOut(BaseModel):
     dds_overdue_cards: int
     dds_work_overdue_cards: int
     dds_statuses: dict[str, str]
+    paused: bool = False
     dds_snapshot: StationSnapshot | None = None
     signals: list[Signal] = []
     presence_known: bool = True
-    paused: bool = False
 
 
 def _out(session) -> SessionOut:
@@ -203,11 +203,10 @@ def _signals(
 ) -> list[Signal]:
     """Сигналы реестра: очередь, повторные отказы, курсант не на связи.
 
-    Пауза занятия (`session.pause`) их не трогает и ложных срабатываний не
-    даёт: очередь на паузе не выдаёт карточки, команды станции отклоняются,
-    поэтому счётчики стоят; присутствие сокета — факт и на паузе.
-    Присутствие — по наличию подписчика в хабе этого узла; окно нужно, чтобы
-    короткий разрыв соединения не сразу считался потерей связи курсанта.
+    Не завязаны на паузу занятия (`session.pause`, если появится) — очередь,
+    отказы и присутствие сокета не читают таймеры. Присутствие — по наличию
+    подписчика в хабе этого узла; окно нужно, чтобы короткий разрыв
+    соединения не сразу считался потерей связи курсанта.
 
     `live=False` — снимок чужого узла: его сокеты здесь не видны, поэтому
     присутствие неизвестно. Чтение реестра не меняет состояние занятия.
@@ -331,10 +330,10 @@ async def active(
                 for card in state.desk.cards.values()
             ),
             dds_statuses=latest_statuses,
+            paused=state.paused,
             dds_snapshot=station,
             signals=_signals(state, queue, now, live=state.session_id not in checkpoint_only),
             presence_known=state.session_id not in checkpoint_only,
-            paused=state.paused,
         ))
     return result
 

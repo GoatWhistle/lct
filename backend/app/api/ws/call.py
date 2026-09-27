@@ -432,9 +432,6 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
         if hub.is_lease_fenced(session_id):
             await close_fenced(ws)
             return
-        # Каждый новый канал получает серверное состояние, включая снятую паузу:
-        # клиент мог потерять событие resume во время переподключения.
-        queue.put_nowait(SessionPaused(paused=state.paused))
         if state.exercise is Exercise.CARD:
             from app.api.ws.control import card_briefing
 
@@ -468,6 +465,9 @@ async def call(ws: WebSocket, session_id: UUID) -> None:
                 if state.recorder is None:
                     state.recorder = start_recording(session_id)
                 _start_voice(session_id, state, initial_statement=False)
+        # Каждый новый канал получает серверное состояние, включая снятую паузу:
+        # клиент мог потерять событие resume во время переподключения.
+        queue.put_nowait(SessionPaused(paused=state.paused))
         writer = asyncio.create_task(pump(ws, queue))
         try:
             while True:
