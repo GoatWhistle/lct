@@ -19,6 +19,7 @@ interface Props {
 export function KioCard({ state, required = [], readOnly = false, referenceArm = false, onChange }: Props) {
   const dds = display(state, "dds") as string | null;
   const incidentGroup = display(state, "incident_group") as number | null;
+  const notify = (display(state, "notify") as string[] | null) ?? [];
   const groups = visibleGroups(dds);
   const section = (group: FieldGroup) => (
     <section className={`kio-arm-section kio-arm-${group.area}`} key={group.title}>
@@ -38,6 +39,7 @@ export function KioCard({ state, required = [], readOnly = false, referenceArm =
             readOnly={readOnly || field.readOnly}
             referenceArm={referenceArm}
             incidentGroup={incidentGroup}
+            notify={notify}
             onChange={onChange}
           />
         ))}
@@ -60,7 +62,7 @@ export function KioCard({ state, required = [], readOnly = false, referenceArm =
 }
 
 function Row({
-  field, value, pending, required, readOnly, referenceArm, incidentGroup, onChange,
+  field, value, pending, required, readOnly, referenceArm, incidentGroup, notify, onChange,
 }: {
   field: Field;
   value: unknown;
@@ -69,6 +71,7 @@ function Row({
   readOnly?: boolean;
   referenceArm: boolean;
   incidentGroup: number | null;
+  notify: string[];
   onChange?: (path: string, value: unknown) => void;
 }) {
   const empty = value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
@@ -87,7 +90,7 @@ function Row({
         {readOnly ? (
           <span className="kio-arm-readonly">{formatValue(value, field)}</span>
         ) : (
-          <Input field={field} value={value} referenceArm={referenceArm} incidentGroup={incidentGroup} onChange={onChange} />
+          <Input field={field} value={value} referenceArm={referenceArm} incidentGroup={incidentGroup} notify={notify} onChange={onChange} />
         )}
       </div>
     </div>
@@ -95,12 +98,13 @@ function Row({
 }
 
 function Input({
-  field, value, referenceArm, incidentGroup, onChange,
+  field, value, referenceArm, incidentGroup, notify, onChange,
 }: {
   field: Field;
   value: unknown;
   referenceArm: boolean;
   incidentGroup: number | null;
+  notify: string[];
   onChange?: (path: string, value: unknown) => void;
 }) {
   const emit = (next: unknown) => onChange?.(field.path, next);
@@ -144,7 +148,7 @@ function Input({
     );
   }
   if (field.kind === "services") {
-    return <ServicesPicker value={(value as string[]) ?? []} onChange={(next) => emit(next)} />;
+    return <ServicesPicker value={(value as string[]) ?? []} notify={notify} onChange={(next) => emit(next)} />;
   }
   if (field.kind === "signs") {
     return <SignsPicker value={(value as string[]) ?? []} group={incidentGroup} onChange={(next) => emit(next)} />;
@@ -175,15 +179,24 @@ function Input({
   );
 }
 
+/** Как `max_length` у `KIO.notify_extra`. */
+const SERVICES_LIMIT = 20;
+
 /** Ручное добавление служб из каталога — окно «Добавьте службы» боевого АРМ.
  * Список оповещения по признакам остаётся как есть: здесь только добавки. */
-function ServicesPicker({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
+function ServicesPicker({ value, notify, onChange }: {
+  value: string[]; notify: string[]; onChange: (next: string[]) => void;
+}) {
   const catalog = useServiceCatalog();
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
-  const found = needle
+  // Лимит и службы из списка оповещения — те же правила, что на сервере:
+  // лишняя служба отклонила бы весь пакет правок.
+  const full = value.length >= SERVICES_LIMIT;
+  const found = needle && !full
     ? (catalog.data?.services ?? [])
-      .filter((item) => !value.includes(item.name) && item.name.toLowerCase().includes(needle))
+      .filter((item) => !value.includes(item.name) && !notify.includes(item.name)
+        && item.name.toLowerCase().includes(needle))
       .slice(0, 8)
     : [];
   return (
@@ -194,7 +207,8 @@ function ServicesPicker({ value, onChange }: { value: string[]; onChange: (next:
             onClick={() => onChange(value.filter((item) => item !== name))}>×</button>
         </span>)}
       </div>}
-      <input type="search" aria-label="Поиск службы в каталоге" placeholder="Поиск службы…"
+      <input type="search" aria-label="Поиск службы в каталоге"
+        placeholder={full ? `Не больше ${SERVICES_LIMIT} служб` : "Поиск службы…"} disabled={full}
         value={query} onChange={(event) => setQuery(event.target.value)} />
       {found.length > 0 && <ul className="kio-services-found">
         {found.map((item) => <li key={item.id}>
