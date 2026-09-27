@@ -19,7 +19,7 @@ def _cell(value: object) -> str:
     if value is None:
         return ""
     result = str(value)
-    probe = result.lstrip(" \t\r\n﻿​")
+    probe = result.lstrip(" \t\r\n\\ufeff\\u200b")
     if probe.startswith(("=", "+", "-", "@")) or result.startswith(("\t", "\r", "\n")):
         return "'" + result
     return result
@@ -96,7 +96,7 @@ def to_csv(report: SessionReport) -> bytes:
             row("Сверка самооценки", "", label, ", ".join(values))
     for number, item in enumerate(report.notes, 1):
         row("Пометки преподавателя", number, item.transcript_ref, item.text, item.author)
-    return ("﻿" + output.getvalue()).encode("utf-8")
+    return ("\\ufeff" + output.getvalue()).encode("utf-8")
 
 
 def _font_paths() -> tuple[Path, Path | None]:
