@@ -87,9 +87,6 @@ local-llm: ## Запустить Qwen3 на localhost:18080 (mode=both для Qw
 local-stt: ## Запустить локальный whisper.cpp server на localhost:18082
 	cd backend && python3 scripts/local_stt.py
 
-ekp: ## Классификатор происшествий заказчика → app/domain/ekp.json (разовый импорт)
-	cd backend && $(UV) run --with openpyxl python scripts/import_ekp.py
-
 backup: ## Резервная копия базы в backend/backups/ (для cron: раз в сутки)
 	cd backend && $(UV) run python scripts/backup.py
 
@@ -108,10 +105,6 @@ lesson: ## Запустить занятие и напечатать ссылк�
 test-llm-local: ## Живые проверки локального Qwen по backend/.env.test (без сети)
 	test -f backend/.env.test || (echo "Создайте backend/.env.test из backend/.env.test.example"; exit 2)
 	cd backend && $(UV) run --offline --extra dev pytest tests/test_llm.py -m llm -q -s
-
-test-llm-corpus: ## Проверить строгий диалог Qwen на всех 96 карточках (локально, без сети)
-	test -f backend/.env.test || (echo "Создайте backend/.env.test из backend/.env.test.example"; exit 2)
-	cd backend && $(UV) run --offline --extra dev python scripts/smoke_llm_corpus.py --output ../docs/evidence/local-llm-corpus-smoke-2026-09-25.json $(args)
 
 test-llm: test-llm-local ## Совместимое имя цели локальной проверки LLM
 
@@ -139,4 +132,4 @@ demo: ## Поднять основной стенд ДДС: база, готов
 demo-lite: ## Локальная демонстрация карточки/ДДС без Docker, БД, голоса и внешней сети
 	cd backend && UV_CACHE_DIR=/tmp/lct-uv-demo-cache OFFLINE=true VOICE_ENABLED=false DEV_AUTH_BYPASS=true DEMO_NO_DB=true $(UV) run --offline --no-sync uvicorn app.main:app --host 127.0.0.1 --port $(DEMO_PORT) --workers 1
 
-.PHONY: help dev offline images sip offline-sip sip-credentials sip-test webrtc-test down back front types ekp users users-docker backup test test-db test-voice typecheck test-llm test-llm-local test-llm-corpus lesson llm-check latency migrate revision models local-models local-llm local-stt seed repl pregen demo demo-lite
+.PHONY: help dev offline images sip offline-sip sip-credentials sip-test webrtc-test down back front types users users-docker backup test test-db test-voice typecheck test-llm test-llm-local lesson llm-check latency migrate revision models local-models local-llm local-stt seed repl pregen demo demo-lite

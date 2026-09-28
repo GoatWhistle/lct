@@ -27,7 +27,7 @@ done
 port_mapping=$(docker port "$container" 5432/tcp | head -n1)
 db_port="${port_mapping##*:}"
 database_url="postgresql+asyncpg://lct_test:lct_test@127.0.0.1:${db_port}/lct_test"
-evidence_dir="${LCT_TEST_EVIDENCE_DIR:-$repo_root/docs/evidence}"
+evidence_dir="${LCT_TEST_EVIDENCE_DIR:-$repo_root/.local/evidence}"
 mkdir -p "$evidence_dir"
 
 cd "$repo_root/backend"

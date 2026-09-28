@@ -11,7 +11,7 @@ from playwright.async_api import async_playwright
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EVIDENCE = Path(os.environ.get("SMOKE_EVIDENCE_DIR", ROOT / "docs" / "evidence"))
+EVIDENCE = Path(os.environ.get("SMOKE_EVIDENCE_DIR", ROOT / ".local" / "evidence"))
 BASE_URL = os.environ.get("SMOKE_BASE_URL", "http://127.0.0.1:5173").rstrip("/")
 CARDS = [
     {
