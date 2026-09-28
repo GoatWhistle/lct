@@ -12,10 +12,10 @@ COPY modules.conf /etc/asterisk/modules.conf
 COPY rtp.conf.template /opt/lct-sip/rtp.conf.template
 COPY entrypoint.sh /usr/local/bin/lct-sip-entrypoint
 RUN chmod +x /usr/local/bin/lct-sip-entrypoint \
-    && mkdir -p /recordings /var/lib/lct-sip /tls \
+    && mkdir -p /recordings /var/lib/lct-sip \
     && chown -R asterisk:asterisk /recordings /var/lib/lct-sip
 
-EXPOSE 5060/udp 5060/tcp 5061/tcp 8088/tcp 10000-10099/udp
+EXPOSE 5060/udp 5060/tcp 8088/tcp 10000-10099/udp
 HEALTHCHECK --interval=10s --timeout=3s --retries=6 --start-period=15s \
     CMD asterisk -rx "core show uptime" >/dev/null 2>&1 || exit 1
 

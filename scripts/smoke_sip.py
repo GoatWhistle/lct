@@ -117,8 +117,7 @@ def receive_final(sock: socket.socket, timeout: float = 3.0) -> tuple[str, dict[
 def compose_password(user: str) -> str:
     result = subprocess.run(
         [
-            "docker", "compose", "-f", "docker-compose.yml", "-f", "docker-compose.sip.yml",
-            "exec", "-T", "sip", "cat", "/var/lib/lct-sip/credentials.env",
+            "docker", "compose", "exec", "-T", "sip", "cat", "/var/lib/lct-sip/credentials.env",
         ],
         check=True,
         capture_output=True,

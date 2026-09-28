@@ -163,12 +163,16 @@ LICENSE и NOTICE каждого пакета, контейнера, испол�
 | Python | `python:3.11-slim` | PSF License; сохранить уведомления образа |
 | Node.js | `node:20-slim` | MIT и лицензии включённых компонентов |
 | uv | образ `ghcr.io/astral-sh/uv:latest` | Apache-2.0 или MIT по репозиторию uv |
-| llama.cpp | локальный исполняемый файл | MIT; не входит в Git проекта |
+| llama.cpp `b10934` | локальный исполняемый файл; собирается в образе `lct-hack-llm` | MIT; не входит в Git проекта |
 | whisper.cpp | локальный исполняемый файл | MIT; не входит в Git проекта |
-| Qwen3 1.7B GGUF | отдельная загрузка из репозитория модели | сохранить LICENSE и model card конкретной версии |
-| Vikhr 1B GGUF | отдельная загрузка из репозитория модели | сохранить LICENSE и model card конкретной версии |
-| Whisper small GGML | отдельная загрузка из whisper.cpp | сохранить LICENSE и model card конкретной версии |
-| Silero VAD и TTS | отдельная загрузка | сохранить LICENSE и условия конкретного артефакта |
+| Qwen3 1.7B GGUF Q8_0 | в образе `lct-hack-llm` | Apache 2.0; текст в `deploy/licenses/Qwen3-LICENSE.txt` и `/licenses` образа |
+| Vikhr-Llama-3.2-1B-Instruct GGUF Q4_K_M | в образе `lct-hack-llm` | Llama 3.2 Community License, «Built with Llama»; `deploy/licenses/Llama-3.2-LICENSE.txt`, `Llama-3.2-USE-POLICY.md` |
+| GigaAM v3 RNNT ONNX int8 | в образе `lct-hack-backend` | MIT; `deploy/licenses/GigaAM-LICENSE.txt` |
+| Silero TTS v5 ru | в образе `lct-hack-backend` | CC BY-NC-SA 4.0, некоммерческое использование; `deploy/licenses/Silero-TTS-LICENSE.txt` |
+| Silero VAD | в образе `lct-hack-backend` | MIT; `deploy/licenses/Silero-VAD-LICENSE.txt` |
+| multilingual-e5-small ONNX | в образе `lct-hack-backend` | MIT по карточке модели `intfloat/multilingual-e5-small` |
+| Whisper small GGML | отдельная загрузка из whisper.cpp, в образы не входит | сохранить LICENSE и model card конкретной версии |
+| Asterisk | пакет Ubuntu 22.04 в образе `lct-hack-sip` | GPL-2.0; сохранить уведомления пакета |
 | DejaVu Sans, Sans Bold | 2.35, `backend/app/assets/fonts/` | Bitstream Vera Fonts License, изменения DejaVu — public domain; текст в `backend/app/assets/fonts/LICENSE-DejaVu.txt` |
 
 ## Данные других команд

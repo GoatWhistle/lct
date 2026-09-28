@@ -59,8 +59,7 @@ async def cleanup_account(database_url: str, login: str) -> None:
 def recordings() -> dict[str, int]:
     result = subprocess.run(
         [
-            "docker", "compose", "-f", "docker-compose.yml", "-f", "docker-compose.sip.yml",
-            "exec", "-T", "sip", "find", "/recordings", "-maxdepth", "1", "-type", "f",
+            "docker", "compose", "exec", "-T", "sip", "find", "/recordings", "-maxdepth", "1", "-type", "f",
             "-name", "*.wav", "-printf", "%f %s\\n",
         ],
         cwd=ROOT,
@@ -85,7 +84,7 @@ async def configure(page, extension: str, password: str, target: str, timeout_ms
 
 
 async def run(args: argparse.Namespace) -> int:
-    frontend = local_url(args.frontend_url, {"https"})
+    frontend = local_url(args.frontend_url, {"http", "https"})
     backend = local_url(args.backend_url, {"http"})
     login = f"webrtc-smoke-{secrets.token_hex(5)}"
     app_password = secrets.token_urlsafe(24)
@@ -219,7 +218,7 @@ async def run(args: argparse.Namespace) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--frontend-url", default="https://127.0.0.1:5443")
+    parser.add_argument("--frontend-url", default="http://127.0.0.1:5173")
     parser.add_argument("--backend-url", default="http://127.0.0.1:8000")
     parser.add_argument(
         "--database-url", default="postgresql+asyncpg://lct:lct@127.0.0.1:5432/lct"

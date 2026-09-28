@@ -9,58 +9,47 @@ UV ?= uv
 #   cd backend && uv sync --extra dev --extra voice
 COMPOSE ?= docker compose
 DEMO_PORT ?= 8112
+# Веса, без которых `make images` не соберёт backend и llm: COPY в Dockerfile
+# упал бы на первом же отсутствующем файле, здесь — список всех сразу понятнее.
+IMAGE_WEIGHTS := qwen3-1.7b/Qwen3-1.7B-Q8_0.gguf vikhr-1b/Vikhr-Llama-3.2-1B-Q4_K_M.gguf \
+	gigaam-v3-onnx/config.json gigaam-v3-onnx/v3_vocab.txt gigaam-v3-onnx/v3_rnnt_encoder.int8.onnx \
+	gigaam-v3-onnx/v3_rnnt_decoder.int8.onnx gigaam-v3-onnx/v3_rnnt_joint.int8.onnx \
+	silero-vad/silero_vad.onnx silero-tts/v5_ru.pt \
+	e5-small/config.json e5-small/model_quantized.onnx e5-small/tokenizer.json
 
 .DEFAULT_GOAL := help
 
 help:                     ## Список целей
 	@grep -hE '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | expand -t22
 
-dev: ## Поднять стенд: postgres + backend --reload + frontend
-	$(COMPOSE) up --build
+dev: ## Поднять полный стенд из готовых образов: http://127.0.0.1:5173
+	$(COMPOSE) up
 
-offline: ## Поднять карточки/ДДС из заранее собранных локальных образов, без скачивания
+offline: ## То же без обращения к registry: образы уже скачаны или загружены
 	$(COMPOSE) up --pull never --no-build
 
-tls: ## Поднять полный стенд по HTTPS/WSS с локальным сертификатом
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.tls.yml up --build
+images: ## Собрать 4 образа стенда (docker-bake.hcl); веса — из backend/models
+	@for f in $(IMAGE_WEIGHTS); do test -s backend/models/$$f \
+		|| { echo "нет весов backend/models/$$f — make local-models и make models"; exit 2; }; done
+	docker buildx bake
 
-offline-tls: ## Поднять HTTPS/WSS из уже собранных образов без сети
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.tls.yml up --pull never --no-build
+sip: ## Поднять только локальный Asterisk SIP/VoIP
+	$(COMPOSE) up -d sip
 
-production: ## Защищённый запуск из исходников: уникальный DB-пароль обязателен
-	bash scripts/validate_production_env.sh
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.production.yml -f docker-compose.tls.yml up --build
-
-offline-production: ## Защищённый запуск готовых образов без pull/build; требуется уникальный DB-пароль
-	bash scripts/validate_production_env.sh
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.production.yml -f docker-compose.tls.yml up --pull never --no-build
-
-production-config-check: ## Проверить, что production Compose требует и передаёт заданный DB-пароль
-	bash scripts/check_production_compose.sh
-
-production-postgres-check: ## Проверить межконтейнерную PostgreSQL-аутентификацию на временной БД
-	bash scripts/test_production_postgres.sh
-
-sip: ## Собрать и поднять локальный Asterisk SIP/VoIP
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.sip.yml up --build -d sip
-
-offline-sip: ## Поднять SIP из уже собранного образа без сети
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.sip.yml up --pull never --no-build -d sip
+offline-sip: ## Поднять SIP из уже скачанного образа без сети
+	$(COMPOSE) up --pull never --no-build -d sip
 
 sip-credentials: ## Показать локальные пароли софтфонов 6001–6003 и WebRTC 6101–6103
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.sip.yml exec -T sip cat /var/lib/lct-sip/credentials.env
+	$(COMPOSE) exec -T sip cat /var/lib/lct-sip/credentials.env
 
 sip-test: ## Проверить регистрацию, звонок, RTP и задержку (args="--rtp-host-offset 1000")
 	python3 scripts/smoke_sip.py --port $(or $(SIP_PORT),5060) $(args)
 
 webrtc-test: ## Проверить два браузерных SIP-клиента, аудио и запись Asterisk
 	python3 scripts/smoke_webrtc_browser.py \
-		--frontend-url https://127.0.0.1:$(or $(TLS_PORT),5443) \
+		--frontend-url http://127.0.0.1:$(or $(FRONTEND_PORT),5173) \
 		--backend-url http://127.0.0.1:$(or $(BACKEND_PORT),8000) \
 		--database-url postgresql+asyncpg://lct:lct@127.0.0.1:$(or $(POSTGRES_PORT),5432)/lct $(args)
-
-webrtc-test-isolated: ## Полный двухбраузерный WebRTC smoke на отдельной БД, портах и volume
-	bash scripts/test_webrtc_isolated.sh
 
 down: ## Погасить стенд
 	$(COMPOSE) down
@@ -150,4 +139,4 @@ demo: ## Поднять основной стенд ДДС: база, готов
 demo-lite: ## Локальная демонстрация карточки/ДДС без Docker, БД, голоса и внешней сети
 	cd backend && UV_CACHE_DIR=/tmp/lct-uv-demo-cache OFFLINE=true VOICE_ENABLED=false DEV_AUTH_BYPASS=true DEMO_NO_DB=true $(UV) run --offline --no-sync uvicorn app.main:app --host 127.0.0.1 --port $(DEMO_PORT) --workers 1
 
-.PHONY: help dev offline tls offline-tls production offline-production production-config-check production-postgres-check sip offline-sip sip-credentials sip-test webrtc-test webrtc-test-isolated down back front types ekp users users-docker backup test test-db test-voice typecheck test-llm test-llm-local test-llm-corpus lesson llm-check latency migrate revision models local-models local-llm local-stt seed repl pregen demo demo-lite
+.PHONY: help dev offline images sip offline-sip sip-credentials sip-test webrtc-test down back front types ekp users users-docker backup test test-db test-voice typecheck test-llm test-llm-local test-llm-corpus lesson llm-check latency migrate revision models local-models local-llm local-stt seed repl pregen demo demo-lite

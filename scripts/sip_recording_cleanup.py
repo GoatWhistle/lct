@@ -21,8 +21,7 @@ def remove_smoke_recordings(
     run = runner or subprocess.run
     result = run(
         [
-            "docker", "compose", "-f", "docker-compose.yml", "-f", "docker-compose.sip.yml",
-            "exec", "-T", "sip", "rm", "-f", "--",
+            "docker", "compose", "exec", "-T", "sip", "rm", "-f", "--",
             *(f"/recordings/{name}" for name in safe_names),
         ],
         cwd=root,
@@ -34,8 +33,7 @@ def remove_smoke_recordings(
         return False
     verification = run(
         [
-            "docker", "compose", "-f", "docker-compose.yml", "-f", "docker-compose.sip.yml",
-            "exec", "-T", "sip", "find", "/recordings", "-maxdepth", "1",
+            "docker", "compose", "exec", "-T", "sip", "find", "/recordings", "-maxdepth", "1",
             "-type", "f", "-name", "*.wav",
         ],
         cwd=root,

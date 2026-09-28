@@ -13,18 +13,7 @@ type=transport
 protocol=tcp
 bind=0.0.0.0:5060
 
-[transport-tls]
-type=transport
-protocol=tls
-bind=0.0.0.0:5061
-cert_file=/tls/sip.crt
-priv_key_file=/tls/sip.key
-method=tlsv1_2
-verify_client=no
-verify_server=no
-allow_reload=yes
-
-; TLS для браузера завершает тот же Nginx, что обслуживает АРМ. До Asterisk
+; Браузер ходит через /sip-ws того же Nginx, что обслуживает АРМ. До Asterisk
 ; SIP signaling идёт WebSocket внутри изолированной Docker-сети.
 [transport-ws]
 type=transport

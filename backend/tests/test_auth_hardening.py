@@ -57,33 +57,18 @@ def test_websocket_origin_policy(headers, scope, expected):
 
 def test_nginx_proxies_preserve_external_host_for_websocket_origin_validation():
     project_root = Path(__file__).resolve().parents[2]
-    for config in ("nginx.conf.template", "nginx.tls.conf.template"):
-        text = (project_root / "frontend" / config).read_text(encoding="utf-8")
-        match = re.search(r"location /ws/ \{(.*?)^    \}", text, re.MULTILINE | re.DOTALL)
-        assert match is not None, f"{config}: missing WebSocket proxy block"
-        websocket_location = match.group(1)
-        assert "proxy_set_header X-Forwarded-Host $http_host;" in websocket_location
-    tls = (project_root / "frontend" / "nginx.tls.conf.template").read_text(encoding="utf-8")
-    match = re.search(r"location /ws/ \{(.*?)^    \}", tls, re.MULTILINE | re.DOTALL)
-    assert match is not None
-    tls_websocket_location = match.group(1)
-    assert "proxy_set_header X-Forwarded-Proto https;" in tls_websocket_location
+    text = (project_root / "frontend" / "nginx.conf.template").read_text(encoding="utf-8")
+    match = re.search(r"location /ws/ \{(.*?)^    \}", text, re.MULTILINE | re.DOTALL)
+    assert match is not None, "missing WebSocket proxy block"
+    assert "proxy_set_header X-Forwarded-Host $http_host;" in match.group(1)
 
 
-def test_cluster_nginx_pins_all_session_channels_and_session_apis_to_one_hash_key():
+def test_nginx_routes_webrtc_phone_to_asterisk():
     project_root = Path(__file__).resolve().parents[2]
-    for config in ("nginx.cluster.conf.template", "nginx.cluster.tls.conf.template"):
-        text = (project_root / "frontend" / config).read_text(encoding="utf-8")
-        assert "hash $session_route_key consistent;" in text
-        assert "server backend:8000" in text and "server backend-b:8000" in text
-        assert re.search(
-            r"~\^/ws/\(\?:control\|call\|observe\|station\)/\(\[0-9a-fA-F-\]\{36\}\)",
-            text,
-        ), f"{config}: all WebSocket channels must extract the same session UUID"
-        assert re.search(
-            r"~\^/api/sessions/\(\[0-9a-fA-F-\]\{36\}\)", text
-        ), f"{config}: session REST endpoints must use the same routing key"
-        assert text.count("proxy_pass http://backend_cluster;") == 2
+    text = (project_root / "frontend" / "nginx.conf.template").read_text(encoding="utf-8")
+    match = re.search(r"location = /sip-ws \{(.*?)^    \}", text, re.MULTILINE | re.DOTALL)
+    assert match is not None, "WebRTC-телефон ходит на same-origin /sip-ws"
+    assert "proxy_pass http://$sip_backend:8088/ws;" in match.group(1)
 
 
 @pytest.fixture

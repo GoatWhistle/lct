@@ -2,7 +2,7 @@
 set -eu
 
 credentials=/var/lib/lct-sip/credentials.env
-mkdir -p /var/lib/lct-sip /recordings /tls
+mkdir -p /var/lib/lct-sip /recordings
 umask 077
 
 override_6001=${SIP_6001_PASSWORD:-}
@@ -54,16 +54,6 @@ envsubst '${SIP_RTP_START} ${SIP_RTP_END}' \
 chmod 640 /etc/asterisk/rtp.conf
 chown root:asterisk /etc/asterisk/rtp.conf
 
-if [ ! -s /tls/sip.crt ] || [ ! -s /tls/sip.key ]; then
-    openssl req -x509 -nodes -newkey rsa:3072 -sha256 -days 365 \
-        -keyout /tls/sip.key -out /tls/sip.crt \
-        -subj '/CN=localhost/O=LCT local SIP training stand' \
-        -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' \
-        -addext 'extendedKeyUsage=serverAuth' 2>/dev/null
-fi
-chmod 640 /tls/sip.key
-chmod 644 /tls/sip.crt
-chown root:asterisk /tls/sip.key /tls/sip.crt
 chown -R asterisk:asterisk /recordings /var/lib/lct-sip
 
 exec asterisk -f -U asterisk -G asterisk -vvv

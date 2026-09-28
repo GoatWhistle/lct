@@ -431,19 +431,16 @@ def build() -> Path:
     add_section(document, "Полный режим с PostgreSQL", 2)
     add_numbered(document, [
         "Клонировать репозиторий и перейти в его корень.",
-        "Скопировать .env.example в .env, задать случайный POSTGRES_PASSWORD командой python -c \"import secrets; print(secrets.token_urlsafe(32))\" и не публиковать .env.",
-        "Для рабочего стенда запустить make production: команда включает обязательный пароль БД и HTTPS/WSS.",
+        "Выполнить docker compose up: Compose скачает готовые образы и поднимет базу, backend с голосовым контуром, фронт, Asterisk и две локальные модели. Файл .env не нужен.",
         "После готовности backend создать пользователей командой docker compose exec backend python scripts/users.py.",
-        "Открыть http://localhost:5173 и войти под созданной учётной записью.",
-        "Проверить http://localhost:8000/api/health и экран администратора.",
+        "Открыть http://127.0.0.1:5173 и войти под созданной учётной записью.",
+        "Проверить http://127.0.0.1:8000/api/health и экран администратора.",
     ])
-    add_code(document, "make production\ndocker compose -f docker-compose.yml -f docker-compose.production.yml -f docker-compose.tls.yml exec backend python scripts/users.py\ncurl -k -f https://localhost:5443/api/health\nmake production-config-check")
-    add_paragraph(document, "Контейнер backend при старте выполняет миграции Alembic и загружает базовую библиотеку сценариев. Данные PostgreSQL сохраняются в volume pgdata.")
+    add_code(document, "docker compose up -d\ndocker compose exec backend python scripts/users.py\ncurl -f http://127.0.0.1:8000/api/health")
+    add_paragraph(document, "Контейнер backend при старте выполняет миграции Alembic и загружает базовую библиотеку сценариев. Данные PostgreSQL сохраняются в volume pgdata. Все порты публикуются только на 127.0.0.1.")
     add_section(document, "Офлайн перенос", 2)
-    add_code(document, "docker compose pull postgres\ndocker compose build backend frontend\ndocker save -o lct-hack-images.tar postgres:16-alpine lct-hack-backend:local lct-hack-frontend:local")
-    add_paragraph(document, "На изолированном стенде скопировать настроенный .env с уникальным POSTGRES_PASSWORD, загрузить архив командой docker load -i lct-hack-images.tar и выполнить make offline-production. Репозиторий и каталог scenarios переносятся вместе с архивом. Важно: PostgreSQL применяет пароль только при создании нового volume pgdata. Если база уже инициализирована, сначала измените пароль роли lct внутри PostgreSQL и затем обновите .env; удалять volume нельзя. Холодная сборка зависимостей без заранее подготовленных образов не заявлена.")
-    add_paragraph(document, "Для Windows выполните эквивалентные команды в PowerShell из корня репозитория; переносите архив образов, репозиторий и настроенный .env на стенд.")
-    add_code(document, "docker compose pull postgres\ndocker compose build backend frontend\ndocker compose -f docker-compose.yml -f docker-compose.sip.yml build sip\ndocker save --output lct-hack-images.tar postgres:16-alpine lct-hack-backend:local lct-hack-frontend:local lct-hack-sip:local\n# На стенде Windows:\ndocker load --input lct-hack-images.tar\ndocker compose up --pull never --no-build --detach")
+    add_paragraph(document, "Сеть нужна один раз — скачать образы. Веса моделей и сценарии уже внутри образов. Для переноса на изолированный стенд образы сохраняются в архив; на стенде достаточно корневого docker-compose.yml.")
+    add_code(document, "docker compose pull\ndocker save --output lct-hack-images.tar postgres:16-alpine registry.gglamer.ru/lct-hack-backend:2026.09.29 registry.gglamer.ru/lct-hack-frontend:2026.09.29 registry.gglamer.ru/lct-hack-sip:2026.09.29 registry.gglamer.ru/lct-hack-llm:2026.09.29\n# На стенде, в том числе Windows:\ndocker load --input lct-hack-images.tar\ndocker compose up --pull never --detach")
     add_section(document, "Быстрая демонстрация без базы", 2)
     add_code(document, "make demo-lite\nVITE_DEMO_MODE=true VITE_BACKEND_URL=http://127.0.0.1:8112 \\\nVITE_WS_BACKEND_URL=ws://127.0.0.1:8112 npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173")
     add_paragraph(document, "Режим demo lite хранит занятия и черновики только в памяти. Он предназначен для показа интерфейса, а не для приёмки хранения, аудита или резервного копирования.")

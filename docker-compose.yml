@@ -1,15 +1,20 @@
+# Полный стенд на CPU из готовых образов: `docker compose up`, затем
+# http://127.0.0.1:5173. Без .env, без сборки; после скачивания образов сеть
+# не нужна. Все порты — только на 127.0.0.1.
+#
+# У своих сервисов рядом с image стоит build: команда собирает те же образы
+# локально (`docker compose build` или `docker buildx bake`). Веса и сценарии
+# входят в образы именованными контекстами, bind-mount'ов исходников нет.
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: lct
-      # Local development default only. Use docker-compose.production.yml for
-      # an isolated deployment; that overlay requires an install-specific secret.
+      # Пароль по умолчанию: БД не публикуется наружу, только loopback хоста.
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lct}
       POSTGRES_DB: lct
-    # БД и backend не публикуются в класс: с рабочих мест доступен только
-    # TLS-терминатор frontend. Loopback-порты нужны для администрирования хоста.
     ports: ["127.0.0.1:${POSTGRES_PORT:-5432}:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
     healthcheck:
@@ -19,8 +24,14 @@ services:
       retries: 10
 
   backend:
-    build: ./backend
-    image: lct-hack-backend:local
+    image: registry.gglamer.ru/lct-hack-backend:2026.09.29
+    build: &backend-build
+      context: ./backend
+      target: voice
+      additional_contexts:
+        models: ./backend/models
+        scenarios: ./scenarios
+        licenses: ./deploy/licenses
     restart: unless-stopped
     # Один воркер принципиально: состояние живой сессии и реестр наблюдателей
     # живут в памяти процесса (docs/arch/STACK.md).
@@ -37,10 +48,8 @@ services:
       uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1'
     environment:
       DATABASE_URL: postgresql+asyncpg://lct:${POSTGRES_PASSWORD:-lct}@postgres:5432/lct
-      DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
-      DB_POOL_MAX_OVERFLOW: ${DB_POOL_MAX_OVERFLOW:-10}
       SESSION_SECRET: ${SESSION_SECRET:-}
-      BACKEND_NODE_ID: ${BACKEND_NODE_ID:-backend}
+      BACKEND_NODE_ID: backend
       OFFLINE: "true"
       LDAP_ENABLED: ${LDAP_ENABLED:-false}
       LDAP_URL: ${LDAP_URL:-}
@@ -53,40 +62,45 @@ services:
       LDAP_SERVICE_GROUPS: "${LDAP_SERVICE_GROUPS:-{}}"
       LDAP_CA_CERTS_FILE: ${LDAP_CA_CERTS_FILE:-}
       LDAP_CONNECT_TIMEOUT_SECONDS: ${LDAP_CONNECT_TIMEOUT_SECONDS:-5}
-      VOICE_ENABLED: "false"
+      VOICE_ENABLED: "true"
+      # Единственный STT, проверенный вживую на CPU: ~0,3–0,4 с на 2 с звука.
+      STT_MODEL: gigaam-v3-rnnt
       RECORD_CALLS: "true"
       RECORDINGS_DIR: /recordings
       LLM_PROVIDER: local
-      LLM_BASE_URL: ${DOCKER_LLM_BASE_URL:-http://host.docker.internal:18080/v1}
-      LLM_MODEL_CALLER: ${LLM_MODEL_CALLER:-Qwen3-1.7B}
-      LLM_CONTROL_BASE_URL: ${DOCKER_LLM_CONTROL_BASE_URL:-http://host.docker.internal:18081/v1}
-      LLM_MODEL_CONTROL: ${LLM_MODEL_CONTROL:-Vikhr-1B}
-      GRAMMAR_LLM_ENABLED: ${GRAMMAR_LLM_ENABLED:-false}
+      # Имена сервисов ниже; ALLOW_DOCKER_HOST_MODELS пускает к ним офлайн-проверку
+      # адреса (app/dialog/llm.py), внешний URL по-прежнему отвергается.
+      LLM_BASE_URL: http://llm-qwen:18080/v1
+      LLM_MODEL_CALLER: Qwen3-1.7B
+      LLM_CONTROL_BASE_URL: http://llm-vikhr:18081/v1
+      LLM_MODEL_CONTROL: Vikhr-1B
       ALLOW_DOCKER_HOST_MODELS: "true"
+      GRAMMAR_LLM_ENABLED: "true"
       BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
       BACKUP_KEEP: ${BACKUP_KEEP:-14}
     volumes:
-      - ./backend:/app
-      - ./scenarios:/scenarios:ro
       - securitydata:/run/lct
       - recordings:/recordings
       - backups:/app/backups
     ports: ["127.0.0.1:${BACKEND_PORT:-8000}:8000"]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
+        condition: service_healthy
+      llm-qwen:
+        condition: service_healthy
+      llm-vikhr:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).read()"]
       interval: 5s
       timeout: 3s
-      retries: 12
-      start_period: 10s
+      retries: 24
+      # Прогрев STT и TTS на старте занимает десятки секунд на слабом CPU.
+      start_period: 120s
 
   backup:
-    build: ./backend
-    image: lct-hack-backend:local
+    image: registry.gglamer.ru/lct-hack-backend:2026.09.29
+    build: *backend-build
     restart: unless-stopped
     command: python scripts/backup_loop.py
     environment:
@@ -95,20 +109,19 @@ services:
       BACKUP_RETRY_SECONDS: ${BACKUP_RETRY_SECONDS:-300}
       BACKUP_KEEP: ${BACKUP_KEEP:-14}
     volumes:
-      - ./backend:/app
       - backups:/app/backups
     depends_on:
       postgres:
         condition: service_healthy
 
   frontend:
+    image: registry.gglamer.ru/lct-hack-frontend:2026.09.29
     build: ./frontend
-    image: lct-hack-frontend:local
     restart: unless-stopped
     environment:
       BACKEND_HOST: backend
       BACKEND_PORT: 8000
-    ports: ["${BIND_HOST:-127.0.0.1}:${FRONTEND_PORT:-5173}:5173"]
+    ports: ["127.0.0.1:${FRONTEND_PORT:-5173}:5173"]
     depends_on:
       backend:
         condition: service_healthy
@@ -118,8 +131,78 @@ services:
       timeout: 3s
       retries: 3
 
+  # Asterisk для софтфонов и встроенного WebRTC-телефона. Браузер ходит на
+  # same-origin /sip-ws через nginx фронта; SIP и RTP для внешних софтфонов —
+  # только на loopback.
+  sip:
+    image: registry.gglamer.ru/lct-hack-sip:2026.09.29
+    build: ./sip
+    restart: unless-stopped
+    environment:
+      SIP_6001_PASSWORD: ${SIP_6001_PASSWORD:-}
+      SIP_6002_PASSWORD: ${SIP_6002_PASSWORD:-}
+      SIP_6003_PASSWORD: ${SIP_6003_PASSWORD:-}
+      SIP_6101_PASSWORD: ${SIP_6101_PASSWORD:-}
+      SIP_6102_PASSWORD: ${SIP_6102_PASSWORD:-}
+      SIP_6103_PASSWORD: ${SIP_6103_PASSWORD:-}
+      SIP_EXTERNAL_MEDIA_ADDRESS: 127.0.0.1
+      SIP_RTP_START: "10000"
+      SIP_RTP_END: "10099"
+    ports:
+      - "127.0.0.1:${SIP_PORT:-5060}:5060/udp"
+      - "127.0.0.1:${SIP_PORT:-5060}:5060/tcp"
+      - "127.0.0.1:10000-10099:10000-10099/udp"
+    volumes:
+      - sipdata:/var/lib/lct-sip
+      - siprecordings:/recordings
+
+  # Qwen играет звонящего, пишет черновики сценариев и выводы по группе.
+  llm-qwen:
+    image: registry.gglamer.ru/lct-hack-llm:2026.09.29
+    build: &llm-build
+      context: ./deploy/llm
+      additional_contexts:
+        models: ./backend/models
+        licenses: ./deploy/licenses
+    restart: unless-stopped
+    command:
+      [
+        "-m", "/models/qwen3-1.7b/Qwen3-1.7B-Q8_0.gguf",
+        "--alias", "Qwen3-1.7B",
+        "--host", "0.0.0.0", "--port", "18080",
+        "--ctx-size", "2048", "--threads", "${LLM_THREADS:-4}", "--parallel", "1",
+        "--reasoning-budget", "0",
+      ]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 180s
+
+  # Vikhr — рекомендации к разбору и грамматика описания в упражнении 112.
+  llm-vikhr:
+    image: registry.gglamer.ru/lct-hack-llm:2026.09.29
+    build: *llm-build
+    restart: unless-stopped
+    command:
+      [
+        "-m", "/models/vikhr-1b/Vikhr-Llama-3.2-1B-Q4_K_M.gguf",
+        "--alias", "Vikhr-1B",
+        "--host", "0.0.0.0", "--port", "18081",
+        "--ctx-size", "2048", "--threads", "${LLM_THREADS:-4}", "--parallel", "1",
+      ]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18081/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 180s
+
 volumes:
   pgdata:
   securitydata:
   recordings:
   backups:
+  sipdata:
+  siprecordings:

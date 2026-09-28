@@ -2,5 +2,12 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.ruff_cache/
 models/
 tests/
+# Образ публикуется в registry: записи звонков, дампы БД и локальные ключи
+# разработчика в него попасть не должны.
+recordings/
+backups/
+.env
+.env.*

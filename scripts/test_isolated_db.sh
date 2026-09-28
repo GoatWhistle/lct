@@ -2,18 +2,29 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-project="lct-test-$$-$RANDOM$RANDOM"
-compose=(docker compose -p "$project" -f "$repo_root/docker-compose.test-db.yml")
+container="lct-test-$$-$RANDOM$RANDOM"
 
 cleanup() {
   trap - EXIT INT TERM
-  "${compose[@]}" down --volumes --remove-orphans >/dev/null || true
+  docker rm --force --volumes "$container" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-printf 'Изолированный тестовый Compose project: %s\n' "$project"
-"${compose[@]}" up --pull never --detach --wait
-port_mapping=$("${compose[@]}" port postgres 5432)
+# Временная БД без compose-файла и без тома: dev-база не затрагивается,
+# порт на loopback выбирает Docker.
+printf 'Изолированная тестовая PostgreSQL: %s\n' "$container"
+docker run --detach --rm --name "$container" \
+  --env POSTGRES_USER=lct_test --env POSTGRES_PASSWORD=lct_test --env POSTGRES_DB=lct_test \
+  --publish 127.0.0.1::5432 \
+  --health-cmd 'pg_isready -U lct_test -d lct_test' --health-interval 2s --health-retries 30 \
+  postgres:16-alpine >/dev/null
+for _ in $(seq 60); do
+  status=$(docker inspect --format '{{.State.Health.Status}}' "$container")
+  [[ $status == healthy ]] && break
+  sleep 1
+done
+[[ $status == healthy ]] || { echo "PostgreSQL не поднялась: $status" >&2; exit 1; }
+port_mapping=$(docker port "$container" 5432/tcp | head -n1)
 db_port="${port_mapping##*:}"
 database_url="postgresql+asyncpg://lct_test:lct_test@127.0.0.1:${db_port}/lct_test"
 evidence_dir="${LCT_TEST_EVIDENCE_DIR:-$repo_root/docs/evidence}"

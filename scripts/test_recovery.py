@@ -100,7 +100,7 @@ async def compose_service(project: str, action: str, service: str) -> None:
 
 
 async def run(args: argparse.Namespace) -> int:
-    frontend = local_url(args.frontend_url, {"https"})
+    frontend = local_url(args.frontend_url, {"http", "https"})
     backend = local_url(args.backend_url, {"http"})
     if not args.compose_project.strip():
         raise ValueError("--compose-project обязателен: recovery test останавливает Nginx")
@@ -374,7 +374,7 @@ async def run(args: argparse.Namespace) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--frontend-url", default="https://127.0.0.1:5443")
+    parser.add_argument("--frontend-url", default="http://127.0.0.1:5173")
     parser.add_argument("--backend-url", default="http://127.0.0.1:8000")
     parser.add_argument("--compose-project", required=True,
                         help="точное имя изолированного Compose project; тест останавливает его frontend")
