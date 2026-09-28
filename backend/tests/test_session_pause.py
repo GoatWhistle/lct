@@ -111,7 +111,7 @@ def test_timer_pause_freezes_elapsed_until_resume(clock):
 
 def test_session_pause_excludes_wait_from_dds_ack_deadline(clock):
     """Карточка: 30 с норматива. Пауза 60 с внутри окна не должна дать D1 —
-    отметка приходит на 25-й секунде активного времени, а не 85-й реальной."""
+    карточка открыта на 25-й секунде активного времени, а не 85-й реальной."""
     scenario = load_file(LIBRARY / "fire-apartment-l2.yaml", LIBRARY)
     state = SessionState(
         session_id=uuid4(), scenario_id=scenario.id, scenario_title=scenario.title,
@@ -128,7 +128,7 @@ def test_session_pause_excludes_wait_from_dds_ack_deadline(clock):
     clock.advance(60)
     state.resume()
     clock.advance(15)
-    card.on_event("card.ack")
+    card.on_event("dds.open")
 
     measured = card.timers.measured_ms(TimerCode.DDS_ACK)
     assert measured == 25_000
@@ -237,7 +237,7 @@ def test_dispatcher_metric_dds_ack_excludes_pause_from_elapsed(clock):
     state.resume()
     clock.advance(15)
     card.set_service_status(service, ServiceStatus.ACCEPTED, "Принято")
-    card.on_event("card.ack")
+    card.on_event("dds.open")
 
     metric = next(m for m in dispatcher_metrics(card, 30_000, services=services) if m.key == "dds_ack")
     assert metric.passed is True
