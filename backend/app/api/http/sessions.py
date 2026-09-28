@@ -108,7 +108,7 @@ class DdsHistoryOut(BaseModel):
 
 class Signal(BaseModel):
     """Одна строка колонки сигналов реестра. Цвет несёт смысл только через
-    `severity` (AGENTS.md); текст обязателен и не заменяется цветом."""
+    `severity`; текст обязателен и не заменяется цветом."""
 
     kind: Literal["backlog", "refusals", "offline"]
     severity: TimerState
