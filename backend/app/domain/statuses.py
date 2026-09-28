@@ -140,6 +140,23 @@ class StatusEntry(BaseModel):
     author: str = ""
 
 
+#: Авторы отметок смежных служб — для журнала и разбора: преподаватель видит,
+#: пришла отметка сценарием или её вызвал звонок курсанта. Метрики авторов
+#: не различают: реакция после звонка — такая же реакция в карточке.
+ADJACENT_AUTHOR = "смежная служба"
+ADJACENT_CALL_AUTHOR = "смежная служба, по звонку диспетчера"
+
+#: Смежная служба «реагирует»: успокаивать бригаду можно только при этих
+#: статусах. Отказ — тоже отметка, но передать его как «служба будет» нельзя.
+ADJACENT_REACTING: frozenset[ServiceStatus] = frozenset({
+    ServiceStatus.ACCEPTED,
+    ServiceStatus.RESPONDING,
+    ServiceStatus.ARRIVED,
+    ServiceStatus.WORKING,
+    ServiceStatus.COMPLETED,
+})
+
+
 class PhoneReportRecord(BaseModel):
     service: str
     crew: str
@@ -160,6 +177,10 @@ class PhoneCallPending(BaseModel):
     service: str
     crew: str
     phase: str
+    #: Вводная сценария: бригада звонит сама, а не отвечает на вызов диспетчера.
+    incoming: bool = False
+    #: Смежная служба, о которой спрашивает бригада во входящем вызове.
+    adjacent_service: str | None = None
 
 
 class DdsCardSummary(BaseModel):

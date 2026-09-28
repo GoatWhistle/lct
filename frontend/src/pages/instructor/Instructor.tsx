@@ -95,6 +95,7 @@ export function Instructor() {
   const [ddsCardWorkTimeLimit, setDdsCardWorkTimeLimit] = useState(180);
   const [ddsReportReactionEnabled, setDdsReportReactionEnabled] = useState(false);
   const [ddsReportReactionLimit, setDdsReportReactionLimit] = useState(45);
+  const [ddsAdjacentLimit, setDdsAdjacentLimit] = useState(90);
   const [allowedErrors, setAllowedErrors] = useState(0);
   const [requireCorrectGrammar, setRequireCorrectGrammar] = useState(true);
   const [lessonScoreWeights, setLessonScoreWeights] = useState<Record<string, number>>({});
@@ -312,6 +313,7 @@ export function Instructor() {
         dds_card_work_time_limit_seconds: ddsCardWorkTimeLimit,
         dds_report_reaction_enabled: reportReactionEnabled,
         dds_report_reaction_limit_seconds: ddsReportReactionLimit,
+        dds_adjacent_limit_seconds: ddsAdjacentLimit,
         allowed_errors: allowedErrors,
         require_correct_grammar: requireCorrectGrammar,
         score_weights: reportReactionEnabled
@@ -321,7 +323,7 @@ export function Instructor() {
     });
     if (sent) toStart.current = null;
   }, [sessionId, control, scenarioId, extraScenarioIds, mode, trainee, traineeId, trainees.data,
-    exercise, decisionTimeLimit, cardFillTimeLimit, ddsCardWorkTimeLimit, ddsReportReactionEnabled, ddsReportReactionLimit, allowedErrors, requireCorrectGrammar, wholeTicket, selectedTicketScenarios,
+    exercise, decisionTimeLimit, cardFillTimeLimit, ddsCardWorkTimeLimit, ddsReportReactionEnabled, ddsReportReactionLimit, ddsAdjacentLimit, allowedErrors, requireCorrectGrammar, wholeTicket, selectedTicketScenarios,
     ddsArrivalIntervalSeconds, ddsMaxWaiting, lessonScoreWeights, scenarios.data,
     randomScenario, visibleScenarios]);
 
@@ -682,6 +684,13 @@ export function Instructor() {
                         onCommit={setDdsReportReactionLimit} />
                       <small className="ref">Учебный лимит при включённом критерии; исходное значение — 45 секунд.</small>
                     </label>}
+                    <label className="lesson-criterion">
+                      Лимит вводной «бригада просит смежников», секунд
+                      <LessonNumberInput label="Лимит вводной о смежной службе, секунд"
+                        value={ddsAdjacentLimit} min={5} max={600} fallback={90}
+                        onCommit={setDdsAdjacentLimit} />
+                      <small className="ref">Действует в сценариях с вводной: за это время нужно ответить бригаде, а при молчании смежной службы — позвонить ей.</small>
+                    </label>
                   </>}
                   <label className="lesson-criterion">
                     Допустимо нарушенных метрик

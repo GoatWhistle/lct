@@ -459,6 +459,7 @@ def test_instructor_criteria_change_timer_and_success_threshold(client, monkeypa
             "dds_card_work_time_limit_seconds": 180,
             "dds_report_reaction_enabled": False,
             "dds_report_reaction_limit_seconds": 20,
+            "dds_adjacent_limit_seconds": 90,
             "allowed_errors": 50,
             "require_correct_grammar": False,
             "score_weights": {"dds_ack": 3.5},

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.domain.classifiers import DDSCode, IncidentType, Level, Outcome
 from app.domain.events import Mood
 from app.domain.kio import EDITABLE_KIO_FIELDS, KIO
+from app.domain.statuses import NEXT, SERVICE_STATUS_LABELS, ServiceStatus
 from app.scoring.taxonomy import METRIC_MAP
 
 
@@ -130,6 +131,49 @@ class DdsDecision(Strict):
         return self
 
 
+class AdjacentTimelineEntry(Strict):
+    """Отметка смежной службы, которую симуляция ставит по сроку.
+
+    `after_seconds` отсчитывается от принятия карточки курсантом; пауза
+    занятия таймлайн замораживает. Комментарий обязателен: пустая отметка
+    смежной службы учила бы курсанта тому, за что сама система ставит D5.
+    """
+
+    service: str = Field(min_length=1)
+    after_seconds: int = Field(ge=0, le=3600)
+    status: ServiceStatus
+    comment: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def comment_not_blank(self):
+        if not self.comment.strip():
+            raise ValueError(f"смежная служба {self.service}: комментарий отметки пуст")
+        return self
+
+
+class CrewRequest(Strict):
+    """Вводная «бригада просит смежников»: входящий вызов своей бригады.
+
+    Курсант сверяется с карточкой и либо передаёт бригаде, что смежная служба
+    реагирует, либо связывается с ней сам. `after_seconds` — от принятия
+    карточки, как у таймлайна.
+    """
+
+    after_seconds: int = Field(ge=0, le=3600)
+    service: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+
+
+#: Список оповещения, если у сценария нет признаков ЕКП: главная служба
+#: по коду ДДС. Тот же запасной вариант использует пульт при сборке карточки.
+FALLBACK_NOTIFY: dict[str, str] = {
+    "01": "Служба 101",
+    "02": "МВД",
+    "03": "Скорая помощь",
+    "04": "Аварийная служба",
+}
+
+
 class Scenario(Strict):
     id: str
     title: str
@@ -177,6 +221,11 @@ class Scenario(Strict):
     ground_truth: GroundTruth = GroundTruth()
     era_glonass: EraGlonass | None = None
     tree: Tree = Tree()
+
+    # Реагирование смежных служб в карточке ДДС: сценарный таймлайн отметок
+    # и не больше одной вводной «бригада просит смежников» (lct: issue 68).
+    adjacent_timeline: list[AdjacentTimelineEntry] = Field(default_factory=list)
+    crew_request: CrewRequest | None = None
 
     @model_validator(mode="after")
     def valid_score_weights(self):
@@ -228,6 +277,32 @@ class Scenario(Strict):
                 "ticket и position задаются вместе: билет без номера вызова неполон"
             )
         return self
+
+    @model_validator(mode="after")
+    def adjacent_timeline_follows_status_machine(self):
+        """Кривой таймлайн валит загрузку сценария, а не занятие: симуляция
+        пишет отметки тем же автоматом переходов, что и диспетчер."""
+        chains: dict[str, ServiceStatus] = {}
+        for entry in sorted(self.adjacent_timeline, key=lambda item: item.after_seconds):
+            state = chains.get(entry.service, ServiceStatus.ADDED)
+            if entry.status not in NEXT[state]:
+                raise ValueError(
+                    f"adjacent_timeline: {entry.service} — после "
+                    f"«{SERVICE_STATUS_LABELS[state]}» недопустим статус "
+                    f"«{SERVICE_STATUS_LABELS[entry.status]}»"
+                )
+            chains[entry.service] = entry.status
+        return self
+
+    def notify_services(self) -> list[str]:
+        """Список оповещения карточки пульта, как его соберёт `build_card`:
+        карточка курсанта, иначе эталон по ЕКП, иначе главная служба по коду."""
+        if self.student_card is not None:
+            return list(self.student_card.notify)
+        if self.ground_truth.notify:
+            return list(self.ground_truth.notify)
+        service = self.ground_truth.dds.value if self.ground_truth.dds else None
+        return [FALLBACK_NOTIFY[service]] if service in FALLBACK_NOTIFY else []
 
     @model_validator(mode="after")
     def era_only_for_era_type(self):

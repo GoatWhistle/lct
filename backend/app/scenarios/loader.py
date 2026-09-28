@@ -178,7 +178,31 @@ def load_file(path: Path, root: Path) -> Scenario:
                 "которого нет в чек-листе"
             )
 
-    return _derive_ground_truth(scenario)
+    scenario = _derive_ground_truth(scenario)
+    _check_adjacent_services(scenario, path)
+    return scenario
+
+
+def _check_adjacent_services(scenario: Scenario, path: Path) -> None:
+    """Смежные службы существуют только в списке оповещения карточки.
+
+    Проверяется после вывода эталона: список оповещения считается из признаков
+    ЕКП, и до `_derive_ground_truth` его ещё нет. Служба вне списка означала бы
+    отметки, которых диспетчер не может увидеть в карточке.
+    """
+    recipients = set(scenario.notify_services())
+    for entry in scenario.adjacent_timeline:
+        if entry.service not in recipients:
+            raise ScenarioError(
+                f"{path.name}: adjacent_timeline: служба «{entry.service}» "
+                "не входит в список оповещения карточки"
+            )
+    request = scenario.crew_request
+    if request is not None and request.service not in recipients:
+        raise ScenarioError(
+            f"{path.name}: crew_request: служба «{request.service}» "
+            "не входит в список оповещения карточки"
+        )
 
 
 #: Подкаталоги, которые сценариями не являются.
