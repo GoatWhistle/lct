@@ -99,6 +99,11 @@ def to_csv(report: SessionReport) -> bytes:
             row("Сверка самооценки", "", label, ", ".join(values))
     for number, item in enumerate(report.notes, 1):
         row("Пометки преподавателя", number, item.transcript_ref, item.text, item.author)
+    for card_number, card in enumerate(report.card_results, 1):
+        for action in card.actions:
+            if action.get("type") == "card.error_report_112":
+                row("Сообщение в 112", card_number, "Ошибка карточки",
+                    action.get("text", ""), action.get("at", ""))
     return ("\N{ZERO WIDTH NO-BREAK SPACE}" + output.getvalue()).encode("utf-8")
 
 
@@ -258,6 +263,17 @@ def to_pdf(report: SessionReport) -> bytes:
         section("Пометки преподавателя")
         for item in report.notes:
             story.append(p(f"{item.transcript_ref} - {item.author}: {item.text}"))
+
+    messages_112 = [
+        (number, action)
+        for number, card in enumerate(report.card_results, 1)
+        for action in card.actions
+        if action.get("type") == "card.error_report_112"
+    ]
+    if messages_112:
+        section("Сообщения в 112 об ошибках карточек")
+        for number, action in messages_112:
+            story.append(p(f"Карточка {number}, {action.get('at', '')}: {action.get('text', '')}"))
 
     output = io.BytesIO()
     document = SimpleDocTemplate(
