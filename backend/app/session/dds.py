@@ -18,6 +18,8 @@ from app.domain import ekp
 from app.domain.events import Exercise, Metric, PhoneLine, PhoneReport, StationState
 from app.domain.kio import KIO, ResponseStatus, apply_patch
 from app.domain.statuses import (
+    ADJACENT_AUTHOR,
+    ADJACENT_CALL_AUTHOR,
     PRIMARY,
     SERVICE_STATUS_LABELS,
     PhoneCallPending,
@@ -33,6 +35,7 @@ from app.domain.taxonomy import Finding
 from app.domain.timers import TimerCode
 from app.scenarios.schema import Scenario
 from app.scoring.address import address_matches
+from app.scoring.adjacent import active_ms
 from app.session.timers import SessionTimers, now_utc
 
 if TYPE_CHECKING:
@@ -83,6 +86,17 @@ class DdsLiveCard(BaseModel):
     phone_pending: PhoneCallPending | None = None
     reply_text: str = ""
     reply_log: list[tuple[datetime, str]] = Field(default_factory=list)
+    #: Принятие карточки курсантом — старт таймлайна смежных служб и вводной.
+    adjacent_started_at: datetime | None = None
+    #: Сколько записей отсортированного таймлайна уже выдано (или пропущено).
+    adjacent_next_index: int = 0
+    #: Вводная «бригада просит смежников»: когда пришла и чем закрыта.
+    crew_request_at: datetime | None = None
+    adjacent_reply_at: datetime | None = None
+    #: Курсант передал бригаде «смежная служба реагирует» (иначе — уточнит).
+    adjacent_reply_claimed: bool | None = None
+    #: Первый звонок диспетчеру смежной службы из вводной.
+    adjacent_call_at: datetime | None = None
 
     @property
     def card_id(self) -> UUID:
@@ -144,12 +158,6 @@ def build_card(
     caller_name = caller_names[0] if len(caller_names) == 1 else None
     floor = re.search(r"(\d+)[-‑–]?й?\s*этаж", address_fact, re.IGNORECASE)
     service = truth.dds.value if truth.dds else None
-    fallback = {
-        "01": "Служба 101",
-        "02": "МВД",
-        "03": "Скорая помощь",
-        "04": "Аварийная служба",
-    }
     if scenario.student_card is not None:
         # A moderated learner-authored KIO is the card itself; do not flatten
         # it to title/description and silently discard its structured fields.
@@ -180,8 +188,7 @@ def build_card(
             ),
             dds=truth.dds,
             signs=list(scenario.signs),
-            notify=list(truth.notify)
-            or ([fallback[service]] if service in fallback else []),
+            notify=scenario.notify_services(),
             victims_count=truth.victims,
             description="; ".join(fact.value for fact in scenario.facts[:3])
             or scenario.first_line,
@@ -293,6 +300,102 @@ def _report_text(phase: str, crew: str, address: str) -> str:
             return f"{crew}: обстановка уточнена, приступили к работам. Сообщим о завершении."
         case _:
             return f"{crew}: работы завершены. Дальнейшая помощь от нашей бригады не требуется."
+
+
+#: Фаза входящего вызова бригады с запросом к смежной службе.
+ADJACENT_REQUEST_PHASE = "adjacent_request"
+
+#: Ответ бригаде «смежная служба реагирует»: только глаголы самой реакции.
+#: Общие слова вроде «будут»/«работы» сюда нельзя — «сведения будут позже»
+#: не успокаивание, а классификация напрямую задаёт отметку D6.
+_REASSURE_STEMS = ("реагир", "приня", "выех", "выезжа", "направ", "едут",
+                   "прибуд", "отреагир")
+#: Ответ «уточню и свяжусь»: курсант не подтверждает реакцию, а берёт запрос на себя.
+_DEFER_STEMS = ("свяж", "уточн", "выясн", "позвон", "запрош", "запрос",
+                "ожидай", "жди", "вызову", "сообщу", "передам позже")
+#: Отрицание реакции сильнее её глагола: «не реагируют, разберусь» — не
+#: успокаивание, хотя основа «реагир» в реплике есть.
+_SILENT_MARKERS = ("не реагир", "не приня", "не отреагир", "молч",
+                   "нет реакц", "не отмет", "пока нет", "не видно")
+
+
+def classify_reply(text: str) -> bool | None:
+    """Что курсант передал бригаде: True — «смежники реагируют», False —
+    «уточню и свяжусь», None — не разобрать (команда отклоняется).
+
+    Утверждение реакции сильнее обещания уточнить: «служба реагирует,
+    сообщу о прибытии» — успокаивание, и проверяться должно оно.
+    """
+    if _has_purpose(text, _SILENT_MARKERS):
+        return False
+    if _has_purpose(text, _REASSURE_STEMS):
+        return True
+    if _has_purpose(text, _DEFER_STEMS):
+        return False
+    return None
+
+
+#: Запрос смежной службе должен называть, что от неё требуется по карточке.
+_ADJACENT_REQUEST_STEMS = ("обесточ", "отключ", "перекр", "реагир", "выезд",
+                           "выех", "направ", "приступ", "помощ", "прошу",
+                           "требу", "статус", "обстанов", "карточк", "бригад")
+
+
+def deliver_adjacent_due(state: "SessionState", now: datetime | None = None) -> bool:
+    """Выдать созревшие отметки смежных служб и вводные по всем живым карточкам.
+
+    Вызывается тикером хаба вне паузы; сроки считаются по активному времени
+    от принятия карточки, поэтому простой сдвигает таймлайн, а не съедает его.
+    """
+    now = now or now_utc()
+    changed = False
+    for card in state.desk.ordered():
+        changed |= _deliver_card_adjacent(state, card, now)
+    return changed
+
+
+def _deliver_card_adjacent(state: "SessionState", card: DdsLiveCard, now: datetime) -> bool:
+    if card.adjacent_started_at is None:
+        return False
+    managed = set(state.card_services(card))
+    elapsed_ms = active_ms(card.adjacent_started_at, now, state.pause_intervals)
+    timeline = sorted(card.scenario.adjacent_timeline, key=lambda item: item.after_seconds)
+    changed = False
+    while card.adjacent_next_index < len(timeline):
+        entry = timeline[card.adjacent_next_index]
+        if elapsed_ms < entry.after_seconds * 1000:
+            break
+        card.adjacent_next_index += 1
+        if entry.service in managed:
+            continue  # службу курсанта симуляция не подменяет
+        try:
+            card.set_service_status(entry.service, entry.status, entry.comment,
+                                    author=ADJACENT_AUTHOR)
+            changed = True
+        except StatusError:
+            # Звонок курсанта уже сдвинул статус службы дальше таймлайна.
+            continue
+    request = card.scenario.crew_request
+    # Вводная ждёт, пока карточка открыта на пульте: входящий вызов фоновой
+    # карточки курсант не видит, и лимит тикал бы без шанса среагировать.
+    if (request is not None and card.crew_request_at is None
+            and request.service not in managed
+            and elapsed_ms >= request.after_seconds * 1000
+            and card.phone_pending is None and managed
+            and card.card_id == state.desk.active_id):
+        own_service = state.card_services(card)[0]
+        crew = card.crew_assignments.get(own_service) or f"{own_service} — бригада №1"
+        card.phone_pending = PhoneCallPending(
+            service=own_service, crew=crew, phase=ADJACENT_REQUEST_PHASE,
+            incoming=True, adjacent_service=request.service,
+        )
+        card.phone_lines.append(PhoneLineRecord(
+            service=own_service, crew=crew, speaker="crew", text=request.text, at=now,
+        ))
+        card.dds_log.append(("adjacent.request", now, request.service))
+        card.crew_request_at = now
+        changed = True
+    return changed
 
 
 def _finish_phone_call(card: DdsLiveCard) -> list[Any]:
@@ -458,6 +561,8 @@ class DdsDesk(BaseModel):
                         )
                         session.consecutive_refusals = 0
                         _first_record(card, command.comment)
+                        if card.adjacent_started_at is None:
+                            card.adjacent_started_at = now_utc()
                     except StatusError:
                         pass  # статус уже стоит: повторное нажатие ничего не меняет
             case "card.status":
@@ -472,6 +577,8 @@ class DdsDesk(BaseModel):
                     command.service, command.status, command.comment, author="диспетчер"
                 )
                 _first_record(card, command.comment)
+                if command.status is ServiceStatus.ACCEPTED and card.adjacent_started_at is None:
+                    card.adjacent_started_at = now_utc()
                 if command.status in PRIMARY:
                     # Сигнал реестра "повторные отказы" считает подряд идущие
                     # отказы, а не сумму за занятие.
@@ -536,6 +643,8 @@ class DdsDesk(BaseModel):
                 outcome.events.extend(_finish_phone_call(card))
             case "phone.check":
                 call = card.phone_pending
+                if call is not None and call.incoming:
+                    return _refused("Это входящий вызов бригады: ответьте на её запрос")
                 if call is None or call.phase == "dispatched":
                     return _refused("Сначала передайте вызов, затем запросите обстановку")
                 if not _has_purpose(command.text, ("обстанов", "статус", "прибыл", "доех",
@@ -547,8 +656,88 @@ class DdsDesk(BaseModel):
             case "phone.hangup":
                 if card.phone_pending is None:
                     return _refused("Нет активного разговора")
+                if card.phone_pending.incoming:
+                    # Сброс закрыл бы вводную без ответа навсегда: бригада
+                    # повторно не звонит, а метрика исхода уже не пройдёт.
+                    return _refused(
+                        "Ответьте бригаде: подтвердите реакцию смежной службы "
+                        "или скажите, что уточните и свяжетесь с ней"
+                    )
                 card.dds_log.append(("phone.hangup", now_utc(), card.phone_pending.crew))
                 card.phone_pending = None
+            case "phone.reply":
+                call = card.phone_pending
+                if call is None or not call.incoming:
+                    return _refused("Нет входящего вызова бригады")
+                claimed = classify_reply(command.text)
+                if claimed is None:
+                    return _refused(
+                        "Скажите бригаде, реагирует ли смежная служба, "
+                        "либо что уточните по карточке и свяжетесь с ней"
+                    )
+                outcome.events.append(_line(card, "dispatcher", command.text.strip()))
+                confirmation = (
+                    f"Понял вас: {call.adjacent_service} реагирует. Продолжаем работы."
+                    if claimed else
+                    "Понял вас, ожидаем уточнения по смежной службе. Остаёмся на месте."
+                )
+                outcome.events.append(_line(card, "crew", confirmation))
+                reply_at = now_utc()
+                card.dds_log.append(
+                    ("adjacent.reply", reply_at, "reassure" if claimed else "defer")
+                )
+                card.adjacent_reply_at = reply_at
+                card.adjacent_reply_claimed = claimed
+                card.phone_pending = None
+            case "adjacent.dial":
+                if card.phone_pending is not None:
+                    return _refused(
+                        "Сначала ответьте бригаде"
+                        if card.phone_pending.incoming
+                        else "Завершите текущий разговор перед звонком смежной службе"
+                    )
+                if (command.service not in card.dispatched_card.notify
+                        or command.service in session.card_services(card)):
+                    return _refused("Звонить можно смежной службе из списка оповещения карточки")
+                if not _has_purpose(command.text, _ADJACENT_REQUEST_STEMS):
+                    return _refused("Сформулируйте запрос: что требуется от смежной службы по карточке")
+                if any(action == "adjacent.dial" and detail == command.service
+                       for action, _at, detail in card.dds_log):
+                    # Ответ скриптовый и не меняется: повторный звонок только
+                    # замусорил бы журнал и разбор парами одинаковых реплик.
+                    return _refused("Разговор с этой службой уже состоялся; сведения — в журнале")
+                dialed_at = now_utc()
+                dispatcher_name = f"{command.service} — диспетчер"
+
+                def adjacent_line(speaker: str, text: str) -> PhoneLine:
+                    line = PhoneLineRecord(service=command.service, crew=dispatcher_name,
+                                           speaker=speaker, text=text, at=now_utc())
+                    card.phone_lines.append(line)
+                    card.dds_log.append(
+                        (f"phone.line.{speaker}", line.at, f"{dispatcher_name}: {text}")
+                    )
+                    return PhoneLine(**line.model_dump())
+
+                outcome.events.append(adjacent_line("dispatcher", command.text.strip()))
+                status_now = current(card.status_log, command.service)
+                if status_now in {ServiceStatus.ADDED, ServiceStatus.RECEIVED}:
+                    card.set_service_status(
+                        command.service, ServiceStatus.ACCEPTED,
+                        "Основание: звонок диспетчера по карточке\n"
+                        "Сведения: запрос принят, бригада направляется",
+                        author=ADJACENT_CALL_AUTHOR,
+                    )
+                    answer = "Запрос принят, направляем бригаду. Статус отметим в карточке."
+                elif status_now in {ServiceStatus.DECLINED, ServiceStatus.REFUSED}:
+                    answer = "По этой карточке оформлен отказ; основание — в комментарии к статусу."
+                else:
+                    answer = "Мы уже реагируем по карточке, ход работ — в статусах."
+                outcome.events.append(adjacent_line("crew", answer))
+                card.dds_log.append(("adjacent.dial", dialed_at, command.service))
+                request = card.scenario.crew_request
+                if (request is not None and command.service == request.service
+                        and card.adjacent_call_at is None):
+                    card.adjacent_call_at = dialed_at
             case "card.reply":
                 if not dds_lesson or command.card_id != card.card_id:
                     return _refused("Ответ относится не к текущей карточке")
@@ -575,6 +764,10 @@ class DdsDesk(BaseModel):
                     return _refused("Следующая карточка недоступна: ID текущей не совпадает")
                 if self.is_completed(command.card_id):
                     return _refused("Эта карточка уже завершена")
+                if card.phone_pending is not None and card.phone_pending.incoming:
+                    # Один клик не должен запирать D6: карточка с висящим
+                    # входящим вызовом оценилась бы как проигнорированная вводная.
+                    return _refused("Сначала ответьте бригаде на входящий вызов")
                 # Оценка живёт в модуле завершения, который сам зависит от пульта.
                 from app.session.finish import score_dds_card
 

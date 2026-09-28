@@ -370,7 +370,10 @@ class SessionState(PersistedSession):
             recipients = []
         services = self._managed_services_for(recipients)
         log = list(card.status_log) if card is not None else []
-        statuses = {service: current(log, service) for service in services}
+        # Статусы всех получателей: диспетчер в бою читает реагирование
+        # смежных служб из карточки. Переходы доступны только своей ДДС.
+        statuses = {service: current(log, service)
+                    for service in dict.fromkeys([*services, *recipients])}
         now_mono = time.monotonic()
         overdue = False
         if card is not None:
@@ -417,7 +420,9 @@ class SessionState(PersistedSession):
             recipient_services=recipients,
             managed_service=services[0] if services else None,
             statuses=statuses,
-            available={service: list(NEXT[status]) for service, status in statuses.items()},
+            # Переходы — только для служб курсанта: смежные показываются,
+            # но их статусы двигает симуляция, а не пульт.
+            available={service: list(NEXT[statuses[service]]) for service in services},
             card=(card_status(log, services, notify_deadline_passed=overdue)
                   if shows_card else CardStatus.REGISTERED),
             log=log,

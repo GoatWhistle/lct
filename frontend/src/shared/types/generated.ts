@@ -14,6 +14,13 @@ export interface AIRecommendation {
   text: string;
 }
 
+/** Звонок диспетчеру смежной службы из списка оповещения карточки. Один обмен: запрос курсанта и скриптовый ответ смежной службы; её статус после звонка появляется в журнале карточки. */
+export interface AdjacentDial {
+  type: "adjacent.dial";
+  service: string;
+  text: string;
+}
+
 /** Аудио-фон происшествия. Файл лежит в сборке фронта, трафика фон не создаёт. */
 export interface BgStart {
   type: "bg.start";
@@ -403,6 +410,7 @@ export interface LessonCriteria {
   dds_card_work_time_limit_seconds?: number;
   dds_report_reaction_enabled?: boolean;
   dds_report_reaction_limit_seconds?: number;
+  dds_adjacent_limit_seconds?: number;
   allowed_errors?: number;
   require_correct_grammar?: boolean;
   score_weights?: Record<string, number>;
@@ -462,6 +470,8 @@ export interface PhoneCallPending {
   service: string;
   crew: string;
   phase: string;
+  incoming?: boolean;
+  adjacent_service?: string | null;
 }
 
 /** Запрос диспетчера об обстановке после предыдущего доклада. */
@@ -493,6 +503,12 @@ export interface PhoneLineRecord {
   speaker: string;
   text: string;
   at: string;
+}
+
+/** Ответ диспетчера на входящий вызов бригады (вводная «бригада просит смежников»). Свободный текст проверяется кодом по основам слов. */
+export interface PhoneReply {
+  type: "phone.reply";
+  text: string;
 }
 
 export interface PhoneReport {
@@ -831,10 +847,11 @@ export type InstructorToServer = ScenarioStart | DirectorInject | ReferencePlay 
 
 export type ServerToStation = CardReceived | StationState | PhoneLine | PhoneReport | TimerTick | SessionEnded | ScoreReady | CommandAck | SessionPaused | ErrorEvent;
 
-export type StationToServer = CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | PhoneBrief | PhoneCheck | PhoneHangup | StationFinish | CardReply | CardNext | CardOpen | ZoneDecision | CrewDispatched | CrewArrived;
+export type StationToServer = CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | PhoneBrief | PhoneCheck | PhoneHangup | PhoneReply | AdjacentDial | StationFinish | CardReply | CardNext | CardOpen | ZoneDecision | CrewDispatched | CrewArrived;
 
 export type EventName =
-  "bg.start"
+  "adjacent.dial"
+  | "bg.start"
   | "bg.stop"
   | "call.answer"
   | "call.ended"
@@ -873,6 +890,7 @@ export type EventName =
   | "phone.dial"
   | "phone.hangup"
   | "phone.line"
+  | "phone.reply"
   | "phone.report"
   | "reference.play"
   | "reference.started"

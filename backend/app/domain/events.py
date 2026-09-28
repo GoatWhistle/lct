@@ -56,6 +56,9 @@ class LessonCriteria(BaseModel):
     #: Сколько секунд после доклада бригады даётся на соответствующий статус.
     dds_report_reaction_enabled: bool = False
     dds_report_reaction_limit_seconds: int = Field(default=45, ge=5, le=600)
+    #: Сколько секунд от вводной «бригада просит смежников» даётся, чтобы
+    #: ответить бригаде и — при молчании смежной службы — позвонить ей.
+    dds_adjacent_limit_seconds: int = Field(default=90, ge=5, le=600)
     allowed_errors: int = Field(default=0, ge=0, le=50)
     require_correct_grammar: bool = True
     score_weights: dict[str, float] = Field(default_factory=dict)
@@ -627,6 +630,26 @@ class PhoneHangup(BaseModel):
     type: Literal["phone.hangup"] = "phone.hangup"
 
 
+class PhoneReply(BaseModel):
+    """Ответ диспетчера на входящий вызов бригады (вводная «бригада просит
+    смежников»). Свободный текст проверяется кодом по основам слов."""
+
+    type: Literal["phone.reply"] = "phone.reply"
+    text: str = Field(min_length=8, max_length=500)
+
+
+class AdjacentDial(BaseModel):
+    """Звонок диспетчеру смежной службы из списка оповещения карточки.
+
+    Один обмен: запрос курсанта и скриптовый ответ смежной службы; её статус
+    после звонка появляется в журнале карточки.
+    """
+
+    type: Literal["adjacent.dial"] = "adjacent.dial"
+    service: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=8, max_length=500)
+
+
 class PhoneLine(BaseModel):
     type: Literal["phone.line"] = "phone.line"
     service: str
@@ -697,7 +720,7 @@ ServerToStation = Annotated[
 
 StationToServer = Annotated[
     CardAck | CardBounce | ServiceStatusSet | CrewSelect | PhoneDial | PhoneBrief | PhoneCheck
-    | PhoneHangup | StationFinish
+    | PhoneHangup | PhoneReply | AdjacentDial | StationFinish
     | CardReply | CardNext | CardOpen
     | ZoneDecision | CrewDispatched | CrewArrived,
     Field(discriminator="type"),

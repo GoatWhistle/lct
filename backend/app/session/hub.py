@@ -22,6 +22,7 @@ from app.domain.events import (
     StationState,
     TimerTick,
 )
+from app.session.dds import deliver_adjacent_due
 from app.session.state import SessionState
 from app.session.store import MemorySessionStore, Record, SessionLeaseLost, SessionStore
 from app.session.timers import now_utc
@@ -427,7 +428,11 @@ class SessionHub:
                 if state.dds_phase and not state.paused:
                     async with self.operation(session_id) as op:
                         active_before = state.desk.active_id
-                        op.persist = bool(state.desk.deliver_due())
+                        delivered = bool(state.desk.deliver_due())
+                        # Смежные службы живут тем же тактом: на паузе стоят,
+                        # простой сдвигает их сроки вместе с очередью.
+                        adjacent_changed = deliver_adjacent_due(state)
+                        op.persist = delivered or adjacent_changed
                         if state.desk.active_id != active_before and state.desk.active_id:
                             self.to_station(session_id, state.card_received_event())
                     # Keep the pending count and countdown live even while

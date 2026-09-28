@@ -14,6 +14,7 @@ from uuid import UUID
 
 from app.domain.events import CallEnded, CallEndReason, Exercise, ScoreReady, SessionEnded, SessionPaused
 from app.domain.timers import TimerCode
+from app.scoring.adjacent import adjacent_metrics
 from app.scoring.ai_coach import coach
 from app.scoring.dispatcher import dispatcher_metrics, evaluate_dispatcher
 from app.scoring.gost import GostResult
@@ -84,6 +85,11 @@ def score_dds_card(state, card: DdsLiveCard) -> DdsCardRecord:
     weighted.metrics.append(work_metric)
     if work_finding is not None:
         weighted.findings.append(work_finding)
+    extra_metrics, extra_findings = adjacent_metrics(
+        card, state.criteria.dds_adjacent_limit_seconds * 1000, state.pause_intervals
+    )
+    weighted.metrics.extend(extra_metrics)
+    weighted.findings.extend(extra_findings)
     apply_weights(weighted, {**card.scenario.score_weights, **state.criteria.score_weights})
     actions = [
         {"type": "card.status", "service": mark.service, "status": mark.status.value,

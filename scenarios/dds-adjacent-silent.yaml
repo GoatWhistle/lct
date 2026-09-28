@@ -1,0 +1,68 @@
+# Реагирование смежных служб в карточке ДДС, исход «смежная служба молчит».
+# Та же карточка, что dds-adjacent-react, но Мособлгаз в таймлайне не отмечается.
+# Правильный ход — не успокаивать бригаду, а позвонить диспетчеру смежной
+# службы; после звонка её статус появляется в журнале карточки.
+id: dds-adjacent-silent
+title: "Пожар в частном доме, бригада просит газовиков (служба молчит)"
+type: fire
+level: L3
+topics: [fires, adjacent]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+
+signs: [жилой дом, частный дом, открытое пламя]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview,    mood: worried }
+    - { stage: dispatch,     mood: calm }
+
+first_line: "Здравствуйте! У соседей частный дом горит, дым чёрный!"
+
+facts:
+  - id: f_address
+    value: "город Москва, посёлок Акулово, улица Луговая, дом 4"
+    reveal_on: { question: q_address }
+  - id: f_what_burns
+    value: "горит пристройка частного дома, огонь подбирается к газовой трубе"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "жильцы вышли, пострадавших нет"
+    reveal_on: { question: q_people }
+  - id: f_gas
+    value: "дом газифицирован, ввод со стороны улицы"
+    reveal_on: { question: q_gas }
+  - id: f_caller
+    value: "Крылова Марина Ильинична, телефон 916-233-48-05"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address,    fact: f_address }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people,     fact: f_people }
+  - { id: q_gas,        fact: f_gas }
+  - { id: q_caller,     fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "город Москва, посёлок Акулово, улица Луговая, дом 4"
+  victims: 0
+
+# Мособлгаз молчит намеренно: исход — следствие таймлайна, отдельной ручки нет.
+adjacent_timeline:
+  - service: МВД
+    after_seconds: 30
+    status: accepted
+    comment: "Основание: карточка по пожару. Сведения: наряд для оцепления направлен."
+
+crew_request:
+  after_seconds: 45
+  service: Мособлгаз
+  text: "Говорит старший бригады №1. Работаем по пристройке, огонь у газовой трубы — нужно перекрыть ввод. Мособлгаз отреагировал? Что передать расчёту?"
+
+tree:
+  pregenerated: false

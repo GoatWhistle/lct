@@ -1,0 +1,77 @@
+# Реагирование смежных служб в карточке ДДС, исход «смежники реагируют».
+# Пожар в газифицированном частном доме: Мособлгаз отмечается в карточке по
+# сценарному таймлайну, затем бригада 101 просит перекрыть газ. Правильный ход —
+# свериться с журналом и передать бригаде, что смежная служба уже реагирует.
+# Парный сценарий с молчащей службой — dds-adjacent-silent.
+id: dds-adjacent-react
+title: "Пожар в частном доме, бригада просит газовиков (служба реагирует)"
+type: fire
+level: L3
+topics: [fires, adjacent]
+modes: [training, exam, self]
+
+extends: checklists/fire.yaml
+
+signs: [жилой дом, частный дом, открытое пламя]
+
+persona:
+  base: worried
+  arc:
+    - { stage: registration, mood: worried }
+    - { stage: interview,    mood: worried }
+    - { stage: dispatch,     mood: calm }
+
+first_line: "Здравствуйте! У соседей частный дом горит, дым чёрный!"
+
+facts:
+  - id: f_address
+    value: "город Москва, посёлок Акулово, улица Садовая, дом 9"
+    reveal_on: { question: q_address }
+  - id: f_what_burns
+    value: "горит пристройка частного дома, огонь подбирается к газовой трубе"
+    reveal_on: { question: q_what_burns }
+  - id: f_people
+    value: "жильцы вышли, пострадавших нет"
+    reveal_on: { question: q_people }
+  - id: f_gas
+    value: "дом газифицирован, ввод со стороны улицы"
+    reveal_on: { question: q_gas }
+  - id: f_caller
+    value: "Соколов Пётр Андреевич, телефон 915-402-77-19"
+    reveal_on: { question: q_caller }
+
+checklist:
+  - { id: q_address,    fact: f_address }
+  - { id: q_what_burns, fact: f_what_burns }
+  - { id: q_people,     fact: f_people }
+  - { id: q_gas,        fact: f_gas }
+  - { id: q_caller,     fact: f_caller }
+
+required_fields: [address, incident_type, description]
+
+ground_truth:
+  address: "город Москва, посёлок Акулово, улица Садовая, дом 9"
+  victims: 0
+
+# Смещения — от принятия карточки курсантом; пауза занятия таймлайн замораживает.
+adjacent_timeline:
+  - service: Мособлгаз
+    after_seconds: 20
+    status: accepted
+    comment: "Основание: карточка по пожару в газифицированном доме. Сведения: заявка принята, аварийная бригада формируется."
+  - service: МВД
+    after_seconds: 35
+    status: accepted
+    comment: "Основание: карточка по пожару. Сведения: наряд для оцепления направлен."
+  - service: Мособлгаз
+    after_seconds: 55
+    status: responding
+    comment: "Основание: доклад аварийной бригады. Сведения: бригада выехала на перекрытие ввода."
+
+crew_request:
+  after_seconds: 80
+  service: Мособлгаз
+  text: "Говорит старший бригады №1. Работаем по пристройке, огонь у газовой трубы — нужно перекрыть ввод. Мособлгаз отреагировал? Что передать расчёту?"
+
+tree:
+  pregenerated: false

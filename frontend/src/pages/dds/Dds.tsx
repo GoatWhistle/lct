@@ -17,7 +17,10 @@ const SipPhone = lazy(() => import("@/features/sip/SipPhone").then(({ SipPhone }
 type ReportPhase = "dispatched" | "arrived" | "working" | "completed";
 interface PhoneReport { service: string; crew: string; phase: ReportPhase; text: string; at: string }
 interface PhoneLine { service: string; crew: string; speaker: "dispatcher" | "crew"; text: string; at: string }
-interface PhonePending { service: string; crew: string; phase: ReportPhase }
+interface PhonePending {
+  service: string; crew: string; phase: string;
+  incoming?: boolean; adjacent_service?: string | null;
+}
 interface CompletedCard {
   card_id: string; scenario_id: string; score_auto: number; score_final?: number;
   session_id?: string; ended_at?: string; title?: string | null; address?: string | null;
@@ -236,6 +239,9 @@ export function Dds() {
   const [dialing, setDialing] = useState(false);
   const [brief, setBrief] = useState({ address: "", incident: "", request: "" });
   const [checkText, setCheckText] = useState("");
+  const [crewReplyText, setCrewReplyText] = useState("");
+  const [adjacentTarget, setAdjacentTarget] = useState("");
+  const [adjacentText, setAdjacentText] = useState("");
   const [error, setError] = useState("");
   const [ended, setEnded] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -286,6 +292,9 @@ export function Dds() {
             setDialing(false);
             setBrief({ address: "", incident: "", request: "" });
             setCheckText("");
+            setCrewReplyText("");
+            setAdjacentTarget("");
+            setAdjacentText("");
             setZone(null);
             setScoreReady(false);
             setView(openCardAfterSwitch.current ? "card" : "registry");
@@ -334,7 +343,15 @@ export function Dds() {
   const latest = (lastReport?.crew === selectedCrew ? lastReport : null) ??
     reports.filter((item) => item.crew === selectedCrew).at(-1) ?? null;
   const phoneCall = station?.phone_pending ?? null;
-  const phoneLines = (station?.phone_lines ?? []).filter((line) => line.crew === selectedCrew);
+  // Лента разговора следует за активным вызовом: входящий от бригады может
+  // прийти и без выбранной в селекторе бригады.
+  const activeCallCrew = phoneCall?.crew ?? selectedCrew;
+  const phoneLines = (station?.phone_lines ?? []).filter((line) => line.crew === activeCallCrew);
+  // Смежные службы: получатели карточки, которыми курсант не управляет.
+  const adjacentServices = (station?.recipient_services ?? [])
+    .filter((service) => !(station?.services ?? []).includes(service));
+  const adjacentService = adjacentTarget || phoneCall?.adjacent_service || adjacentServices[0] || "";
+  const adjacentLines = (station?.phone_lines ?? []).filter((line) => line.crew.endsWith("— диспетчер"));
   const isConnected = status === "open";
   // Вверх: короткая пауза не должна выглядеть как «0 с», а без пауз строки нет.
   const pausedSeconds = Math.ceil((report?.total_paused_ms ?? 0) / 1000);
@@ -378,6 +395,10 @@ export function Dds() {
       АРМ {role}: {isConnected ? "на связи" : status}
     </span>
     {error && <div className="dds-alert" role="alert">Действие не принято: {error}</div>}
+    {phoneCall?.incoming && pane !== "phone" && !ended && <div className="dds-alert" role="alert">
+      Входящий вызов бригады {phoneCall.crew}.{" "}
+      <button type="button" onClick={() => { setView("card"); setPane("phone"); }}>Ответить</button>
+    </div>}
     {paused && !ended && <div className="dds-alert dds-paused">Пауза, ждите преподавателя</div>}
     {ended && <div className="dds-alert dds-done">Занятие завершено. Оценка появится после расчёта.</div>}
     {(ended || scoreReady) && <section className="dds-panel" aria-live="polite">
@@ -630,7 +651,22 @@ export function Dds() {
           onClick={() => { if (send({ type: "phone.dial" })) setDialing(true); }}>
           ☎ {dialing ? "Соединение…" : "Позвонить старшему группы"}</button>
         {selectedCrew && !crewAccepted && <p className="dds-hint state-warn">Перед звонком поставьте статус «Принята» для службы этой бригады.</p>}
-        {phoneCall && <div className="dds-phone-active" aria-live="polite">
+        {phoneCall?.incoming && <div className="dds-phone-active" aria-live="polite">
+          <strong>● Входящий вызов · {phoneCall.crew}</strong>
+          <div className="dds-phone-form">
+            <p>Бригада спрашивает о смежной службе{phoneCall.adjacent_service ? ` «${phoneCall.adjacent_service}»` : ""}.
+              Сверьтесь с журналом карточки: если служба реагирует — передайте это бригаде,
+              если молчит — сообщите, что уточните, и позвоните её диспетчеру.</p>
+            <label htmlFor="dds-phone-reply">Ваш ответ бригаде</label>
+            <textarea id="dds-phone-reply" rows={2} value={crewReplyText}
+              onChange={(event) => setCrewReplyText(event.target.value)}
+              placeholder="Служба реагирует, бригада направлена — или: уточню по карточке и свяжусь со службой" />
+            <button type="button" disabled={!isConnected || ended || crewReplyText.trim().length < 8}
+              onClick={() => { if (send({ type: "phone.reply", text: crewReplyText })) setCrewReplyText(""); }}>
+              Ответить бригаде</button>
+          </div>
+        </div>}
+        {phoneCall && !phoneCall.incoming && <div className="dds-phone-active" aria-live="polite">
           <strong>● Соединение установлено · {phoneCall.crew}</strong>
           {phoneCall.phase === "dispatched" ? <div className="dds-phone-form">
             <p>Передайте сведения из карточки и задачу бригаде. Доклад о выезде появится только после передачи.</p>
@@ -661,6 +697,28 @@ export function Dds() {
         {reports.length > 0 && <details className="dds-details"><summary>История докладов ({reports.length})</summary>
           <ol className="dds-reports">{reports.map((report, index) => <li key={`${report.at}-${index}`}><b>{REPORT_LABELS[report.phase]}</b> · {time(report.at)}<br />{report.text}</li>)}</ol>
         </details>}
+        {adjacentServices.length > 0 && <>
+          <h3 className="dds-protocol-title">Смежные службы</h3>
+          <p className="dds-hint">Реагирование смежных служб видно в журнале и на кнопках служб.
+            Если нужная служба в карточке молчит — позвоните её диспетчеру.</p>
+          <label htmlFor="dds-adjacent-service">Смежная служба</label>
+          <select id="dds-adjacent-service" value={adjacentService}
+            disabled={!isConnected || ended}
+            onChange={(event) => setAdjacentTarget(event.target.value)}>
+            {adjacentServices.map((service) => <option key={service} value={service}>{serviceTitle(service)}</option>)}
+          </select>
+          <label htmlFor="dds-adjacent-text">Запрос диспетчеру службы</label>
+          <textarea id="dds-adjacent-text" rows={2} value={adjacentText}
+            onChange={(event) => setAdjacentText(event.target.value)}
+            placeholder="Прошу перекрыть газовый ввод по карточке, работает бригада" />
+          <button type="button" className="dds-dial"
+            disabled={!isConnected || ended || Boolean(phoneCall) || !adjacentService || adjacentText.trim().length < 8}
+            onClick={() => { if (send({ type: "adjacent.dial", service: adjacentService, text: adjacentText })) setAdjacentText(""); }}>
+            ☎ Позвонить диспетчеру службы</button>
+          {adjacentLines.length > 0 && <div className="dds-phone-transcript" aria-live="polite"><strong>Разговоры со смежными службами</strong>
+            {adjacentLines.map((line, index) => <p key={`${line.at}-${index}`}><small>{time(line.at)} · {line.speaker === "crew" ? line.crew : "Диспетчер ДДС"}</small><br />{line.text}</p>)}
+          </div>}
+        </>}
       </section>}
       {pane === "reply" && <section className="dds-panel dds-reply">
         <div className="dds-panel-title"><h2>Рабочая заметка диспетчера</h2>
@@ -709,7 +767,8 @@ export function Dds() {
           })}
         </div>
         <div className="dds-service-tools" role="group" aria-label="Действия диспетчера">
-          <button type="button" onClick={() => setPane("phone")}><b>☎ Связь</b><small>Бригада</small></button>
+          <button type="button" onClick={() => setPane("phone")}>
+            <b>☎ Связь</b><small>{phoneCall?.incoming ? "Входящий!" : "Бригада"}</small></button>
           <button type="button" onClick={() => setPane("reply")}><b>✎ Ответ</b><small>{reply.dirty ? "Не сохранён" : "Комментарий"}</small></button>
           <button type="button" onClick={() => setPane("journal")}><b>Журнал</b><small>Статусы</small></button>
           <button type="button" disabled={!cardId || !isConnected || ended || advancePending}

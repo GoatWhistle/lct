@@ -103,9 +103,16 @@ def full_state() -> SessionState:
                                          text="Выехали", at=AT)],
         phone_lines=[PhoneLineRecord(service="01", crew=crew, speaker="crew",
                                      text="Выехали", at=AT)],
-        phone_pending=PhoneCallPending(service="01", crew=crew, phase="arrived"),
+        phone_pending=PhoneCallPending(service="01", crew=crew, phase="arrived",
+                                       incoming=True, adjacent_service="Мособлгаз"),
         reply_text="Бригада направлена",
         reply_log=[(AT, "Бригада направлена")],
+        adjacent_started_at=AT,
+        adjacent_next_index=1,
+        crew_request_at=AT,
+        adjacent_reply_at=AT,
+        adjacent_reply_claimed=True,
+        adjacent_call_at=AT,
     )
     desk = DdsDesk(
         scenarios=[first, second],
