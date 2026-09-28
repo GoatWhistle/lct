@@ -24,6 +24,11 @@ from app.db.models import LlmCache
 log = logging.getLogger(__name__)
 
 
+#: Имена сервисов моделей из корневого docker-compose.yml. Однословное имя
+#: разрешает только DNS внутренней сети Compose, наружу оно не уходит.
+DOCKER_MODEL_HOSTS = frozenset({"host.docker.internal", "llm-qwen", "llm-vikhr"})
+
+
 class LlmUnavailable(RuntimeError):
     """Сеть, ключ или провайдер отказали. Звонящий откатывается на заготовки,
     занятие продолжается — молчащий звонящий хуже шаблонной фразы."""
@@ -40,7 +45,7 @@ def is_loopback_url(value: str, *, allow_docker_host: bool = False) -> bool:
         try:
             local_host = ip_address(host).is_loopback
         except ValueError:
-            local_host = allow_docker_host and host == "host.docker.internal"
+            local_host = allow_docker_host and host in DOCKER_MODEL_HOSTS
         return (url.scheme == "http" and local_host and url.port is not None
                 and not url.username and not url.password)
     except (ValueError, TypeError):

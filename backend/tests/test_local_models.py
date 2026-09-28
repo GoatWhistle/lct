@@ -43,6 +43,14 @@ def test_offline_model_address_must_be_literal_loopback():
     )
 
 
+def test_compose_model_services_need_the_docker_flag():
+    for url in ("http://llm-qwen:18080/v1", "http://llm-vikhr:18081/v1"):
+        assert not is_loopback_url(url)
+        assert is_loopback_url(url, allow_docker_host=True)
+    assert not is_loopback_url("http://llm-qwen.evil.test:18080/v1", allow_docker_host=True)
+    assert not is_loopback_url("http://llm-other:18080/v1", allow_docker_host=True)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("api_key", ["", "leftover-cloud-key"])
 async def test_local_llm_never_sends_an_api_key(monkeypatch, api_key):
