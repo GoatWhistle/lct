@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/wordmark-dark.svg"/>
-    <img src=".github/assets/wordmark-light.svg" alt="Тренажёр 112 и ДДС" width="520"/>
+    <img src=".github/assets/wordmark-light.svg" alt="Тренажёр 112 и ДДС" width="420"/>
   </picture>
 </p>
 
