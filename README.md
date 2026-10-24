@@ -215,8 +215,9 @@ TypeScript-типы фронта генерируются из Pydantic-моде
 - **Двухузловый режим не закрыт до конца:** доставка «ровно один раз» для всех команд канала
   не заявляется.
 
-## Лицензия
-
-Код — [MIT](LICENSE). Веса моделей не изменялись и распространяются по своим лицензиям, в том
-числе Silero TTS — CC BY-NC-SA 4.0, только некоммерческое использование; подробности — в
-[`deploy/licenses/`](deploy/licenses/NOTICE.md). Built with Llama.
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/mark.dark.png"><img src="docs/readme/mark.light.png" alt="" width="32" height="32"></picture>
+  <br>
+  <sub>Команда Ullax, хакатон «Лидеры цифровой трансформации», задача № 9, 2026. Код под лицензией <a href="LICENSE">MIT</a>.<br>
+  Веса моделей не изменялись и идут по своим лицензиям, Silero TTS — только некоммерческое использование: <a href="deploy/licenses/NOTICE.md">deploy/licenses</a>. Built with Llama.</sub>
+</p>
