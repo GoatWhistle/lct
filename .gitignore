@@ -1,10 +1,6 @@
 # IDE
 .idea/
 .vscode/
-.agents/
-.claude/settings.local.json
-.claude/worktrees/
-.claude/scheduled_tasks.lock
 
 # Веса моделей (тянутся make models)
 backend/models/
