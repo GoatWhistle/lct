@@ -218,6 +218,6 @@ TypeScript-типы фронта генерируются из Pydantic-моде
 <p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/mark.dark.png"><img src="docs/readme/mark.light.png" alt="" width="32" height="32"></picture>
   <br>
-  <sub>Команда Ullax, хакатон «Лидеры цифровой трансформации», задача № 9, 2026. Код под лицензией <a href="LICENSE">MIT</a>.<br>
+  <sub>Команда GoatWhistle, хакатон «Лидеры цифровой трансформации», задача № 9, 2026. Код под лицензией <a href="LICENSE">MIT</a>.<br>
   Веса моделей не изменялись и идут по своим лицензиям, Silero TTS — только некоммерческое использование: <a href="deploy/licenses/NOTICE.md">deploy/licenses</a>. Built with Llama.</sub>
 </p>
